@@ -262,6 +262,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       // Import the upload function
       const { uploadClientDocument } = await import('@/lib/supabase/storage');
       
+      console.log('Starting upload:', { fileName: uploadFile.name, size: uploadFile.size, type: uploadDocumentType });
+      
       // Upload file to Supabase Storage and get document record
       const { document: documentRecord, error: uploadError } = await uploadClientDocument(
         uploadFile,
@@ -270,15 +272,23 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         uploadDescription || undefined
       );
 
+      console.log('Upload result:', { documentRecord, uploadError });
+
       if (uploadError) {
+        console.error('Upload error:', uploadError);
         alert(`Upload failed: ${uploadError}`);
+        setUploading(false);
         return;
       }
 
       if (!documentRecord) {
+        console.error('No document record returned');
         alert('Upload failed');
+        setUploading(false);
         return;
       }
+
+      console.log('Saving document metadata to database...');
 
       // Save document metadata to database
       const { error: dbError } = await supabase.from('documents').insert({
@@ -293,11 +303,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         is_verified: false,
       });
 
+      console.log('Database insert result:', { dbError });
+
       if (dbError) {
         console.error('Error saving document metadata:', dbError);
-        alert('File uploaded but failed to save record');
+        alert('File uploaded but failed to save record. Error: ' + dbError.message);
+        setUploading(false);
         return;
       }
+
+      console.log('Refreshing documents list...');
 
       // Refresh documents list
       const { data: docsData } = await supabase
@@ -314,11 +329,12 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setUploadDocumentType('id');
       setUploadDescription('');
       setShowUploadDialog(false);
+      setUploading(false);
+      console.log('Upload complete!');
       alert('Document uploaded successfully!');
     } catch (err) {
       console.error('Error uploading document:', err);
-      alert('An error occurred while uploading');
-    } finally {
+      alert('An error occurred while uploading: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setUploading(false);
     }
   };

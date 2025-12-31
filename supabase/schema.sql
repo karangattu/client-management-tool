@@ -324,6 +324,8 @@ CREATE TABLE IF NOT EXISTS documents (
     is_verified BOOLEAN DEFAULT false,
     verified_by UUID REFERENCES profiles(id),
     verified_at TIMESTAMP WITH TIME ZONE,
+    status TEXT DEFAULT 'pending', -- Document review status: pending, verified, rejected
+    rejection_reason TEXT, -- Reason if document was rejected
     tags TEXT[],
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -332,6 +334,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(document_type);
 CREATE INDEX IF NOT EXISTS idx_documents_expiry ON documents(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 
 -- ============================================
 -- DIGITAL SIGNATURES

@@ -57,12 +57,12 @@ interface Document {
   status: string;
   client_id: string;
   clientName?: string;
-  uploaded_at: string;
+  created_at: string;
   size?: string;
   verified_by?: string;
   verified_at?: string;
   rejection_reason?: string;
-  file_url?: string;
+  file_path?: string;
 }
 
 const documentTypes = [
@@ -95,7 +95,7 @@ export default function DocumentsPage() {
     if (user) {
       fetchDocuments();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const fetchDocuments = async () => {
@@ -109,13 +109,13 @@ export default function DocumentsPage() {
           document_type,
           status,
           client_id,
-          uploaded_at,
+          created_at,
           verified_by,
           verified_at,
-          file_url,
+          file_path,
           clients (first_name, last_name)
         `)
-        .order('uploaded_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -126,10 +126,10 @@ export default function DocumentsPage() {
         status: doc.status || 'pending',
         client_id: doc.client_id,
         clientName: doc.clients ? `${doc.clients.first_name} ${doc.clients.last_name}` : 'Unknown',
-        uploaded_at: doc.uploaded_at,
+        created_at: doc.created_at,
         verified_by: doc.verified_by,
         verified_at: doc.verified_at,
-        file_url: doc.file_url,
+        file_path: doc.file_path,
       })) || [];
 
       setDocuments(formattedDocs);
@@ -143,7 +143,7 @@ export default function DocumentsPage() {
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (doc.clientName || '').toLowerCase().includes(searchQuery.toLowerCase());
+      (doc.clientName || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || doc.status === statusFilter;
     const matchesType = typeFilter === 'all' || doc.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
@@ -382,7 +382,7 @@ export default function DocumentsPage() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : 'N/A'}
+                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'N/A'}
                       </span>
                       <span>{doc.size || 'N/A'}</span>
                       <Badge variant="outline" className="text-xs">
