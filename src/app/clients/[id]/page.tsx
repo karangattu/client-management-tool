@@ -109,6 +109,31 @@ const taskStatusColors: Record<string, string> = {
   completed: 'bg-green-100 text-green-800',
 };
 
+const getPriorityBadge = (priority: string) => {
+  switch (priority) {
+    case 'urgent':
+      return <Badge className="bg-red-100 text-red-800 hover:bg-red-200 border-red-200">Urgent</Badge>;
+    case 'high':
+      return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200">High</Badge>;
+    case 'medium':
+      return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Medium</Badge>;
+    case 'low':
+      return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">Low</Badge>;
+    default:
+      return <Badge variant="secondary">{priority}</Badge>;
+  }
+};
+
+const getPriorityDotColor = (priority: string) => {
+  switch (priority) {
+    case 'urgent': return 'bg-red-600';
+    case 'high': return 'bg-orange-500';
+    case 'medium': return 'bg-amber-500';
+    case 'low': return 'bg-slate-400';
+    default: return 'bg-gray-400';
+  }
+};
+
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params);
   const { profile } = useAuth();
@@ -261,9 +286,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     try {
       // Import the upload function
       const { uploadClientDocument } = await import('@/lib/supabase/storage');
-      
+
       console.log('Starting upload:', { fileName: uploadFile.name, size: uploadFile.size, type: uploadDocumentType });
-      
+
       // Upload file to Supabase Storage and get document record
       const { document: documentRecord, error: uploadError } = await uploadClientDocument(
         uploadFile,
@@ -348,7 +373,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       DELETE: 'Deleted client record',
     };
     return actionMap[action] || action;
-  };  if (loading) {
+  }; if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Loading..." showBackButton />
@@ -595,7 +620,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`w-2 h-2 rounded-full ${task.priority === 'high' ? 'bg-red-500' : 'bg-yellow-500'}`} />
+                              <div className={`w-2 h-2 rounded-full ${getPriorityDotColor(task.priority)}`} />
                               <div>
                                 <p className="font-medium text-sm">{task.title}</p>
                                 <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -774,9 +799,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            <Badge className={task.priority === 'high' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}>
-                              {task.priority}
-                            </Badge>
+                            {getPriorityBadge(task.priority)}
                             <Badge className={taskStatusColors[task.status] || 'bg-gray-100 text-gray-800'}>
                               {task.status.replace('_', ' ')}
                             </Badge>

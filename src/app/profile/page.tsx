@@ -21,16 +21,21 @@ import {
   Save,
   CheckCircle,
   AlertCircle,
+
+
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { uploadProfilePicture } from '@/lib/supabase/storage';
 
 interface ProfileData {
   first_name: string;
   last_name: string;
   email: string;
   phone?: string;
+  profile_picture_url?: string | null;
 }
 
 interface NotificationSettings {
@@ -55,13 +60,17 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   const [profileData, setProfileData] = useState<ProfileData>({
     first_name: '',
     last_name: '',
     email: '',
     phone: '',
+    profile_picture_url: null,
   });
+
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
 
   const [passwordData, setPasswordData] = useState({
     current_password: '',
@@ -90,10 +99,27 @@ export default function ProfilePage() {
         last_name: profile.last_name || '',
         email: profile.email || '',
         phone: profile.phone || '',
+        profile_picture_url: profile.profile_picture_url || null,
       });
+      if (profile.profile_picture_url) {
+        setProfilePicturePreview(profile.profile_picture_url);
+      }
       setLoading(false);
     }
   }, [user, profile, authLoading, router]);
+
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File size must be less than 5MB');
+        return;
+      }
+      setProfilePictureFile(file);
+      setProfilePicturePreview(URL.createObjectURL(file));
+      setError(null);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -103,12 +129,29 @@ export default function ProfilePage() {
     setSuccess(null);
 
     try {
+
+      let profilePictureUrl = profileData.profile_picture_url;
+
+      // Upload profile picture if changed
+      if (profilePictureFile) {
+        const { url, error: uploadError } = await uploadProfilePicture(profilePictureFile, user.id, 'user');
+
+        if (uploadError) {
+          throw new Error(`Failed to upload profile picture: ${uploadError}`);
+        }
+
+        if (url) {
+          profilePictureUrl = url;
+        }
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({
           first_name: profileData.first_name,
           last_name: profileData.last_name,
           phone: profileData.phone,
+          profile_picture_url: profilePictureUrl,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -236,8 +279,34 @@ export default function ProfilePage() {
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-start gap-6">
-              <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center">
-                <User className="w-10 h-10 text-blue-600" />
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border relative group">
+                  {profilePicturePreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={profilePicturePreview}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-12 h-12 text-blue-600" />
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="picture-upload" className="cursor-pointer">
+                    <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800">
+                      <Upload className="h-4 w-4" />
+                      Change Photo
+                    </div>
+                  </Label>
+                  <Input
+                    id="picture-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleProfilePictureChange}
+                  />
+                </div>
               </div>
               <div className="flex-1">
                 <h2 className="text-2xl font-bold">
@@ -368,8 +437,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex justify-end">
-              <Button 
-                onClick={handleChangePassword} 
+              <Button
+                onClick={handleChangePassword}
                 disabled={saving || !passwordData.new_password || !passwordData.confirm_password}
               >
                 {saving ? (

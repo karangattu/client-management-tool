@@ -14,6 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -46,9 +48,12 @@ import {
   FolderOpen,
   User,
   Calendar,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { getDocumentSignedUrl } from '@/lib/supabase/storage';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Document {
   id: string;
@@ -85,6 +90,12 @@ export default function DocumentsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [uploadOpen, setUploadOpen] = useState(false);
 
+  // Action states
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -113,6 +124,7 @@ export default function DocumentsPage() {
           verified_by,
           verified_at,
           file_path,
+          rejection_reason,
           clients (first_name, last_name)
         `)
         .order('created_at', { ascending: false });
@@ -129,6 +141,7 @@ export default function DocumentsPage() {
         created_at: doc.created_at,
         verified_by: doc.verified_by,
         verified_at: doc.verified_at,
+        rejection_reason: doc.rejection_reason,
         file_path: doc.file_path,
       })) || [];
 
@@ -138,6 +151,120 @@ export default function DocumentsPage() {
       setDocuments([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerify = async (doc: Document) => {
+    setProcessingId(doc.id);
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .update({
+          status: 'verified',
+          is_verified: true,
+          verified_by: user?.id,
+          verified_at: new Date().toISOString(),
+          rejection_reason: null
+        })
+        .eq('id', doc.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setDocuments(prev => prev.map(d =>
+        d.id === doc.id
+          ? { ...d, status: 'verified', verified_at: new Date().toISOString() }
+          : d
+      ));
+    } catch (err) {
+      console.error('Error verifying document:', err);
+      alert('Failed to verify document');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleRejectClick = (doc: Document) => {
+    setSelectedDoc(doc);
+    setRejectionReason('');
+    setRejectDialogOpen(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!selectedDoc) return;
+    if (!rejectionReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+
+    setProcessingId(selectedDoc.id);
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .update({
+          status: 'rejected',
+          is_verified: false,
+          verified_by: user?.id,
+          verified_at: new Date().toISOString(),
+          rejection_reason: rejectionReason
+        })
+        .eq('id', selectedDoc.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setDocuments(prev => prev.map(d =>
+        d.id === selectedDoc.id
+          ? { ...d, status: 'rejected', rejection_reason: rejectionReason, verified_at: new Date().toISOString() }
+          : d
+      ));
+
+      setRejectDialogOpen(false);
+      setSelectedDoc(null);
+    } catch (err) {
+      console.error('Error rejecting document:', err);
+      alert('Failed to reject document');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleView = async (doc: Document) => {
+    if (!doc.file_path) {
+      alert('File path is missing');
+      return;
+    }
+
+    try {
+      const { url, error } = await getDocumentSignedUrl(doc.file_path);
+      if (error || !url) throw error || new Error('Failed to get signed URL');
+
+      window.open(url, '_blank');
+    } catch (err) {
+      console.error('Error viewing document:', err);
+      alert('Failed to open document. Please try again.');
+    }
+  };
+
+  const handleDelete = async (doc: Document) => {
+    if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
+
+    setProcessingId(doc.id);
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', doc.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      alert('Failed to delete document');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -366,13 +493,13 @@ export default function DocumentsPage() {
                   key={doc.id}
                   className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 cursor-pointer" onClick={() => handleView(doc)}>
                     {getFileIcon(doc.name)}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium truncate">{doc.name}</p>
+                      <p className="font-medium truncate hover:text-blue-600 cursor-pointer" onClick={() => handleView(doc)}>{doc.name}</p>
                       {getStatusBadge(doc.status)}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
@@ -399,11 +526,22 @@ export default function DocumentsPage() {
                   <div className="flex items-center gap-2">
                     {doc.status === 'pending' && (
                       <div className="hidden md:flex gap-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                          <CheckCircle className="h-4 w-4 mr-1" />
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleVerify(doc)}
+                          disabled={processingId === doc.id}
+                        >
+                          {processingId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
                           Verify
                         </Button>
-                        <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50"
+                          onClick={() => handleRejectClick(doc)}
+                          disabled={processingId === doc.id}
+                        >
                           <XCircle className="h-4 w-4 mr-1" />
                           Reject
                         </Button>
@@ -417,7 +555,7 @@ export default function DocumentsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleView(doc)}>
                           <Eye className="h-4 w-4 mr-2" />
                           View
                         </DropdownMenuItem>
@@ -427,17 +565,17 @@ export default function DocumentsPage() {
                         </DropdownMenuItem>
                         {doc.status === 'pending' && (
                           <>
-                            <DropdownMenuItem className="md:hidden text-green-600">
+                            <DropdownMenuItem className="md:hidden text-green-600" onClick={() => handleVerify(doc)}>
                               <CheckCircle className="h-4 w-4 mr-2" />
                               Verify
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="md:hidden text-red-600">
+                            <DropdownMenuItem className="md:hidden text-red-600" onClick={() => handleRejectClick(doc)}>
                               <XCircle className="h-4 w-4 mr-2" />
                               Reject
                             </DropdownMenuItem>
                           </>
                         )}
-                        <DropdownMenuItem className="text-red-600">
+                        <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(doc)}>
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
                         </DropdownMenuItem>
@@ -459,6 +597,33 @@ export default function DocumentsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Rejection Dialog */}
+        <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject Document</DialogTitle>
+              <DialogDescription>
+                Please provide a reason for rejecting this document.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <Textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Reason for rejection (e.g., blurred image, incorrect document type, expired)"
+                rows={3}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleConfirmReject} disabled={!rejectionReason.trim() || !!processingId}>
+                {processingId ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Reject Document
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

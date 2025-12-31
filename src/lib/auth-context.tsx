@@ -13,6 +13,7 @@ export interface UserProfile {
   last_name: string;
   role: UserRole;
   avatar_url?: string;
+  profile_picture_url?: string;
   phone?: string;
   is_active: boolean;
   created_at: string;
@@ -85,12 +86,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         const profileData = await fetchProfile(session.user.id);
         setProfile(profileData);
       }
-      
+
       setLoading(false);
     };
 
@@ -100,14 +101,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
         } else {
           setProfile(null);
         }
-        
+
         setLoading(false);
       }
     );
@@ -115,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const signOut = async () => {

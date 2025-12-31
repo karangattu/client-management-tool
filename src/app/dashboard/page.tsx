@@ -370,6 +370,24 @@ export default function DashboardPage() {
     return date.toLocaleDateString();
   };
 
+  const getPriorityBadge = (priority: string, status?: string) => {
+    if (status === 'in_progress') {
+      return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200">In Progress</Badge>;
+    }
+    switch (priority) {
+      case 'urgent':
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-200 border-red-200">Urgent</Badge>;
+      case 'high':
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200">High</Badge>;
+      case 'medium':
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Medium</Badge>;
+      case 'low':
+        return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">Low</Badge>;
+      default:
+        return <Badge variant="secondary" className="capitalize">{priority}</Badge>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
@@ -633,12 +651,7 @@ export default function DashboardPage() {
                             </p>
                           )}
                         </div>
-                        <Badge
-                          variant={task.priority === 'high' ? 'destructive' : task.status === 'in_progress' ? 'default' : 'secondary'}
-                          className="capitalize"
-                        >
-                          {task.status === 'in_progress' ? 'In Progress' : task.priority}
-                        </Badge>
+                        {getPriorityBadge(task.priority, task.status)}
                       </div>
                     ))}
                   </div>
@@ -732,12 +745,7 @@ export default function DashboardPage() {
                             })}
                           </p>
                         </div>
-                        <Badge
-                          variant={deadline.priority === 'high' ? 'destructive' : 'secondary'}
-                          className="capitalize"
-                        >
-                          {deadline.priority}
-                        </Badge>
+                        {getPriorityBadge(deadline.priority)}
                       </div>
                     ))}
                   </div>

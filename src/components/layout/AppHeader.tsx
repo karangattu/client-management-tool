@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronLeft, Menu, X, Bell, User, LogOut } from 'lucide-react';
 import { useState } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { LanguageSelector } from '@/components/ui/language-selector';
+import { useAuth } from '@/lib/auth-context';
 
 interface AppHeaderProps {
   title?: string;
@@ -27,17 +29,28 @@ export function AppHeader({
   title,
   showBackButton = true,
   alertCount = 0,
-  userName = 'Staff User',
-  userRole = 'Case Manager',
+  userName,
+  userRole,
 }: AppHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { profile, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isHomePage = pathname === '/' || pathname === '/dashboard';
 
+  // Use passed props or fall back to profile data
+  const displayName = userName || (profile ? `${profile.first_name} ${profile.last_name}` : 'User');
+  const displayRole = userRole || (profile?.role ? profile.role.replace('_', ' ') : 'Guest');
+  const avatarUrl = profile?.profile_picture_url;
+
   const handleBack = () => {
     router.back();
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
   };
 
   return (
@@ -121,17 +134,28 @@ export function AppHeader({
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                  <User className="h-4 w-4 text-gray-600" />
+              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 ml-2">
+                <div className="relative h-8 w-8 rounded-full overflow-hidden bg-gray-200">
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={displayName}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center">
+                      <User className="h-4 w-4 text-gray-600" />
+                    </div>
+                  )}
                 </div>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col">
-                  <span className="font-medium">{userName}</span>
-                  <span className="text-xs text-gray-500">{userRole}</span>
+                  <span className="font-medium">{displayName}</span>
+                  <span className="text-xs text-capitalize text-gray-500">{displayRole}</span>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -139,12 +163,14 @@ export function AppHeader({
                 <User className="mr-2 h-4 w-4" />
                 Profile Settings
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/admin')}>
-                <User className="mr-2 h-4 w-4" />
-                User Management
-              </DropdownMenuItem>
+              {profile?.role === 'admin' && (
+                <DropdownMenuItem onClick={() => router.push('/admin')}>
+                  <User className="mr-2 h-4 w-4" />
+                  User Management
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem className="text-red-600" onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign Out
               </DropdownMenuItem>

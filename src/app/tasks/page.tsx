@@ -74,7 +74,7 @@ function TasksContent() {
   const { user, profile } = useAuth();
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get('filter') || 'all';
-  
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,7 +85,7 @@ function TasksContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
-  
+
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -100,7 +100,7 @@ function TasksContent() {
   useEffect(() => {
     fetchTasks();
     fetchClients();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchTasks = async () => {
@@ -150,7 +150,7 @@ function TasksContent() {
         .from('clients')
         .select('id, first_name, last_name')
         .order('last_name');
-      
+
       setClients(data || []);
     } catch (err) {
       console.error('Error fetching clients:', err);
@@ -176,7 +176,7 @@ function TasksContent() {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ 
+        .update({
           assigned_to: user?.id,
           status: 'in_progress'
         })
@@ -202,7 +202,7 @@ function TasksContent() {
     try {
       const { error } = await supabase
         .from('tasks')
-        .update({ 
+        .update({
           status: 'completed',
           completed_at: new Date().toISOString()
         })
@@ -295,8 +295,8 @@ function TasksContent() {
 
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         task.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      task.description?.toLowerCase().includes(searchQuery.toLowerCase());
+
     let matchesStatus = true;
     if (statusFilter === 'open') {
       matchesStatus = task.assigned_to === null && task.status === 'pending';
@@ -305,9 +305,9 @@ function TasksContent() {
     } else if (statusFilter !== 'all') {
       matchesStatus = task.status === statusFilter;
     }
-    
+
     const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
-    
+
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
@@ -332,12 +332,14 @@ function TasksContent() {
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
+      case 'urgent':
+        return <Badge className="bg-red-100 text-red-800 hover:bg-red-200 border-red-200">Urgent</Badge>;
       case 'high':
-        return <Badge className="bg-red-100 text-red-800">High</Badge>;
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200">High</Badge>;
       case 'medium':
-        return <Badge className="bg-yellow-100 text-yellow-800">Medium</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Medium</Badge>;
       case 'low':
-        return <Badge className="bg-gray-100 text-gray-800">Low</Badge>;
+        return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">Low</Badge>;
       default:
         return <Badge variant="secondary">{priority}</Badge>;
     }
@@ -458,6 +460,7 @@ function TasksContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Priority</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
                 <SelectItem value="high">High</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
@@ -574,6 +577,7 @@ function TasksContent() {
                             <SelectItem value="low">Low</SelectItem>
                             <SelectItem value="medium">Medium</SelectItem>
                             <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="urgent">Urgent</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -671,11 +675,10 @@ function TasksContent() {
                 {filteredTasks.map(task => (
                   <div
                     key={task.id}
-                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${
-                      task.assigned_to === null && task.status === 'pending'
+                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${task.assigned_to === null && task.status === 'pending'
                         ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
                         : 'hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     <div className="mt-1">
                       {getStatusIcon(task.status)}
@@ -765,7 +768,7 @@ function TasksContent() {
                               Mark Complete
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleArchiveTask(task.id)}
                             className="text-orange-600"
                           >
@@ -783,7 +786,7 @@ function TasksContent() {
                 <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">No tasks found</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  {statusFilter === 'open' 
+                  {statusFilter === 'open'
                     ? 'There are no open tasks available to claim right now.'
                     : 'Try adjusting your search or filters.'
                   }
