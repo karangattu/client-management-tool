@@ -100,7 +100,7 @@ export default function CalendarPage() {
       fetchEvents();
       fetchClients();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const fetchEvents = async () => {
@@ -122,17 +122,28 @@ export default function CalendarPage() {
         .order('start_time', { ascending: true });
 
       if (error) throw error;
+      interface EventQueryResult {
+        id: string;
+        title: string;
+        description: string | null;
+        start_time: string;
+        end_time: string | null;
+        event_type: string | null;
+        all_day: boolean | null;
+        client_id: string | null;
+        clients: { first_name: string; last_name: string } | null;
+      }
 
-      const formattedEvents = data?.map((event: any) => ({
+      const formattedEvents = (data as unknown as EventQueryResult[])?.map((event) => ({
         id: event.id,
         title: event.title,
         start_time: event.start_time,
-        end_time: event.end_time,
+        end_time: event.end_time || undefined,
         event_type: event.event_type || 'custom',
-        client_id: event.client_id,
+        client_id: event.client_id || undefined,
         client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : undefined,
-        all_day: event.all_day,
-        description: event.description,
+        all_day: event.all_day || undefined,
+        description: event.description || undefined,
       })) || [];
 
       setEvents(formattedEvents);
@@ -155,13 +166,23 @@ export default function CalendarPage() {
 
       if (alertsError) throw alertsError;
 
-      const formattedAlerts = alertsData?.map((alert: any) => ({
+      interface AlertQueryResult {
+        id: string;
+        title: string;
+        message: string | null;
+        alert_type: string;
+        trigger_at: string;
+        client_id: string | null;
+        clients: { first_name: string; last_name: string } | null;
+      }
+
+      const formattedAlerts = (alertsData as unknown as AlertQueryResult[])?.map((alert) => ({
         id: alert.id,
         title: alert.title,
-        message: alert.message,
+        message: alert.message || undefined,
         alert_type: alert.alert_type,
         trigger_at: alert.trigger_at,
-        client_id: alert.client_id,
+        client_id: alert.client_id || undefined,
         client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
       })) || [];
 
@@ -181,7 +202,7 @@ export default function CalendarPage() {
         .from('clients')
         .select('id, first_name, last_name')
         .order('last_name');
-      
+
       setClients(data || []);
     } catch (err) {
       console.error('Error fetching clients:', err);
@@ -205,7 +226,7 @@ export default function CalendarPage() {
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!newEvent.title || !newEvent.date) {
       alert('Please fill in required fields');
       return;
@@ -213,7 +234,7 @@ export default function CalendarPage() {
 
     try {
       const startTime = newEvent.time ? `${newEvent.date}T${newEvent.time}` : `${newEvent.date}T00:00`;
-      
+
       const { error } = await supabase
         .from('calendar_events')
         .insert({
@@ -262,12 +283,12 @@ export default function CalendarPage() {
     const startingDay = firstDay.getDay();
 
     const days: (Date | null)[] = [];
-    
+
     // Add empty slots for days before the first of the month
     for (let i = 0; i < startingDay; i++) {
       days.push(null);
     }
-    
+
     // Add days of the month
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
@@ -408,8 +429,8 @@ export default function CalendarPage() {
                 <form className="space-y-4 mt-4" onSubmit={handleCreateEvent}>
                   <div className="space-y-2">
                     <Label htmlFor="title">Event Title *</Label>
-                    <Input 
-                      id="title" 
+                    <Input
+                      id="title"
                       placeholder="Enter event title"
                       value={newEvent.title}
                       onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
@@ -434,8 +455,8 @@ export default function CalendarPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="date">Date *</Label>
-                      <Input 
-                        id="date" 
+                      <Input
+                        id="date"
                         type="date"
                         value={newEvent.date}
                         onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
@@ -444,8 +465,8 @@ export default function CalendarPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="time">Time</Label>
-                      <Input 
-                        id="time" 
+                      <Input
+                        id="time"
                         type="time"
                         value={newEvent.time}
                         onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
@@ -483,7 +504,7 @@ export default function CalendarPage() {
                           />
                           {clientSearchQuery.trim() && (
                             <div className="border rounded-md max-h-48 overflow-y-auto">
-                              <div 
+                              <div
                                 className="p-2 hover:bg-gray-100 cursor-pointer"
                                 onClick={() => { setNewEvent(prev => ({ ...prev, client_id: '' })); setClientSearchQuery(''); }}
                               >
@@ -515,8 +536,8 @@ export default function CalendarPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="description">Description</Label>
-                    <Textarea 
-                      id="description" 
+                    <Textarea
+                      id="description"
                       placeholder="Add details..."
                       value={newEvent.description}
                       onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
@@ -560,18 +581,16 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={day.toISOString()}
-                      className={`min-h-[100px] p-1 border rounded cursor-pointer transition-colors ${
-                        isToday(day)
+                      className={`min-h-[100px] p-1 border rounded cursor-pointer transition-colors ${isToday(day)
                           ? 'bg-blue-50 border-blue-300'
                           : isSelected
-                          ? 'bg-gray-100 border-gray-400'
-                          : 'bg-white border-gray-200 hover:bg-gray-50'
-                      }`}
+                            ? 'bg-gray-100 border-gray-400'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        }`}
                       onClick={() => setSelectedDate(day)}
                     >
-                      <div className={`text-sm font-medium mb-1 ${
-                        isToday(day) ? 'text-blue-600' : 'text-gray-900'
-                      }`}>
+                      <div className={`text-sm font-medium mb-1 ${isToday(day) ? 'text-blue-600' : 'text-gray-900'
+                        }`}>
                         {day.getDate()}
                       </div>
                       <div className="space-y-1">
@@ -612,28 +631,28 @@ export default function CalendarPage() {
                     <p className="text-sm text-gray-500 text-center py-4">No upcoming events</p>
                   ) : (
                     upcomingEvents.map((event: CalendarEvent) => (
-                    <div
-                      key={event.id}
-                      className={`p-3 rounded-lg border ${eventTypeColors[event.event_type as keyof typeof eventTypeColors] || eventTypeColors.custom}`}
-                    >
-                      <p className="font-medium text-sm">{event.title}</p>
-                      <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
-                        <Clock className="h-3 w-3" />
-                        {new Date(event.start_time).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                      {event.client_name && (
+                      <div
+                        key={event.id}
+                        className={`p-3 rounded-lg border ${eventTypeColors[event.event_type as keyof typeof eventTypeColors] || eventTypeColors.custom}`}
+                      >
+                        <p className="font-medium text-sm">{event.title}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
-                          <User className="h-3 w-3" />
-                          {event.client_name}
+                          <Clock className="h-3 w-3" />
+                          {new Date(event.start_time).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
                         </div>
-                      )}
-                    </div>
-                  ))
+                        {event.client_name && (
+                          <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
+                            <User className="h-3 w-3" />
+                            {event.client_name}
+                          </div>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
               </CardContent>
@@ -680,33 +699,30 @@ export default function CalendarPage() {
                     {alerts.map((alert) => (
                       <div
                         key={alert.id}
-                        className={`p-2 border rounded text-sm ${
-                          alert.alert_type === 'benefit_renewal'
+                        className={`p-2 border rounded text-sm ${alert.alert_type === 'benefit_renewal'
                             ? 'bg-red-50 border-red-200'
                             : alert.alert_type === 'document_expiry'
-                            ? 'bg-amber-50 border-amber-200'
-                            : 'bg-blue-50 border-blue-200'
-                        }`}
+                              ? 'bg-amber-50 border-amber-200'
+                              : 'bg-blue-50 border-blue-200'
+                          }`}
                       >
                         <p
-                          className={`font-medium ${
-                            alert.alert_type === 'benefit_renewal'
+                          className={`font-medium ${alert.alert_type === 'benefit_renewal'
                               ? 'text-red-800'
                               : alert.alert_type === 'document_expiry'
-                              ? 'text-amber-800'
-                              : 'text-blue-800'
-                          }`}
+                                ? 'text-amber-800'
+                                : 'text-blue-800'
+                            }`}
                         >
                           {alert.title}
                         </p>
                         <p
-                          className={`text-xs ${
-                            alert.alert_type === 'benefit_renewal'
+                          className={`text-xs ${alert.alert_type === 'benefit_renewal'
                               ? 'text-red-600'
                               : alert.alert_type === 'document_expiry'
-                              ? 'text-amber-600'
-                              : 'text-blue-600'
-                          }`}
+                                ? 'text-amber-600'
+                                : 'text-blue-600'
+                            }`}
                         >
                           {alert.client_name && `${alert.client_name} - `}
                           {alert.message || new Date(alert.trigger_at).toLocaleDateString()}

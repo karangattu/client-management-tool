@@ -84,7 +84,7 @@ export default function HousingPage() {
     if (user) {
       fetchHousingData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const fetchHousingData = async () => {
@@ -107,8 +107,19 @@ export default function HousingPage() {
         .order('applied_at', { ascending: false });
 
       if (appError) throw appError;
+      interface HousingAppQueryResult {
+        id: string;
+        status: string | null;
+        applied_at: string | null;
+        waitlist_position: number | null;
+        move_in_date: string | null;
+        housing_program_id: string | null;
+        client_id: string | null;
+        clients: { first_name: string; last_name: string } | null;
+        housing_programs: { name: string } | null;
+      }
 
-      const formattedApps = appData?.map((app: any) => ({
+      const formattedApps = ((appData as unknown) as HousingAppQueryResult[])?.map((app) => ({
         id: app.id,
         client_name: app.clients ? `${app.clients.first_name} ${app.clients.last_name}` : 'Unknown',
         program: app.housing_programs?.name || 'Unknown Program',
@@ -116,7 +127,7 @@ export default function HousingPage() {
         submitted_at: app.applied_at,
         checklist_progress: 100, // TODO: Calculate from checklist items
         waitlist_position: app.waitlist_position,
-        move_in_date: app.move_in_date,
+        move_in_date: app.move_in_date || undefined,
       })) || [];
 
       setApplications(formattedApps);
@@ -128,7 +139,15 @@ export default function HousingPage() {
 
       if (progError) throw progError;
 
-      const formattedProgs = progData?.map((prog: any) => ({
+      interface HousingProgQueryResult {
+        id: string;
+        name: string;
+        program_type: string | null;
+        total_units: number | null;
+        available_units: number | null;
+      }
+
+      const formattedProgs = ((progData as unknown) as HousingProgQueryResult[])?.map((prog) => ({
         id: prog.id,
         name: prog.name,
         type: prog.program_type || 'Other',
@@ -497,9 +516,9 @@ export default function HousingPage() {
                                 {program.current} / {program.capacity}
                               </span>
                             </div>
-                            <Progress 
-                              value={occupancyPercent} 
-                              className={`h-3 ${isNearCapacity ? '[&>div]:bg-red-500' : ''}`} 
+                            <Progress
+                              value={occupancyPercent}
+                              className={`h-3 ${isNearCapacity ? '[&>div]:bg-red-500' : ''}`}
                             />
                           </div>
 

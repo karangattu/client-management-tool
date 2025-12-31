@@ -155,42 +155,28 @@ export default function DashboardPage() {
         setStats(prev => ({ ...prev, unreadAlerts: unreadAlerts || 0 }));
 
       } else {
-        // Staff/admin data fetching
-        // Fetch client counts
-        const { count: totalClients } = await supabase
-          .from('clients')
-          .select('*', { count: 'exact', head: true });
-
-        const { count: activeClients } = await supabase
-          .from('clients')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'active');
-
-        // Fetch task counts - tasks assigned to current user or unassigned (open)
-        const { count: pendingTasks } = await supabase
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .eq('assigned_to', user?.id)
-          .in('status', ['pending', 'in_progress']);
-
-        const { count: openTasks } = await supabase
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .is('assigned_to', null)
-          .eq('status', 'pending');
-
-        // Fetch upcoming events count
-        const { count: upcomingEvents } = await supabase
-          .from('calendar_events')
-          .select('*', { count: 'exact', head: true })
-          .gte('start_time', new Date().toISOString());
-
-        // Fetch unread alerts
-        const { count: unreadAlerts } = await supabase
-          .from('alerts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user?.id)
-          .eq('is_read', false);
+        // Staff/admin data fetching - Parallelize for performance
+        const [
+          { count: totalClients },
+          { count: activeClients },
+          { count: pendingTasks },
+          { count: openTasks },
+          { count: upcomingEvents },
+          { count: unreadAlerts },
+          { data: deadlineData },
+          { data: activityData }
+        ] = await Promise.all([
+          supabase.from('clients').select('*', { count: 'exact', head: true }),
+          supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+          supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']),
+          supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
+          supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
+          supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
+          supabase.from('tasks').select(`
+            id, title, due_date, priority, clients (first_name, last_name)
+          `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
+          supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(5)
+        ]);
 
         setStats({
           totalClients: totalClients || 0,
@@ -201,24 +187,15 @@ export default function DashboardPage() {
           unreadAlerts: unreadAlerts || 0,
         });
 
-        // Fetch upcoming deadlines (tasks with due dates)
-        const { data: deadlineData } = await supabase
-          .from('tasks')
-          .select(`
-            id,
-            title,
-            due_date,
-            priority,
-            clients (first_name, last_name)
-          `)
-          .not('due_date', 'is', null)
-          .gte('due_date', new Date().toISOString())
-          .order('due_date', { ascending: true })
-          .limit(5);
-
         if (deadlineData) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setDeadlines(deadlineData.map((d: any) => ({
+          interface DeadlineQueryResult {
+            id: string;
+            title: string;
+            due_date: string;
+            priority: string;
+            clients: { first_name: string; last_name: string } | null;
+          }
+          setDeadlines((deadlineData as unknown as DeadlineQueryResult[]).map((d) => ({
             id: d.id,
             title: d.title,
             due_date: d.due_date,
@@ -226,13 +203,6 @@ export default function DashboardPage() {
             client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
           })));
         }
-
-        // Fetch recent activity
-        const { data: activityData } = await supabase
-          .from('audit_log')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(5);
 
         if (activityData) {
           setActivities(activityData);

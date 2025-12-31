@@ -164,53 +164,31 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const fetchClientData = async () => {
       setLoading(true);
       try {
-        // Fetch client
-        const { data: clientData, error: clientError } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('id', clientId)
-          .single();
+        // Fetch all client-related data in parallel
+        const [
+          { data: clientData, error: clientError },
+          { data: tasksData },
+          { data: docsData },
+          { data: activityData }
+        ] = await Promise.all([
+          supabase.from('clients').select('*').eq('id', clientId).single(),
+          supabase.from('tasks').select('id, title, due_date, status, priority').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
+          supabase.from('documents').select('id, file_name, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
+          supabase.from('audit_log').select('id, action, created_at, old_values, new_values').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
+        ]);
 
         if (clientError) throw clientError;
         setClient(clientData);
-
-        // Fetch tasks for this client
-        const { data: tasksData } = await supabase
-          .from('tasks')
-          .select('id, title, due_date, status, priority')
-          .eq('client_id', clientId)
-          .order('due_date', { ascending: true })
-          .limit(10);
-
         setTasks(tasksData || []);
-
-        // Fetch documents for this client
-        const { data: docsData } = await supabase
-          .from('documents')
-          .select('id, file_name, document_type, created_at, is_verified')
-          .eq('client_id', clientId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
         setDocuments(docsData || []);
-
-        // Fetch recent activity from audit log
-        const { data: activityData } = await supabase
-          .from('audit_log')
-          .select('id, action, created_at, old_values, new_values')
-          .eq('table_name', 'clients')
-          .eq('record_id', clientId)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
         setActivities(activityData?.map(a => ({
           id: a.id,
           action: formatAuditAction(a.action),
           created_at: a.created_at,
-          user_name: 'System', // Audit log doesn't include user name, would need separate join
+          user_name: 'System',
         })) || []);
 
-        // Fetch case manager if assigned
+        // Fetch case manager name if assigned
         if (clientData?.assigned_case_manager) {
           const { data: cmData } = await supabase
             .from('profiles')
@@ -1053,7 +1031,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <DialogHeader>
                 <DialogTitle>Assign Case Manager</DialogTitle>
                 <DialogDescription>
-                  Select a staff member to manage this client's case.
+                  Select a staff member to manage this client&apos;s case.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">

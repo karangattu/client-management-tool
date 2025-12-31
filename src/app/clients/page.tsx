@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Fuse from 'fuse.js';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -107,19 +107,21 @@ export default function ClientsPage() {
     fetchClients();
   }, [fetchClients]);
 
+  const fuse = useMemo(() => {
+    return new Fuse<Client>(clients, {
+      keys: ['first_name', 'last_name', 'email', 'phone'],
+      threshold: 0.3,
+      minMatchCharLength: 1,
+    });
+  }, [clients]);
+
   useEffect(() => {
     let filtered = clients;
 
     // Apply search filter with fuzzy matching
     if (searchQuery) {
-      const fuse = new Fuse(clients, {
-        keys: ['first_name', 'last_name', 'email', 'phone'],
-        threshold: 0.3, // Allows for typos
-        minMatchCharLength: 1,
-      });
-
       const results = fuse.search(searchQuery);
-      filtered = results.map(result => result.item);
+      filtered = results.map(({ item }) => item);
     }
 
     // Apply status filter
@@ -128,7 +130,7 @@ export default function ClientsPage() {
     }
 
     setFilteredClients(filtered);
-  }, [searchQuery, statusFilter, clients]);
+  }, [searchQuery, statusFilter, clients, fuse]);
 
   const handleArchive = async () => {
     if (!clientToArchive) return;
@@ -322,7 +324,7 @@ export default function ClientsPage() {
                             </h3>
                             {getStatusBadge(client.status)}
                           </div>
-                          
+
                           {/* Contact info with copy buttons */}
                           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
                             <Tooltip>
@@ -371,7 +373,7 @@ export default function ClientsPage() {
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 self-end sm:self-auto">
                         <Link href={`/clients/${client.id}`}>
                           <Button variant="outline" size="sm">

@@ -47,6 +47,7 @@ export async function saveClientIntake(
       city: validatedData.participantDetails.city || null,
       state: validatedData.participantDetails.state || null,
       zip_code: validatedData.participantDetails.zipCode || null,
+      ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
       status: validatedData.caseManagement.clientStatus || 'pending',
       assigned_case_manager: validatedData.caseManagement.clientManager || null,
       updated_at: now,
@@ -58,7 +59,7 @@ export async function saveClientIntake(
       clientRecord.id = id;
     }
 
-    // Upsert client record
+    // 1. Upsert client record
     const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .upsert(clientRecord, { onConflict: 'id' })
@@ -66,20 +67,69 @@ export async function saveClientIntake(
 
     if (clientError) {
       console.error("Error saving client:", clientError);
-      return {
-        success: false,
-        error: clientError.message || "Failed to save client",
-      };
+      return { success: false, error: clientError.message };
     }
 
-    if (!clientData || clientData.length === 0) {
-      return {
-        success: false,
-        error: "Failed to save client data",
-      };
+    const savedClientId = clientData[0].id;
+
+    // 2. Upsert Case Management
+    const { error: cmError } = await supabase
+      .from('case_management')
+      .upsert({
+        client_id: savedClientId,
+        housing_status: validatedData.caseManagement.housingStatus || 'unknown',
+        primary_language: validatedData.caseManagement.primaryLanguage || 'English',
+        secondary_language: validatedData.caseManagement.secondaryLanguage || null,
+        vi_spdat_score: validatedData.caseManagement.viSpdatScore || null,
+        updated_at: now,
+      }, { onConflict: 'client_id' });
+
+    if (cmError) console.error("Error saving case management:", cmError);
+
+    // 3. Upsert Demographics
+    const { error: demoError } = await supabase
+      .from('demographics')
+      .upsert({
+        client_id: savedClientId,
+        gender: validatedData.demographics.genderIdentity || null,
+        ethnicity: validatedData.demographics.ethnicity || null,
+        race: validatedData.demographics.race || [],
+        marital_status: validatedData.demographics.maritalStatus || null,
+        updated_at: now,
+      }, { onConflict: 'client_id' });
+
+    if (demoError) console.error("Error saving demographics:", demoError);
+
+    // 4. Update Emergency Contacts (Sync)
+    // Delete existing and re-insert
+    await supabase.from('emergency_contacts').delete().eq('client_id', savedClientId);
+    if (validatedData.emergencyContacts.length > 0) {
+      const contacts = validatedData.emergencyContacts.map(c => ({
+        client_id: savedClientId,
+        name: c.name,
+        relationship: c.relationship,
+        phone: c.phone,
+        email: c.email || null,
+      }));
+      const { error: ecError } = await supabase.from('emergency_contacts').insert(contacts);
+      if (ecError) console.error("Error saving emergency contacts:", ecError);
     }
 
-    return { success: true, clientId: clientData[0].id };
+    // 5. Update Household Members (Sync)
+    await supabase.from('household_members').delete().eq('client_id', savedClientId);
+    if (validatedData.household.members && validatedData.household.members.length > 0) {
+      const members = validatedData.household.members.map(m => ({
+        client_id: savedClientId,
+        first_name: m.name.split(' ')[0],
+        last_name: m.name.split(' ').slice(1).join(' ') || '',
+        relationship: m.relationship,
+        date_of_birth: m.dateOfBirth || null,
+      }));
+      const { error: hmError } = await supabase.from('household_members').insert(members);
+      if (hmError) console.error("Error saving household members:", hmError);
+    }
+
+    return { success: true, clientId: savedClientId };
   } catch (error) {
     console.error("Error saving client:", error);
     return {
@@ -127,11 +177,22 @@ export async function getAllClients() {
       return { success: false, error: error.message };
     }
 
-    const clients = data?.map((client: any) => ({
+    interface ClientQueryResult {
+      id: string;
+      first_name: string;
+      last_name: string;
+      email: string | null;
+      phone: string | null;
+      status: string | null;
+      created_at: string;
+      updated_at: string;
+    }
+
+    const clients = (data as unknown as ClientQueryResult[])?.map((client) => ({
       id: client.id,
       name: `${client.first_name} ${client.last_name}`,
-      email: client.email,
-      phone: client.phone,
+      email: client.email || "",
+      phone: client.phone || "",
       status: client.status || "pending",
       createdAt: client.created_at,
       updatedAt: client.updated_at,

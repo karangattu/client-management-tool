@@ -131,7 +131,21 @@ export default function DocumentsPage() {
 
       if (error) throw error;
 
-      const formattedDocs = data?.map((doc: any) => ({
+      interface DocumentQueryResult {
+        id: string;
+        file_name: string;
+        document_type: string | null;
+        status: string | null;
+        client_id: string;
+        created_at: string;
+        verified_by: string | null;
+        verified_at: string | null;
+        file_path: string | null;
+        rejection_reason: string | null;
+        clients: { first_name: string; last_name: string } | null;
+      }
+
+      const formattedDocs = (data as unknown as DocumentQueryResult[])?.map((doc) => ({
         id: doc.id,
         name: doc.file_name,
         type: doc.document_type || 'other',
@@ -139,10 +153,10 @@ export default function DocumentsPage() {
         client_id: doc.client_id,
         clientName: doc.clients ? `${doc.clients.first_name} ${doc.clients.last_name}` : 'Unknown',
         created_at: doc.created_at,
-        verified_by: doc.verified_by,
-        verified_at: doc.verified_at,
-        rejection_reason: doc.rejection_reason,
-        file_path: doc.file_path,
+        verified_by: doc.verified_by || undefined,
+        verified_at: doc.verified_at || undefined,
+        rejection_reason: doc.rejection_reason || undefined,
+        file_path: doc.file_path || undefined,
       })) || [];
 
       setDocuments(formattedDocs);
