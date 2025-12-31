@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,12 +11,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   FileText,
   CheckCircle,
@@ -24,7 +34,12 @@ import {
   ArrowLeft,
   Info,
   AlertTriangle,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import { LanguageSelector } from '@/components/ui/language-selector';
+import { useLanguage } from '@/lib/language-context';
+import { submitSelfServiceApplication } from '@/app/actions/self-service';
 
 // Engagement Letter Content
 const engagementLetterContent = `
@@ -66,11 +81,16 @@ This agreement is effective upon signing and remains in effect until terminated 
 `;
 
 export default function SelfServiceIntakePage() {
+  const { t } = useLanguage();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [agreed, setAgreed] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [formData, setFormData] = useState({
@@ -79,6 +99,9 @@ export default function SelfServiceIntakePage() {
     email: '',
     phone: '',
     dateOfBirth: '',
+    password: '',
+    confirmPassword: '',
+    preferredLanguage: 'english',
   });
 
   const totalSteps = 4;
@@ -178,10 +201,19 @@ export default function SelfServiceIntakePage() {
     }));
   };
 
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return formData.firstName && formData.lastName && formData.email;
+        return formData.firstName && formData.lastName && formData.email &&
+          formData.password && formData.password === formData.confirmPassword &&
+          formData.password.length >= 6;
       case 2:
         return true; // Document upload is optional
       case 3:
@@ -193,11 +225,83 @@ export default function SelfServiceIntakePage() {
     }
   };
 
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await submitSelfServiceApplication({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        dateOfBirth: formData.dateOfBirth,
+        password: formData.password,
+        preferredLanguage: formData.preferredLanguage,
+        signature: signature || undefined,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Registration failed');
+      }
+
+      setSuccess(true);
+      
+      // Redirect to profile completion after 3 seconds
+      setTimeout(() => {
+        router.push('/login?registered=true');
+      }, 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during registration');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="pt-8 pb-8">
+            <div className="mb-6">
+              <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Registration Complete!</h2>
+            <p className="text-gray-600 mb-6">
+              Thank you for registering. Please check your email to verify your account.
+              After logging in, you can complete your profile information.
+            </p>
+            <p className="text-sm text-gray-500 mb-4">
+              Redirecting to login in 3 seconds...
+            </p>
+            <Link href="/login?registered=true">
+              <Button>Go to Login</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Client Self-Service" showBackButton={false} />
 
       <main className="container px-4 py-6 max-w-3xl mx-auto">
+        {/* Language selector at top of form */}
+        <div className="mb-6">
+          <LanguageSelector variant="full" />
+        </div>
+
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
@@ -292,6 +396,55 @@ export default function SelfServiceIntakePage() {
                       onChange={handleInputChange}
                     />
                   </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password *</Label>
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Min. 6 characters"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                    <Input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      placeholder="Confirm your password"
+                    />
+                  </div>
+                </div>
+                {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                  <p className="text-sm text-red-500">Passwords do not match</p>
+                )}
+                {formData.password && formData.password.length < 6 && (
+                  <p className="text-sm text-red-500">Password must be at least 6 characters</p>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Preferred Language</Label>
+                  <Select
+                    value={formData.preferredLanguage}
+                    onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="spanish">Spanish / Español</SelectItem>
+                      <SelectItem value="chinese">Chinese / 中文</SelectItem>
+                      <SelectItem value="vietnamese">Vietnamese / Tiếng Việt</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="bg-blue-50 p-4 rounded-lg flex gap-3">
@@ -508,11 +661,21 @@ export default function SelfServiceIntakePage() {
             </Button>
           ) : (
             <Button
-              disabled={!canProceed()}
+              disabled={!canProceed() || loading}
               className="bg-green-600 hover:bg-green-700"
+              onClick={handleSubmit}
             >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Submit Application
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Submit Application
+                </>
+              )}
             </Button>
           )}
         </div>

@@ -23,7 +23,11 @@ import {
   Clock,
   LogOut,
   Hand,
+  AlertCircle,
+  User,
 } from 'lucide-react';
+import { LanguageSelector } from '@/components/ui/language-selector';
+import { useLanguage } from '@/lib/language-context';
 
 interface DashboardStats {
   totalClients: number;
@@ -83,6 +87,8 @@ export default function DashboardPage() {
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -388,6 +394,52 @@ export default function DashboardPage() {
             Sign Out
           </Button>
         </div>
+
+        {/* Client-specific: Language Selector and Profile Completion Prompt */}
+        {isClient && (
+          <div className="space-y-4 mb-8">
+            {/* Language Selector */}
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Language Preference</p>
+                    <p className="text-xs text-gray-500">Select your preferred language</p>
+                  </div>
+                  <LanguageSelector />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Profile Completion Prompt - Show if there are pending profile tasks */}
+            {clientTasks.some(task => task.title.toLowerCase().includes('profile')) && (
+              <Card className="border-amber-200 bg-amber-50">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-amber-100 rounded-lg">
+                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-900">Complete Your Profile</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Please complete your profile information to help us serve you better. 
+                        This includes emergency contacts, housing status, and other important details.
+                      </p>
+                      <Button 
+                        className="mt-3 bg-amber-600 hover:bg-amber-700"
+                        size="sm"
+                        onClick={() => router.push('/profile-completion')}
+                      >
+                        <User className="h-4 w-4 mr-2" />
+                        Complete Profile
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Stats Cards - Client-specific */}
         {isClient && (
