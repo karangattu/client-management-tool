@@ -1,0 +1,443 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import Fuse from 'fuse.js';
+import { AppHeader } from '@/components/layout/AppHeader';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Plus,
+  Search,
+  Filter,
+  Archive,
+  Edit,
+  Eye,
+  Users,
+  RefreshCw,
+  MoreVertical,
+  Mail,
+  Phone,
+  Copy,
+  Check,
+} from 'lucide-react';
+import { useAuth, canAccessFeature } from '@/lib/auth-context';
+import { createClient } from '@/lib/supabase/client';
+
+interface Client {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  status: string;
+  created_at: string;
+}
+
+const statusConfig: Record<string, { label: string; color: string }> = {
+  active: { label: 'Active', color: 'bg-green-100 text-green-800' },
+  pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
+  inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-800' },
+  archived: { label: 'Archived', color: 'bg-red-100 text-red-800' },
+};
+
+export default function ClientsPage() {
+  const { profile } = useAuth();
+  const [clients, setClients] = useState<Client[]>([]);
+  const [filteredClients, setFilteredClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [clientToArchive, setClientToArchive] = useState<Client | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const supabase = createClient();
+
+  const fetchClients = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, first_name, last_name, email, phone, status, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setClients(data || []);
+      setFilteredClients(data || []);
+    } catch (err) {
+      console.error('Error fetching clients:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
+
+  useEffect(() => {
+    let filtered = clients;
+
+    // Apply search filter with fuzzy matching
+    if (searchQuery) {
+      const fuse = new Fuse(clients, {
+        keys: ['first_name', 'last_name', 'email', 'phone'],
+        threshold: 0.3, // Allows for typos
+        minMatchCharLength: 1,
+      });
+
+      const results = fuse.search(searchQuery);
+      filtered = results.map(result => result.item);
+    }
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((client) => client.status === statusFilter);
+    }
+
+    setFilteredClients(filtered);
+  }, [searchQuery, statusFilter, clients]);
+
+  const handleArchive = async () => {
+    if (!clientToArchive) return;
+
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ status: 'archived' })
+        .eq('id', clientToArchive.id);
+
+      if (error) throw error;
+
+      // Log the archive action
+      await supabase.from('audit_log').insert({
+        user_id: profile?.id,
+        action: 'client_archived',
+        entity_type: 'client',
+        entity_id: clientToArchive.id,
+        details: { client_name: `${clientToArchive.first_name} ${clientToArchive.last_name}` },
+      });
+
+      setClients(clients.filter((c) => c.id !== clientToArchive.id));
+    } catch (err) {
+      console.error('Error archiving client:', err);
+    } finally {
+      setArchiveDialogOpen(false);
+      setClientToArchive(null);
+    }
+  };
+
+  const copyToClipboard = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const config = statusConfig[status] || { label: status, color: 'bg-gray-100 text-gray-800' };
+    return <Badge className={config.color}>{config.label}</Badge>;
+  };
+
+  const canCreateClients = canAccessFeature(profile?.role || 'client', 'staff');
+  const canEditClients = canAccessFeature(profile?.role || 'client', 'staff');
+
+  const stats = {
+    total: clients.length,
+    active: clients.filter((c) => c.status === 'active').length,
+    pending: clients.filter((c) => c.status === 'pending').length,
+    inactive: clients.filter((c) => c.status === 'inactive').length,
+  };
+
+  return (
+    <TooltipProvider>
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Clients" showBackButton />
+
+        <main className="container px-4 py-6">
+          {/* Header Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-2xl font-bold">Client Directory</h1>
+              <p className="text-gray-500">Manage client records and information</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={fetchClients}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+              {canCreateClients && (
+                <Link href="/client-intake">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Client
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100">
+                    <Users className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{stats.total}</p>
+                    <p className="text-sm text-gray-500">Total Clients</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+                <p className="text-sm text-gray-500">Active</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
+                <p className="text-sm text-gray-500">Pending</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-2xl font-bold text-gray-500">{stats.inactive}</p>
+                <p className="text-sm text-gray-500">Inactive</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Filters */}
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name, email, or phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[160px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Client List */}
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-24" />
+              ))}
+            </div>
+          ) : filteredClients.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Users className="h-12 w-12 text-gray-300 mb-4" />
+                <h3 className="text-lg font-medium mb-2">
+                  {clients.length === 0 ? 'No clients yet' : 'No clients found'}
+                </h3>
+                <p className="text-sm text-gray-500 mb-6 text-center">
+                  {clients.length === 0
+                    ? 'Get started by adding your first client.'
+                    : 'Try adjusting your search or filter criteria.'}
+                </p>
+                {clients.length === 0 && canCreateClients && (
+                  <Link href="/client-intake">
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add First Client
+                    </Button>
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {filteredClients.map((client) => (
+                <Card key={client.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
+                          {client.first_name[0]}{client.last_name[0]}
+                        </div>
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold">
+                              {client.first_name} {client.last_name}
+                            </h3>
+                            {getStatusBadge(client.status)}
+                          </div>
+                          
+                          {/* Contact info with copy buttons */}
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => copyToClipboard(client.email, `email-${client.id}`)}
+                                  className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                >
+                                  <Mail className="h-3 w-3" />
+                                  <span>{client.email}</span>
+                                  {copiedField === `email-${client.id}` ? (
+                                    <Check className="h-3 w-3 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 opacity-50" />
+                                  )}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {copiedField === `email-${client.id}` ? 'Copied!' : 'Click to copy email'}
+                              </TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => copyToClipboard(client.phone, `phone-${client.id}`)}
+                                  className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  <span>{client.phone}</span>
+                                  {copiedField === `phone-${client.id}` ? (
+                                    <Check className="h-3 w-3 text-green-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3 opacity-50" />
+                                  )}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {copiedField === `phone-${client.id}` ? 'Copied!' : 'Click to copy phone'}
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+
+                          <p className="text-xs text-gray-400">
+                            Added {new Date(client.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Link href={`/clients/${client.id}`}>
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                        </Link>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {canEditClients && (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/clients/${client.id}/edit`}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-orange-600"
+                              onClick={() => {
+                                setClientToArchive(client);
+                                setArchiveDialogOpen(true);
+                              }}
+                            >
+                              <Archive className="h-4 w-4 mr-2" />
+                              Archive
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Archive Confirmation Dialog */}
+          <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Archive Client</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to archive {clientToArchive?.first_name} {clientToArchive?.last_name}?
+                  Archived clients can be restored later by an administrator.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setArchiveDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="default" className="bg-orange-600 hover:bg-orange-700" onClick={handleArchive}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </main>
+      </div>
+    </TooltipProvider>
+  );
+}
