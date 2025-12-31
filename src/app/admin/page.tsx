@@ -35,7 +35,6 @@ import {
   Users,
   UserPlus,
   Shield,
-  Settings,
   MoreVertical,
   CheckCircle,
   XCircle,

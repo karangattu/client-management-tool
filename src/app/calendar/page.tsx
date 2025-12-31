@@ -69,7 +69,7 @@ const eventTypeColors: Record<string, string> = {
 };
 
 export default function CalendarPage() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);

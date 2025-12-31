@@ -65,7 +65,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 };
 
 export default function HousingPage() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [applications, setApplications] = useState<HousingApplication[]>([]);
   const [programs, setPrograms] = useState<HousingProgram[]>([]);
