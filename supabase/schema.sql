@@ -20,7 +20,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================
 
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('admin', 'case_manager', 'staff', 'client');
+    CREATE TYPE user_role AS ENUM ('admin', 'case_manager', 'staff', 'volunteer', 'client');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -813,12 +813,24 @@ CREATE POLICY "Admins can delete clients" ON clients
     );
 
 -- Tasks policies
+-- Users can view tasks they're assigned to, created, or if they're staff/admin
 DROP POLICY IF EXISTS "Users can view assigned tasks" ON tasks;
 CREATE POLICY "Users can view assigned tasks" ON tasks
     FOR SELECT USING (
         assigned_to = auth.uid() OR
         assigned_by = auth.uid() OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager'))
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+-- Clients can view tasks related to their case (linked via client_id -> portal_user_id)
+DROP POLICY IF EXISTS "Clients can view own tasks" ON tasks;
+CREATE POLICY "Clients can view own tasks" ON tasks
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM clients 
+            WHERE clients.id = tasks.client_id 
+            AND clients.portal_user_id = auth.uid()
+        )
     );
 
 DROP POLICY IF EXISTS "Staff can create tasks" ON tasks;
@@ -836,10 +848,22 @@ CREATE POLICY "Users can update assigned tasks" ON tasks
     );
 
 -- Calendar events policies
+-- Staff can view all calendar events
 DROP POLICY IF EXISTS "Staff can view calendar events" ON calendar_events;
 CREATE POLICY "Staff can view calendar events" ON calendar_events
     FOR SELECT USING (
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+-- Clients can view calendar events related to their case
+DROP POLICY IF EXISTS "Clients can view own calendar events" ON calendar_events;
+CREATE POLICY "Clients can view own calendar events" ON calendar_events
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM clients 
+            WHERE clients.id = calendar_events.client_id 
+            AND clients.portal_user_id = auth.uid()
+        )
     );
 
 DROP POLICY IF EXISTS "Staff can create calendar events" ON calendar_events;

@@ -208,9 +208,9 @@ export default function ClientPortalPage() {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return formData.firstName && formData.lastName && formData.email && 
-               formData.password && formData.password === formData.confirmPassword &&
-               formData.password.length >= 6;
+        return formData.firstName && formData.lastName && formData.email &&
+          formData.password && formData.password === formData.confirmPassword &&
+          formData.password.length >= 6;
       case 2:
         return formData.street && formData.city && formData.state && formData.zipCode;
       case 3:
@@ -259,7 +259,8 @@ export default function ClientPortalPage() {
 
         // Create client record
         const { error: clientError } = await supabase.from('clients').insert({
-          user_id: authData.user.id,
+          portal_user_id: authData.user.id,
+          has_portal_access: true,
           first_name: formData.firstName,
           last_name: formData.lastName,
           email: formData.email,
@@ -269,9 +270,7 @@ export default function ClientPortalPage() {
           city: formData.city,
           state: formData.state,
           zip_code: formData.zipCode,
-          preferred_language: formData.preferredLanguage,
           status: 'pending',
-          intake_status: 'self_registered',
           created_at: new Date().toISOString(),
         });
 
@@ -282,7 +281,7 @@ export default function ClientPortalPage() {
           // Convert base64 to blob
           const base64Data = signature.split(',')[1];
           const blob = await fetch(`data:image/png;base64,${base64Data}`).then(r => r.blob());
-          
+
           const { error: uploadError } = await supabase.storage
             .from('signatures')
             .upload(`${authData.user.id}/engagement-letter-${Date.now()}.png`, blob);
@@ -495,8 +494,8 @@ export default function ClientPortalPage() {
 
                 <div className="space-y-2">
                   <Label>Preferred Language</Label>
-                  <Select 
-                    value={formData.preferredLanguage} 
+                  <Select
+                    value={formData.preferredLanguage}
                     onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
                   >
                     <SelectTrigger>

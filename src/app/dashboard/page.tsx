@@ -45,9 +45,26 @@ interface Deadline {
 interface Activity {
   id: string;
   action: string;
+  table_name?: string;
   entity_type: string;
   created_at: string;
   details: Record<string, unknown>;
+}
+
+interface ClientTask {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority: string;
+  due_date?: string;
+}
+
+interface ClientEvent {
+  id: string;
+  title: string;
+  start_time: string;
+  location?: string;
 }
 
 export default function DashboardPage() {
@@ -63,6 +80,8 @@ export default function DashboardPage() {
   });
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
+  const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,7 +93,7 @@ export default function DashboardPage() {
     if (user) {
       fetchDashboardData();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const fetchDashboardData = async () => {
@@ -82,86 +101,142 @@ export default function DashboardPage() {
     setLoading(true);
 
     try {
-      // Fetch client counts
-      const { count: totalClients } = await supabase
-        .from('clients')
-        .select('*', { count: 'exact', head: true });
+      // Check if user is a client - fetch client-specific data
+      if (profile?.role === 'client') {
+        // First, get the client record linked to this user
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('portal_user_id', user?.id)
+          .single();
 
-      const { count: activeClients } = await supabase
-        .from('clients')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
+        if (clientData) {
+          // Fetch tasks related to this client
+          const { data: tasksData } = await supabase
+            .from('tasks')
+            .select('id, title, description, status, priority, due_date')
+            .eq('client_id', clientData.id)
+            .in('status', ['pending', 'in_progress'])
+            .order('due_date', { ascending: true })
+            .limit(10);
 
-      // Fetch task counts - tasks assigned to current user or unassigned (open)
-      const { count: pendingTasks } = await supabase
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('assigned_to', user?.id)
-        .in('status', ['pending', 'in_progress']);
+          if (tasksData) {
+            setClientTasks(tasksData);
+          }
 
-      const { count: openTasks } = await supabase
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .is('assigned_to', null)
-        .eq('status', 'pending');
+          // Fetch upcoming calendar events for this client
+          const { data: eventsData } = await supabase
+            .from('calendar_events')
+            .select('id, title, start_time, location')
+            .eq('client_id', clientData.id)
+            .gte('start_time', new Date().toISOString())
+            .order('start_time', { ascending: true })
+            .limit(5);
 
-      // Fetch upcoming events count
-      const { count: upcomingEvents } = await supabase
-        .from('calendar_events')
-        .select('*', { count: 'exact', head: true })
-        .gte('start_time', new Date().toISOString());
+          if (eventsData) {
+            setClientEvents(eventsData);
+          }
 
-      // Fetch unread alerts
-      const { count: unreadAlerts } = await supabase
-        .from('alerts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user?.id)
-        .eq('is_read', false);
+          // Client stats
+          setStats(prev => ({
+            ...prev,
+            pendingTasks: tasksData?.length || 0,
+            upcomingEvents: eventsData?.length || 0,
+          }));
+        }
 
-      setStats({
-        totalClients: totalClients || 0,
-        activeClients: activeClients || 0,
-        pendingTasks: pendingTasks || 0,
-        openTasks: openTasks || 0,
-        upcomingEvents: upcomingEvents || 0,
-        unreadAlerts: unreadAlerts || 0,
-      });
+        // Fetch unread alerts for client
+        const { count: unreadAlerts } = await supabase
+          .from('alerts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user?.id)
+          .eq('is_read', false);
 
-      // Fetch upcoming deadlines (tasks with due dates)
-      const { data: deadlineData } = await supabase
-        .from('tasks')
-        .select(`
-          id,
-          title,
-          due_date,
-          priority,
-          clients (first_name, last_name)
-        `)
-        .not('due_date', 'is', null)
-        .gte('due_date', new Date().toISOString())
-        .order('due_date', { ascending: true })
-        .limit(5);
+        setStats(prev => ({ ...prev, unreadAlerts: unreadAlerts || 0 }));
 
-      if (deadlineData) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setDeadlines(deadlineData.map((d: any) => ({
-          id: d.id,
-          title: d.title,
-          due_date: d.due_date,
-          priority: d.priority,
-          client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
-        })));
-      }
+      } else {
+        // Staff/admin data fetching
+        // Fetch client counts
+        const { count: totalClients } = await supabase
+          .from('clients')
+          .select('*', { count: 'exact', head: true });
 
-      // Fetch recent activity
-      const { data: activityData } = await supabase
-        .from('audit_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
+        const { count: activeClients } = await supabase
+          .from('clients')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'active');
 
-      if (activityData) {
-        setActivities(activityData);
+        // Fetch task counts - tasks assigned to current user or unassigned (open)
+        const { count: pendingTasks } = await supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .eq('assigned_to', user?.id)
+          .in('status', ['pending', 'in_progress']);
+
+        const { count: openTasks } = await supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .is('assigned_to', null)
+          .eq('status', 'pending');
+
+        // Fetch upcoming events count
+        const { count: upcomingEvents } = await supabase
+          .from('calendar_events')
+          .select('*', { count: 'exact', head: true })
+          .gte('start_time', new Date().toISOString());
+
+        // Fetch unread alerts
+        const { count: unreadAlerts } = await supabase
+          .from('alerts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user?.id)
+          .eq('is_read', false);
+
+        setStats({
+          totalClients: totalClients || 0,
+          activeClients: activeClients || 0,
+          pendingTasks: pendingTasks || 0,
+          openTasks: openTasks || 0,
+          upcomingEvents: upcomingEvents || 0,
+          unreadAlerts: unreadAlerts || 0,
+        });
+
+        // Fetch upcoming deadlines (tasks with due dates)
+        const { data: deadlineData } = await supabase
+          .from('tasks')
+          .select(`
+            id,
+            title,
+            due_date,
+            priority,
+            clients (first_name, last_name)
+          `)
+          .not('due_date', 'is', null)
+          .gte('due_date', new Date().toISOString())
+          .order('due_date', { ascending: true })
+          .limit(5);
+
+        if (deadlineData) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setDeadlines(deadlineData.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            due_date: d.due_date,
+            priority: d.priority,
+            client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
+          })));
+        }
+
+        // Fetch recent activity
+        const { data: activityData } = await supabase
+          .from('audit_log')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (activityData) {
+          setActivities(activityData);
+        }
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -214,17 +289,72 @@ export default function DashboardPage() {
   const canViewAdmin = isAdmin;
 
   const formatActivityAction = (activity: Activity) => {
-    const actions: Record<string, string> = {
+    // Map of custom actions to friendly names
+    const customActions: Record<string, string> = {
       'client_created': 'Created new client',
-      'client_updated': 'Updated client',
-      'client_self_registration': 'Client self-registered',
-      'task_created': 'Created task',
-      'task_completed': 'Completed task',
-      'task_claimed': 'Claimed task',
+      'client_updated': 'Updated client profile',
+      'client_self_registration': 'New client self-registered',
+      'task_created': 'Created new task',
+      'task_completed': 'Completed a task',
+      'task_claimed': 'Claimed a task',
+      'task_archived': 'Archived a task',
       'document_uploaded': 'Uploaded document',
       'housing_application_created': 'Created housing application',
     };
-    return actions[activity.action] || activity.action;
+
+    // Check for custom action first
+    if (customActions[activity.action]) {
+      return customActions[activity.action];
+    }
+
+    // Map table names to friendly entity names
+    const tableNames: Record<string, string> = {
+      'clients': 'client record',
+      'tasks': 'task',
+      'profiles': 'user profile',
+      'documents': 'document',
+      'calendar_events': 'calendar event',
+      'housing_applications': 'housing application',
+      'case_management': 'case details',
+      'alerts': 'alert',
+      'demographics': 'demographics',
+      'emergency_contacts': 'emergency contact',
+      'household_members': 'household member',
+    };
+
+    // Map raw SQL actions to friendly verbs
+    const actionVerbs: Record<string, string> = {
+      'INSERT': 'Created',
+      'UPDATE': 'Updated',
+      'DELETE': 'Deleted',
+    };
+
+    const verb = actionVerbs[activity.action] || activity.action;
+    const entity = activity.table_name ? (tableNames[activity.table_name] || activity.table_name) : 'record';
+
+    return `${verb} ${entity}`;
+  };
+
+  const formatEntityType = (activity: Activity) => {
+    // Map table names to friendly category names
+    const categories: Record<string, string> = {
+      'clients': 'Client Management',
+      'tasks': 'Tasks',
+      'profiles': 'User Management',
+      'documents': 'Documents',
+      'calendar_events': 'Calendar',
+      'housing_applications': 'Housing',
+      'case_management': 'Case Management',
+      'alerts': 'Notifications',
+    };
+
+    if (activity.table_name && categories[activity.table_name]) {
+      return categories[activity.table_name];
+    }
+    if (activity.entity_type && categories[activity.entity_type]) {
+      return categories[activity.entity_type];
+    }
+    return activity.table_name || activity.entity_type || 'System';
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -242,10 +372,10 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader 
-        title="Dashboard" 
-        showBackButton={false} 
-        alertCount={stats.unreadAlerts} 
+      <AppHeader
+        title="Dashboard"
+        showBackButton={false}
+        alertCount={stats.unreadAlerts}
       />
 
       <main className="container px-4 py-6 max-w-7xl mx-auto">
@@ -256,7 +386,7 @@ export default function DashboardPage() {
               Welcome back, {profile.first_name}!
             </h1>
             <p className="text-gray-600 mt-1">
-              {isClient 
+              {isClient
                 ? "View your case status and upcoming appointments."
                 : "Here's what's happening with your clients today."
               }
@@ -270,6 +400,42 @@ export default function DashboardPage() {
             Sign Out
           </Button>
         </div>
+
+        {/* Stats Cards - Client-specific */}
+        {isClient && (
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Active Tasks</p>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {loading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <CheckSquare className="h-5 w-5 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Appointments</p>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {loading ? <Skeleton className="h-8 w-12" /> : stats.upcomingEvents}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Calendar className="h-5 w-5 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Stats Cards - Only show for staff roles */}
         {!isClient && (
@@ -428,7 +594,110 @@ export default function DashboardPage() {
           )}
         </NavigationTileGrid>
 
-        {/* Bottom Section - Deadlines and Activity */}
+        {/* Client Dashboard Section - Tasks and Appointments */}
+        {isClient && (
+          <div className="grid md:grid-cols-2 gap-6 mt-8">
+            {/* My Tasks */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CheckSquare className="h-5 w-5 text-orange-500" />
+                  My Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-16" />
+                    ))}
+                  </div>
+                ) : clientTasks.length > 0 ? (
+                  <div className="space-y-3">
+                    {clientTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{task.title}</p>
+                          {task.description && (
+                            <p className="text-xs text-gray-500 line-clamp-1">{task.description}</p>
+                          )}
+                          {task.due_date && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              Due: {new Date(task.due_date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          )}
+                        </div>
+                        <Badge
+                          variant={task.priority === 'high' ? 'destructive' : task.status === 'in_progress' ? 'default' : 'secondary'}
+                          className="capitalize"
+                        >
+                          {task.status === 'in_progress' ? 'In Progress' : task.priority}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-4">No active tasks</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Upcoming Appointments */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-purple-500" />
+                  Upcoming Appointments
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-16" />
+                    ))}
+                  </div>
+                ) : clientEvents.length > 0 ? (
+                  <div className="space-y-3">
+                    {clientEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{event.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(event.start_time).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            })} at {new Date(event.start_time).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                          {event.location && (
+                            <p className="text-xs text-gray-400 mt-1">{event.location}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-4">No upcoming appointments</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Bottom Section - Deadlines and Activity (Staff Only) */}
         {!isClient && (
           <div className="grid md:grid-cols-2 gap-6 mt-8">
             {/* Upcoming Deadlines */}
@@ -504,7 +773,7 @@ export default function DashboardPage() {
                           <p className="font-medium text-gray-900 text-sm">
                             {formatActivityAction(activity)}
                           </p>
-                          <p className="text-xs text-gray-500">{activity.entity_type}</p>
+                          <p className="text-xs text-gray-500">{formatEntityType(activity)}</p>
                         </div>
                         <span className="text-xs text-gray-400">
                           {formatTimeAgo(activity.created_at)}

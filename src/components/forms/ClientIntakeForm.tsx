@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useForm, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,8 @@ interface ClientIntakeFormProps {
 }
 
 export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProps) {
+  const hasSubmittedRef = useRef(false);
+
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -77,12 +79,15 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
-          reset(parsed.data);
-          setLastSaved(new Date(parsed.savedAt));
-          toast({
-            title: "Draft restored",
-            description: "Your previous progress has been restored.",
-          });
+          // Only restore if we haven't just submitted
+          if (!hasSubmittedRef.current) {
+            reset(parsed.data);
+            setLastSaved(new Date(parsed.savedAt));
+            toast({
+              title: "Draft restored",
+              description: "Your previous progress has been restored.",
+            });
+          }
         } catch {
           // Invalid draft, ignore
         }
@@ -93,6 +98,9 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
   // Auto-save draft
   const formData = watch();
   const saveDraft = useCallback(() => {
+    // Don't save if we're submitting or have successfully submitted
+    if (isSubmitting || hasSubmittedRef.current) return;
+
     if (typeof window !== "undefined" && Object.keys(dirtyFields).length > 0) {
       localStorage.setItem(
         DRAFT_KEY,
@@ -103,7 +111,7 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
       );
       setLastSaved(new Date());
     }
-  }, [formData, dirtyFields]);
+  }, [formData, dirtyFields, isSubmitting]);
 
   useEffect(() => {
     const timer = setInterval(saveDraft, 30000); // Auto-save every 30 seconds
@@ -177,6 +185,9 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
     try {
       const result = await saveClientIntake(data, clientId);
       if (result.success) {
+        // Mark as submitted to prevent draft saving
+        hasSubmittedRef.current = true;
+
         // Clear draft on successful save
         if (typeof window !== "undefined") {
           localStorage.removeItem(DRAFT_KEY);
@@ -267,11 +278,11 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
                     "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-w-fit",
                     isActive && "bg-primary text-primary-foreground",
                     !isActive &&
-                      isCompleted &&
-                      "bg-primary/10 text-primary hover:bg-primary/20",
+                    isCompleted &&
+                    "bg-primary/10 text-primary hover:bg-primary/20",
                     !isActive &&
-                      !isCompleted &&
-                      "bg-muted text-muted-foreground",
+                    !isCompleted &&
+                    "bg-muted text-muted-foreground",
                     index > currentStep + 1 && "opacity-50 cursor-not-allowed"
                   )}
                 >

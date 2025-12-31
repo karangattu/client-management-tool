@@ -89,7 +89,7 @@ const roleDescriptions: Record<UserRole, { title: string; description: string; c
 };
 
 export default function AdminPage() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +97,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
@@ -107,13 +107,16 @@ export default function AdminPage() {
   });
 
   useEffect(() => {
-    if (profile && profile.role !== 'admin') {
-      router.push('/dashboard');
+    if (authLoading) return;
+
+    if (!profile || profile.role !== 'admin') {
+      if (profile) router.push('/dashboard');
       return;
     }
+
     fetchUsers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, authLoading]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -212,7 +215,15 @@ export default function AdminPage() {
     caseManagers: users.filter(u => u.role === 'case_manager').length,
   };
 
-  if (profile?.role !== 'admin') {
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (!profile || profile.role !== 'admin') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Card className="max-w-md">
@@ -512,7 +523,7 @@ export default function AdminPage() {
                             <Key className="h-4 w-4 mr-2" />
                             Reset Password
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleArchiveUser(user.id)}
                             className="text-orange-600"
                           >
@@ -534,40 +545,6 @@ export default function AdminPage() {
                 </p>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Setup Instructions */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Initial Setup Instructions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <h3 className="font-medium text-blue-900 mb-2">Creating the First Admin User</h3>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-blue-800">
-                <li>Go to your Supabase dashboard → Authentication → Users</li>
-                <li>Click &quot;Add User&quot; and create a user with email/password</li>
-                <li>Go to Table Editor → profiles table</li>
-                <li>Find the new user and set their <code className="bg-blue-100 px-1 rounded">role</code> to <code className="bg-blue-100 px-1 rounded">admin</code></li>
-                <li>Set <code className="bg-blue-100 px-1 rounded">is_active</code> to <code className="bg-blue-100 px-1 rounded">true</code></li>
-                <li>The admin can now log in and create other users from this page</li>
-              </ol>
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium mb-2">Creating Users from This Page</h3>
-              <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                <li>Click &quot;Create User&quot; button above</li>
-                <li>Fill in the user&apos;s details and assign a role</li>
-                <li>The user will receive an email verification link</li>
-                <li>Once verified, they can log in with their credentials</li>
-                <li>You can change their role or deactivate them anytime</li>
-              </ol>
-            </div>
           </CardContent>
         </Card>
       </main>
