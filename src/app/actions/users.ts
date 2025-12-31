@@ -85,9 +85,9 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
       await supabase.from('audit_log').insert({
         user_id: currentUser.id,
         action: 'user_created',
-        entity_type: 'profile',
-        entity_id: authData.user.id,
-        details: { email: data.email, role: data.role },
+        table_name: 'profiles',
+        record_id: authData.user.id,
+        new_values: { email: data.email, role: data.role },
       });
 
       return { success: true, userId: authData.user.id };
@@ -143,9 +143,9 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
     await supabase.from('audit_log').insert({
       user_id: currentUser.id,
       action: 'user_created',
-      entity_type: 'profile',
-      entity_id: authData.user.id,
-      details: { email: data.email, role: data.role },
+      table_name: 'profiles',
+      record_id: authData.user.id,
+      new_values: { email: data.email, role: data.role },
     });
 
     return { success: true, userId: authData.user.id };
@@ -191,8 +191,8 @@ export async function archiveUser(userId: string): Promise<{ success: boolean; e
     await supabase.from('audit_log').insert({
       user_id: currentUser.id,
       action: 'user_archived',
-      entity_type: 'profile',
-      entity_id: userId,
+      table_name: 'profiles',
+      record_id: userId,
     });
 
     return { success: true };

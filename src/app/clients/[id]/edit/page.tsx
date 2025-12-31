@@ -213,9 +213,9 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
       await supabase.from('audit_log').insert({
         user_id: profile?.id,
         action: 'client_updated',
-        entity_type: 'client',
-        entity_id: clientId,
-        details: { updated_by: `${profile?.first_name} ${profile?.last_name}` },
+        table_name: 'clients',
+        record_id: clientId,
+        new_values: { updated_by: `${profile?.first_name} ${profile?.last_name}` },
       });
 
       setSuccess(true);

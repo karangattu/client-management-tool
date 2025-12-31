@@ -295,9 +295,9 @@ export default function ClientPortalPage() {
         await supabase.from('audit_log').insert({
           user_id: authData.user.id,
           action: 'client_self_registration',
-          entity_type: 'client',
-          entity_id: authData.user.id,
-          details: { email: formData.email },
+          table_name: 'client',
+          record_id: authData.user.id,
+          new_values: { email: formData.email },
         });
       }
 

@@ -1,6 +1,6 @@
 // Database types for the client management tool
 
-export type UserRole = 'admin' | 'case_manager' | 'staff' | 'client';
+export type UserRole = 'admin' | 'case_manager' | 'staff' | 'volunteer' | 'client';
 export type ClientStatus = 'active' | 'inactive' | 'pending' | 'archived';
 export type HousingStatus = 'housed' | 'unhoused' | 'at_risk' | 'transitional' | 'unknown';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'overdue';
@@ -198,6 +198,8 @@ export interface Document {
   is_verified: boolean;
   verified_by?: string;
   verified_at?: string;
+  status?: string;
+  rejection_reason?: string;
   tags?: string[];
   created_at: string;
   updated_at: string;

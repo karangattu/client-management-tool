@@ -147,9 +147,9 @@ export default function ClientsPage() {
       await supabase.from('audit_log').insert({
         user_id: profile?.id,
         action: 'client_archived',
-        entity_type: 'client',
-        entity_id: clientToArchive.id,
-        details: { client_name: `${clientToArchive.first_name} ${clientToArchive.last_name}` },
+        table_name: 'client',
+        record_id: clientToArchive.id,
+        new_values: { client_name: `${clientToArchive.first_name} ${clientToArchive.last_name}` },
       });
 
       setClients(clients.filter((c) => c.id !== clientToArchive.id));

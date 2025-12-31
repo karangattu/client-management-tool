@@ -255,9 +255,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       await supabase.from('audit_log').insert({
         user_id: profile?.id,
         action: 'case_manager_assigned',
-        entity_type: 'client',
-        entity_id: clientId,
-        details: { manager_id: managerId, manager_name: manager?.name },
+        table_name: 'client',
+        record_id: clientId,
+        new_values: { manager_id: managerId, manager_name: manager?.name },
       });
 
       setShowAssignDialog(false);

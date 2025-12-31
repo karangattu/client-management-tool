@@ -37,7 +37,7 @@ export async function saveClientIntake(
       first_name: validatedData.participantDetails.firstName,
       middle_name: validatedData.participantDetails.middleName || null,
       last_name: validatedData.participantDetails.lastName,
-      preferred_name: validatedData.participantDetails.firstName || null,
+      preferred_name: null, // Form doesn't have preferred_name field, set to null
       date_of_birth: validatedData.participantDetails.dateOfBirth || null,
       email: validatedData.participantDetails.email || null,
       phone: validatedData.participantDetails.primaryPhone || null,
@@ -47,8 +47,16 @@ export async function saveClientIntake(
       city: validatedData.participantDetails.city || null,
       state: validatedData.participantDetails.state || null,
       zip_code: validatedData.participantDetails.zipCode || null,
+      mailing_same_as_physical: true, // Default to true as per schema
+      mailing_street_address: null, // Not collected in current form
+      mailing_city: null,
+      mailing_state: null,
+      mailing_zip_code: null,
       ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
-      status: validatedData.caseManagement.clientStatus || 'pending',
+      status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus)) 
+        ? validatedData.caseManagement.clientStatus 
+        : 'pending',
+      has_portal_access: false, // Default to false, enable later if needed
       assigned_case_manager: validatedData.caseManagement.clientManager || null,
       updated_at: now,
       created_by: user.id,
@@ -77,10 +85,26 @@ export async function saveClientIntake(
       .from('case_management')
       .upsert({
         client_id: savedClientId,
-        housing_status: validatedData.caseManagement.housingStatus || 'unknown',
+        housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'unhoused', 'at_risk', 'transitional', 'unknown'].includes(validatedData.caseManagement.housingStatus))
+          ? validatedData.caseManagement.housingStatus 
+          : 'unknown',
         primary_language: validatedData.caseManagement.primaryLanguage || 'English',
         secondary_language: validatedData.caseManagement.secondaryLanguage || null,
+        needs_interpreter: false, // Default value, not collected in current form
         vi_spdat_score: validatedData.caseManagement.viSpdatScore || null,
+        vi_spdat_date: null, // Not collected in current form
+        is_veteran: false, // Default value, not collected in current form
+        is_disabled: false, // Default value, not collected in current form
+        is_domestic_violence_survivor: false, // Default value, not collected in current form
+        is_hiv_aids: false, // Default value, not collected in current form
+        is_chronically_homeless: false, // Default value, not collected in current form
+        is_substance_abuse: false, // Default value, not collected in current form
+        is_mental_health: false, // Default value, not collected in current form
+        receives_snap: false, // Default value, not collected in current form
+        receives_medicaid: false, // Default value, not collected in current form
+        receives_ssi_ssdi: false, // Default value, not collected in current form
+        receives_tanf: false, // Default value, not collected in current form
+        notes: null, // Not collected in current form
         updated_at: now,
       }, { onConflict: 'client_id' });
 
