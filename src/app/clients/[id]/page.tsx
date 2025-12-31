@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { getAllUsers } from '@/app/actions/users';
 
 interface ClientDetail {
   id: string;
@@ -153,6 +154,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [uploadDocumentType, setUploadDocumentType] = useState<string>('id');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [availableCaseManagers, setAvailableCaseManagers] = useState<{ id: string; name: string }[]>([]);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [assigningLoading, setAssigningLoading] = useState(false);
 
   const supabase = createClient();
 
@@ -225,8 +229,68 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       }
     };
 
+    const fetchManagers = async () => {
+      try {
+        const result = await getAllUsers();
+        if (result.success && result.data) {
+          interface ProfileRecord {
+            id: string;
+            first_name: string;
+            last_name: string;
+            role: string;
+          }
+          const managers = (result.data as ProfileRecord[])
+            .filter((u) => u.role === 'case_manager' || u.role === 'staff')
+            .map((u) => ({
+              id: u.id,
+              name: `${u.first_name} ${u.last_name}`,
+            }));
+          setAvailableCaseManagers(managers);
+        }
+      } catch (err) {
+        console.error('Error fetching managers:', err);
+      }
+    };
+
     fetchClientData();
+    fetchManagers();
   }, [clientId, supabase]);
+
+  const handleAssignManager = async (managerId: string) => {
+    if (!managerId) return;
+    setAssigningLoading(true);
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({ assigned_case_manager: managerId })
+        .eq('id', clientId);
+
+      if (error) throw error;
+
+      // Update local state
+      const manager = availableCaseManagers.find(m => m.id === managerId);
+      if (manager) {
+        setAssignedCaseManager(manager.name);
+      }
+
+      // Log the assignment
+      await supabase.from('audit_log').insert({
+        user_id: profile?.id,
+        action: 'case_manager_assigned',
+        entity_type: 'client',
+        entity_id: clientId,
+        details: { manager_id: managerId, manager_name: manager?.name },
+      });
+
+      setShowAssignDialog(false);
+      alert('Case manager assigned successfully');
+    } catch (err) {
+      console.error('Error assigning manager:', err);
+      alert('Failed to assign case manager');
+    } finally {
+      setAssigningLoading(false);
+    }
+  };
 
   const copyToClipboard = async (text: string, fieldId: string) => {
     try {
@@ -521,6 +585,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     <div className="flex items-center gap-2 text-gray-600">
                       <User className="h-4 w-4" />
                       <span className="text-sm">CM: {assignedCaseManager || 'Unassigned'}</span>
+                      {!assignedCaseManager && canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => setShowAssignDialog(true)}
+                        >
+                          Assign
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -973,6 +1047,40 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             </DialogContent>
           </Dialog>
 
+          {/* Assign Case Manager Dialog */}
+          <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Assign Case Manager</DialogTitle>
+                <DialogDescription>
+                  Select a staff member to manage this client's case.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Manager Name</Label>
+                  <Select onValueChange={(value) => handleAssignManager(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select staff member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCaseManagers.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAssignDialog(false)} disabled={assigningLoading}>
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Upload Document Dialog */}
           <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
             <DialogContent>
@@ -1035,6 +1143,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           </Dialog>
         </main>
       </div>
-    </TooltipProvider>
+    </TooltipProvider >
   );
 }

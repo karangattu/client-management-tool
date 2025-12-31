@@ -10,7 +10,11 @@ import {
   RACE_OPTIONS,
 } from "@/lib/constants";
 
-export function CaseManagementSection() {
+interface CaseManagementSectionProps {
+  caseManagers?: { value: string; label: string }[];
+}
+
+export function CaseManagementSection({ caseManagers = [] }: CaseManagementSectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -34,7 +38,12 @@ export function CaseManagementSection() {
             <FormField
               name="caseManagement.clientManager"
               label="Client Manager"
-              placeholder="Enter manager name"
+              type="select"
+              options={[
+                { value: "", label: "Unassigned" },
+                ...caseManagers
+              ]}
+              placeholder="Select a manager"
               tooltip="The staff member responsible for this client's case"
             />
             <FormField

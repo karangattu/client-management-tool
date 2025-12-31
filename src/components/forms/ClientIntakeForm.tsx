@@ -20,6 +20,7 @@ import {
   type ClientIntakeForm as ClientIntakeFormType,
 } from "@/lib/schemas/validation";
 import { saveClientIntake } from "@/app/actions/client";
+import { getAllUsers } from "@/app/actions/users";
 import {
   ChevronLeft,
   ChevronRight,
@@ -56,6 +57,7 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [caseManagers, setCaseManagers] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
   const methods = useForm<ClientIntakeFormType>({
@@ -94,6 +96,33 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
       }
     }
   }, [initialData, reset, toast]);
+
+  // Fetch case managers
+  useEffect(() => {
+    const fetchManagers = async () => {
+      try {
+        const result = await getAllUsers();
+        if (result.success && result.data) {
+          interface ProfileRecord {
+            id: string;
+            first_name: string;
+            last_name: string;
+            role: string;
+          }
+          const managers = (result.data as ProfileRecord[])
+            .filter((u) => u.role === 'case_manager' || u.role === 'staff')
+            .map((u) => ({
+              value: u.id,
+              label: `${u.first_name} ${u.last_name}`,
+            }));
+          setCaseManagers(managers);
+        }
+      } catch (err) {
+        console.error("Error fetching case managers:", err);
+      }
+    };
+    fetchManagers();
+  }, []);
 
   // Auto-save draft
   const formData = watch();
@@ -309,7 +338,7 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
         <div className="min-h-[400px]">
           {currentStep === 0 && <ParticipantDetailsSection />}
           {currentStep === 1 && <EmergencyContactSection />}
-          {currentStep === 2 && <CaseManagementSection />}
+          {currentStep === 2 && <CaseManagementSection caseManagers={caseManagers} />}
           {currentStep === 3 && <DemographicsSection />}
           {currentStep === 4 && <HouseholdSection />}
         </div>

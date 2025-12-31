@@ -19,7 +19,7 @@ export async function saveClientIntake(
     const validatedData = clientIntakeSchema.parse(data);
 
     const supabase = await createClient();
-    
+
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
@@ -48,6 +48,7 @@ export async function saveClientIntake(
       state: validatedData.participantDetails.state || null,
       zip_code: validatedData.participantDetails.zipCode || null,
       status: validatedData.caseManagement.clientStatus || 'pending',
+      assigned_case_manager: validatedData.caseManagement.clientManager || null,
       updated_at: now,
       created_by: user.id,
     };
