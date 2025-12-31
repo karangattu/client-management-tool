@@ -38,7 +38,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
-import { useLanguage } from '@/lib/language-context';
+
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 
 // Engagement Letter Content
@@ -81,7 +81,6 @@ This agreement is effective upon signing and remains in effect until terminated 
 `;
 
 export default function SelfServiceIntakePage() {
-  const { t } = useLanguage();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [agreed, setAgreed] = useState(false);
