@@ -21,7 +21,6 @@ export interface LegacyAuditLogEntry {
   details?: Record<string, unknown>;
 }
 
-// Migration function to convert legacy audit log format to database schema
 export function convertLegacyAuditLog(legacyEntry: LegacyAuditLogEntry): AuditLogEntry {
   // Map entity_type to table_name
   const entityTypeToTableName: Record<string, string> = {
