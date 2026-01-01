@@ -3,6 +3,7 @@
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
 import { clientIntakeSchema } from "@/lib/schemas/validation";
 import { createClient } from "@/lib/supabase/server";
+import { completeTaskByTitle } from "@/app/actions/tasks";
 
 interface SaveResult {
   success: boolean;
@@ -53,8 +54,8 @@ export async function saveClientIntake(
       mailing_state: null,
       mailing_zip_code: null,
       ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
-      status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus)) 
-        ? validatedData.caseManagement.clientStatus 
+      status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus))
+        ? validatedData.caseManagement.clientStatus
         : 'pending',
       has_portal_access: false, // Default to false, enable later if needed
       assigned_case_manager: validatedData.caseManagement.clientManager || null,
@@ -86,25 +87,16 @@ export async function saveClientIntake(
       .upsert({
         client_id: savedClientId,
         housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'unhoused', 'at_risk', 'transitional', 'unknown'].includes(validatedData.caseManagement.housingStatus))
-          ? validatedData.caseManagement.housingStatus 
+          ? validatedData.caseManagement.housingStatus
           : 'unknown',
         primary_language: validatedData.caseManagement.primaryLanguage || 'English',
         secondary_language: validatedData.caseManagement.secondaryLanguage || null,
-        needs_interpreter: false, // Default value, not collected in current form
+        needs_interpreter: false,
         vi_spdat_score: validatedData.caseManagement.viSpdatScore || null,
-        vi_spdat_date: null, // Not collected in current form
-        is_veteran: false, // Default value, not collected in current form
-        is_disabled: false, // Default value, not collected in current form
-        is_domestic_violence_survivor: false, // Default value, not collected in current form
-        is_hiv_aids: false, // Default value, not collected in current form
-        is_chronically_homeless: false, // Default value, not collected in current form
-        is_substance_abuse: false, // Default value, not collected in current form
-        is_mental_health: false, // Default value, not collected in current form
-        receives_snap: false, // Default value, not collected in current form
-        receives_medicaid: false, // Default value, not collected in current form
-        receives_ssi_ssdi: false, // Default value, not collected in current form
-        receives_tanf: false, // Default value, not collected in current form
-        notes: null, // Not collected in current form
+        health_insurance: validatedData.caseManagement.healthInsurance === "yes",
+        health_insurance_type: validatedData.caseManagement.healthInsuranceType || null,
+        non_cash_benefits: validatedData.caseManagement.nonCashBenefits || [],
+        health_status: validatedData.caseManagement.healthStatus || null,
         updated_at: now,
       }, { onConflict: 'client_id' });
 
@@ -119,6 +111,11 @@ export async function saveClientIntake(
         ethnicity: validatedData.demographics.ethnicity || null,
         race: validatedData.demographics.race || [],
         marital_status: validatedData.demographics.maritalStatus || null,
+        employment_status: validatedData.demographics.employmentStatus || null,
+        monthly_income: validatedData.demographics.monthlyIncome ? parseFloat(validatedData.demographics.monthlyIncome.replace(/[^0-9.]/g, '')) || 0 : 0,
+        income_source: validatedData.demographics.incomeSource || null,
+        veteran_status: validatedData.demographics.veteranStatus || false,
+        disability_status: validatedData.demographics.disabilityStatus || false,
         updated_at: now,
       }, { onConflict: 'client_id' });
 
@@ -153,6 +150,26 @@ export async function saveClientIntake(
       if (hmError) console.error("Error saving household members:", hmError);
     }
 
+    // 6. Handle Intake Completion Tracking
+    if (savedClientId) {
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', savedClientId)
+        .single();
+
+      // If it's a client saving their own profile and hasn't finished intake yet
+      if (clientData && clientData.portal_user_id === user.id && !clientData.intake_completed_at) {
+        await supabase
+          .from('clients')
+          .update({ intake_completed_at: now })
+          .eq('id', savedClientId);
+
+        // Also complete the task
+        await completeTaskByTitle(savedClientId, "Complete Full Intake Form");
+      }
+    }
+
     return { success: true, clientId: savedClientId };
   } catch (error) {
     console.error("Error saving client:", error);
@@ -163,6 +180,104 @@ export async function saveClientIntake(
   }
 }
 
+
+export async function getClientFullData(clientId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select(`
+        *,
+        case_management (*),
+        demographics (*),
+        emergency_contacts (*),
+        household_members (*)
+      `)
+      .eq('id', clientId)
+      .single();
+
+    if (clientError) {
+      return { success: false, error: clientError.message };
+    }
+
+    // Map database structure to ClientIntakeForm schema
+    const formData: ClientIntakeForm = {
+      participantDetails: {
+        firstName: client.first_name,
+        middleName: client.middle_name || "",
+        lastName: client.last_name,
+        dateOfBirth: client.date_of_birth || "",
+        ssn: "", // SSN is not retrieved for security
+        email: client.email || "",
+        primaryPhone: client.phone || "",
+        secondaryPhone: client.alternate_phone || "",
+        streetAddress: client.street_address || "",
+        city: client.city || "",
+        state: client.state || "",
+        county: "", // County not in clients table directly
+        zipCode: client.zip_code || "",
+        addressNotListed: false,
+      },
+      emergencyContacts: client.emergency_contacts.map((ec: any) => ({
+        name: ec.name,
+        relationship: ec.relationship || "",
+        phone: ec.phone,
+        email: ec.email || "",
+      })),
+      caseManagement: {
+        clientManager: client.assigned_case_manager || "",
+        clientStatus: client.status || "",
+        engagementLetterSigned: false, // Placeholder
+        hmisUniqueId: client.case_management?.client_id_number || "",
+        ssnLastFour: client.ssn_last_four || "",
+        housingStatus: client.case_management?.housing_status || "",
+        primaryLanguage: client.case_management?.primary_language || "",
+        secondaryLanguage: client.case_management?.secondary_language || "",
+        additionalAddressInfo: client.case_management?.notes || "",
+        viSpdatScore: client.case_management?.vi_spdat_score || null,
+        preferredId: "",
+        calFreshMediCalId: "",
+        calFreshMediCalPartnerMonth: "",
+        race: client.case_management?.race || [],
+        healthInsurance: client.case_management?.health_insurance || false,
+        healthInsuranceType: client.case_management?.health_insurance_type || "",
+        nonCashBenefits: client.case_management?.non_cash_benefits || [],
+        healthStatus: client.case_management?.health_status || "",
+      },
+      demographics: {
+        race: client.demographics?.race || [],
+        genderIdentity: client.demographics?.gender || "",
+        ethnicity: client.demographics?.ethnicity || "",
+        maritalStatus: client.demographics?.marital_status || "",
+        language: client.case_management?.primary_language || "",
+        employmentStatus: client.demographics?.employment_status || "",
+        monthlyIncome: client.demographics?.monthly_income?.toString() || "",
+        incomeSource: client.demographics?.income_source || "",
+        veteranStatus: client.demographics?.veteran_status || false,
+        disabilityStatus: client.demographics?.disability_status || false,
+      },
+      household: {
+        members: client.household_members.map((hm: any) => ({
+          id: hm.id,
+          name: `${hm.first_name} ${hm.last_name}`,
+          relationship: hm.relationship,
+          dateOfBirth: hm.date_of_birth || "",
+          gender: "",
+          race: [],
+        })),
+      },
+    };
+
+    return { success: true, data: formData };
+  } catch (error) {
+    console.error("Error fetching full client data:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch client data",
+    };
+  }
+}
 
 export async function getClient(clientId: string) {
   try {
@@ -251,6 +366,30 @@ export async function deleteClient(clientId: string) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete client",
+    };
+  }
+}
+
+export async function getClientByUserId(userId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id')
+      .eq('portal_user_id', userId)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    console.error("Error fetching client by user ID:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch client",
     };
   }
 }

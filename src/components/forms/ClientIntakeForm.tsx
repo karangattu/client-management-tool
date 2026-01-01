@@ -13,6 +13,8 @@ import {
   CaseManagementSection,
   DemographicsSection,
   HouseholdSection,
+  FinancialSection,
+  BenefitsHealthSection,
 } from "@/components/forms/sections";
 import {
   clientIntakeSchema,
@@ -21,6 +23,9 @@ import {
 } from "@/lib/schemas/validation";
 import { saveClientIntake } from "@/app/actions/client";
 import { getAllUsers } from "@/app/actions/users";
+import { calculateBenefits } from "@/lib/benefitsEngine";
+import { EligibilityPanel } from "@/components/forms/EligibilityPanel";
+import { useMemo } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -33,15 +38,19 @@ import {
   Users,
   FileText,
   Loader2,
+  DollarSign,
+  HeartPulse,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const FORM_STEPS = [
-  { id: "participant", title: "Participant", icon: User },
-  { id: "emergency", title: "Emergency Contact", icon: Phone },
-  { id: "case", title: "Case Management", icon: Briefcase },
+  { id: "participant", title: "Personal Info", icon: User },
+  { id: "emergency", title: "Emergency", icon: Phone },
   { id: "demographics", title: "Demographics", icon: FileText },
   { id: "household", title: "Household", icon: Users },
+  { id: "financial", title: "Financials", icon: DollarSign },
+  { id: "health", title: "Benefits & Health", icon: HeartPulse },
+  { id: "case", title: "Case Details", icon: Briefcase },
 ];
 
 const DRAFT_KEY = "client-intake-draft";
@@ -49,9 +58,10 @@ const DRAFT_KEY = "client-intake-draft";
 interface ClientIntakeFormProps {
   initialData?: ClientIntakeFormType;
   clientId?: string;
+  showStaffFields?: boolean;
 }
 
-export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProps) {
+export function ClientIntakeForm({ initialData, clientId, showStaffFields = true }: ClientIntakeFormProps) {
   const hasSubmittedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -159,6 +169,9 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
       document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [saveDraft]);
 
+  // Dynamic Benefits Calculation
+  const benefits = useMemo(() => calculateBenefits(formData), [formData]);
+
   const validateCurrentStep = async () => {
     const fieldsToValidate = getFieldsForStep(currentStep);
     const isValid = await trigger(fieldsToValidate as (keyof ClientIntakeFormType)[]);
@@ -172,11 +185,15 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
       case 1:
         return ["emergencyContacts"];
       case 2:
-        return ["caseManagement"];
-      case 3:
         return ["demographics"];
-      case 4:
+      case 3:
         return ["household"];
+      case 4:
+        return ["demographics"];
+      case 5:
+        return ["caseManagement"];
+      case 6:
+        return ["caseManagement"];
       default:
         return [];
     }
@@ -335,12 +352,25 @@ export function ClientIntakeForm({ initialData, clientId }: ClientIntakeFormProp
         </div>
 
         {/* Form Content */}
-        <div className="min-h-[400px]">
-          {currentStep === 0 && <ParticipantDetailsSection />}
-          {currentStep === 1 && <EmergencyContactSection />}
-          {currentStep === 2 && <CaseManagementSection caseManagers={caseManagers} />}
-          {currentStep === 3 && <DemographicsSection />}
-          {currentStep === 4 && <HouseholdSection />}
+        <div className="grid lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-3 min-h-[400px]">
+            {currentStep === 0 && <ParticipantDetailsSection />}
+            {currentStep === 1 && <EmergencyContactSection />}
+            {currentStep === 2 && <DemographicsSection />}
+            {currentStep === 3 && <HouseholdSection />}
+            {currentStep === 4 && <FinancialSection />}
+            {currentStep === 5 && <BenefitsHealthSection />}
+            {currentStep === 6 && <CaseManagementSection caseManagers={caseManagers} />}
+          </div>
+
+          <aside className="hidden lg:block lg:col-span-1">
+            <EligibilityPanel results={benefits} className="sticky top-24" />
+          </aside>
+
+          {/* Mobile Eligibility Panel (shown at the bottom) */}
+          <div className="lg:hidden mt-6">
+            <EligibilityPanel results={benefits} />
+          </div>
         </div>
 
         {/* Navigation Buttons */}

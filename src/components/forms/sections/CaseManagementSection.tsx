@@ -40,7 +40,7 @@ export function CaseManagementSection({ caseManagers = [] }: CaseManagementSecti
               label="Client Manager"
               type="select"
               options={[
-                { value: "", label: "Unassigned" },
+                { value: "unassigned", label: "Unassigned" },
                 ...caseManagers
               ]}
               placeholder="Select a manager"

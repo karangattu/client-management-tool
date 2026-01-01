@@ -78,6 +78,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [newEvent, setNewEvent] = useState({
@@ -148,7 +149,9 @@ export default function CalendarPage() {
 
       setEvents(formattedEvents);
 
-      // Fetch active alerts
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const { data: alertsData, error: alertsError } = await supabase
         .from('alerts')
         .select(`
@@ -162,7 +165,7 @@ export default function CalendarPage() {
         `)
         .eq('is_dismissed', false)
         .order('trigger_at', { ascending: true })
-        .limit(5);
+        .limit(10);
 
       if (alertsError) throw alertsError;
 
@@ -308,13 +311,28 @@ export default function CalendarPage() {
     });
   };
 
-  const navigateMonth = (direction: 'prev' | 'next') => {
+  const getWeekDays = (date: Date) => {
+    const startOfWeek = new Date(date);
+    startOfWeek.setDate(date.getDate() - date.getDay());
+
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(startOfWeek);
+      day.setDate(startOfWeek.getDate() + i);
+      weekDays.push(day);
+    }
+    return weekDays;
+  };
+
+  const navigate = (direction: 'prev' | 'next') => {
     setCurrentDate(prev => {
       const newDate = new Date(prev);
-      if (direction === 'prev') {
-        newDate.setMonth(newDate.getMonth() - 1);
+      if (view === 'month') {
+        newDate.setMonth(newDate.getMonth() + (direction === 'prev' ? -1 : 1));
+      } else if (view === 'week') {
+        newDate.setDate(newDate.getDate() + (direction === 'prev' ? -7 : 7));
       } else {
-        newDate.setMonth(newDate.getMonth() + 1);
+        newDate.setDate(newDate.getDate() + (direction === 'prev' ? -1 : 1));
       }
       return newDate;
     });
@@ -363,17 +381,22 @@ export default function CalendarPage() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => navigateMonth('prev')}
+                onClick={() => navigate('prev')}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <h2 className="text-xl font-semibold min-w-[180px] text-center">
-                {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+                {view === 'month'
+                  ? `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+                  : view === 'week'
+                    ? `Week of ${monthNames[currentDate.getMonth()]} ${currentDate.getDate()}, ${currentDate.getFullYear()}`
+                    : `${monthNames[currentDate.getMonth()]} ${currentDate.getDate()}, ${currentDate.getFullYear()}`
+                }
               </h2>
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => navigateMonth('next')}
+                onClick={() => navigate('next')}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -559,60 +582,159 @@ export default function CalendarPage() {
           {/* Calendar Grid */}
           <Card className="lg:col-span-3">
             <CardContent className="p-4">
-              {/* Day headers */}
-              <div className="grid grid-cols-7 gap-1 mb-2">
-                {dayNames.map(day => (
-                  <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
-                    {day}
+              {view === 'month' && (
+                <>
+                  {/* Day headers */}
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {dayNames.map(day => (
+                      <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+                        {day}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {/* Calendar days */}
-              <div className="grid grid-cols-7 gap-1">
-                {days.map((day, index) => {
-                  if (!day) {
-                    return <div key={`empty-${index}`} className="min-h-[100px] bg-gray-50 rounded" />;
-                  }
+                  {/* Calendar days */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {days.map((day, index) => {
+                      if (!day) {
+                        return <div key={`empty-${index}`} className="min-h-[100px] bg-gray-50/50 rounded-lg" />;
+                      }
 
-                  const dayEvents = getEventsForDate(day);
-                  const isSelected = selectedDate && day.getTime() === selectedDate.getTime();
+                      const dayEvents = getEventsForDate(day);
+                      const isSelected = selectedDate && day.toDateString() === selectedDate.toDateString();
 
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={`min-h-[100px] p-1 border rounded cursor-pointer transition-colors ${isToday(day)
-                          ? 'bg-blue-50 border-blue-300'
-                          : isSelected
-                            ? 'bg-gray-100 border-gray-400'
-                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                        }`}
-                      onClick={() => setSelectedDate(day)}
-                    >
-                      <div className={`text-sm font-medium mb-1 ${isToday(day) ? 'text-blue-600' : 'text-gray-900'
-                        }`}>
-                        {day.getDate()}
-                      </div>
-                      <div className="space-y-1">
-                        {dayEvents.slice(0, 2).map(event => (
-                          <div
-                            key={event.id}
-                            className="text-xs p-1 rounded truncate"
-                            style={{ backgroundColor: event.color + '20', color: event.color }}
-                          >
-                            {event.title}
+                      return (
+                        <div
+                          key={day.toISOString()}
+                          className={`min-h-[120px] p-2 border rounded-xl cursor-pointer transition-all duration-200 ${isToday(day)
+                            ? 'bg-blue-50/50 border-blue-200 ring-1 ring-blue-100'
+                            : isSelected
+                              ? 'bg-indigo-50/30 border-indigo-200 ring-1 ring-indigo-100'
+                              : 'bg-white border-gray-100 hover:border-gray-300 hover:shadow-sm'
+                            }`}
+                          onClick={() => setSelectedDate(day)}
+                        >
+                          <div className={`text-sm font-bold mb-2 flex justify-between items-center ${isToday(day) ? 'text-blue-600' : 'text-gray-900'
+                            }`}>
+                            <span>{day.getDate()}</span>
+                            {isToday(day) && <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
                           </div>
-                        ))}
-                        {dayEvents.length > 2 && (
-                          <div className="text-xs text-gray-500">
-                            +{dayEvents.length - 2} more
+                          <div className="space-y-1">
+                            {dayEvents.slice(0, 3).map(event => (
+                              <div
+                                key={event.id}
+                                className={`text-[10px] px-1.5 py-0.5 rounded-md truncate font-medium border ${eventTypeColors[event.event_type] || eventTypeColors.custom
+                                  }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedEvent(event);
+                                }}
+                              >
+                                {event.title}
+                              </div>
+                            ))}
+                            {dayEvents.length > 3 && (
+                              <div className="text-[10px] text-gray-400 font-medium pl-1">
+                                +{dayEvents.length - 3} more
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {view === 'week' && (
+                <div className="grid grid-cols-7 gap-4">
+                  {getWeekDays(currentDate).map((day) => {
+                    const dayEvents = getEventsForDate(day);
+                    return (
+                      <div key={day.toISOString()} className="space-y-3">
+                        <div className={`text-center pb-2 border-b ${isToday(day) ? 'border-blue-500' : 'border-gray-100'}`}>
+                          <p className={`text-xs font-semibold uppercase tracking-wider ${isToday(day) ? 'text-blue-600' : 'text-gray-400'}`}>
+                            {dayNames[day.getDay()]}
+                          </p>
+                          <p className={`text-xl font-bold mt-1 ${isToday(day) ? 'text-blue-700' : 'text-gray-900'}`}>
+                            {day.getDate()}
+                          </p>
+                        </div>
+                        <div className="space-y-2 min-h-[400px]">
+                          {dayEvents.map(event => (
+                            <div
+                              key={event.id}
+                              className={`p-2 rounded-xl border-l-4 shadow-sm cursor-pointer hover:scale-[1.02] transition-transform ${eventTypeColors[event.event_type] || eventTypeColors.custom
+                                }`}
+                              onClick={() => setSelectedEvent(event)}
+                            >
+                              <p className="text-xs font-bold truncate">{event.title}</p>
+                              <p className="text-[10px] opacity-70 mt-0.5">
+                                {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {view === 'day' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
+                    <div className="bg-blue-600 text-white w-14 h-14 rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-blue-200">
+                      <span className="text-xs font-bold uppercase">{dayNames[currentDate.getDay()]}</span>
+                      <span className="text-2xl font-black">{currentDate.getDate()}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">
+                        {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+                      </h3>
+                      <p className="text-gray-500 font-medium">Daily Schedule</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {getEventsForDate(currentDate).length === 0 ? (
+                      <div className="py-20 text-center">
+                        <CalendarIcon className="h-12 w-12 text-gray-200 mx-auto mb-4" />
+                        <p className="text-gray-400 font-medium">No events scheduled for today</p>
+                      </div>
+                    ) : (
+                      getEventsForDate(currentDate).map(event => (
+                        <div
+                          key={event.id}
+                          className={`flex items-start gap-4 p-4 rounded-2xl border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-shadow ${eventTypeColors[event.event_type] || eventTypeColors.custom
+                            }`}
+                          onClick={() => setSelectedEvent(event)}
+                        >
+                          <div className="min-w-[80px] font-bold text-sm pt-1">
+                            {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-lg mb-1">{event.title}</h4>
+                            {event.description && <p className="text-sm opacity-80 line-clamp-2">{event.description}</p>}
+                            <div className="flex items-center gap-4 mt-3">
+                              {event.client_name && (
+                                <div className="flex items-center gap-1.5 text-xs font-medium">
+                                  <User className="h-3.5 w-3.5 opacity-60" />
+                                  {event.client_name}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider opacity-60">
+                                <Plus className="h-3 w-3" />
+                                {event.event_type.replace('_', ' ')}
+                              </div>
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="sm" className="rounded-xl">View Details</Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -667,19 +789,23 @@ export default function CalendarPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <span className="text-sm">Benefit Renewal</span>
+                    <span className="text-sm font-medium">Benefit Renewal</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-blue-500" />
-                    <span className="text-sm">Appointment</span>
+                    <span className="text-sm font-medium">Appointment</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-purple-500" />
-                    <span className="text-sm">Follow-up</span>
+                    <span className="text-sm font-medium">Follow-up</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-amber-500" />
-                    <span className="text-sm">Deadline</span>
+                    <span className="text-sm font-medium">Deadline</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-500" />
+                    <span className="text-sm font-medium">Document Expiry</span>
                   </div>
                 </div>
               </CardContent>
@@ -700,28 +826,28 @@ export default function CalendarPage() {
                       <div
                         key={alert.id}
                         className={`p-2 border rounded text-sm ${alert.alert_type === 'benefit_renewal'
-                            ? 'bg-red-50 border-red-200'
-                            : alert.alert_type === 'document_expiry'
-                              ? 'bg-amber-50 border-amber-200'
-                              : 'bg-blue-50 border-blue-200'
+                          ? 'bg-red-50 border-red-200'
+                          : alert.alert_type === 'document_expiry'
+                            ? 'bg-amber-50 border-amber-200'
+                            : 'bg-blue-50 border-blue-200'
                           }`}
                       >
                         <p
                           className={`font-medium ${alert.alert_type === 'benefit_renewal'
-                              ? 'text-red-800'
-                              : alert.alert_type === 'document_expiry'
-                                ? 'text-amber-800'
-                                : 'text-blue-800'
+                            ? 'text-red-800'
+                            : alert.alert_type === 'document_expiry'
+                              ? 'text-amber-800'
+                              : 'text-blue-800'
                             }`}
                         >
                           {alert.title}
                         </p>
                         <p
                           className={`text-xs ${alert.alert_type === 'benefit_renewal'
-                              ? 'text-red-600'
-                              : alert.alert_type === 'document_expiry'
-                                ? 'text-amber-600'
-                                : 'text-blue-600'
+                            ? 'text-red-600'
+                            : alert.alert_type === 'document_expiry'
+                              ? 'text-amber-600'
+                              : 'text-blue-600'
                             }`}
                         >
                           {alert.client_name && `${alert.client_name} - `}
@@ -738,6 +864,77 @@ export default function CalendarPage() {
           </div>
         </div>
       </main>
+
+      {/* Event Details Popup */}
+      <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
+          {selectedEvent && (
+            <div className="flex flex-col">
+              <div className={`p-8 text-white ${selectedEvent.event_type === 'benefit_renewal' ? 'bg-gradient-to-br from-red-500 to-rose-600' :
+                selectedEvent.event_type === 'appointment' ? 'bg-gradient-to-br from-blue-500 to-indigo-600' :
+                  selectedEvent.event_type === 'follow_up' ? 'bg-gradient-to-br from-purple-500 to-violet-600' :
+                    selectedEvent.event_type === 'deadline' ? 'bg-gradient-to-br from-amber-500 to-orange-600' :
+                      'bg-gradient-to-br from-gray-500 to-slate-600'
+                }`}>
+                <div className="flex justify-between items-start mb-4">
+                  <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-bold uppercase tracking-widest leading-none">
+                    {selectedEvent.event_type.replace('_', ' ')}
+                  </span>
+                </div>
+                <h2 className="text-3xl font-black leading-tight drop-shadow-sm">{selectedEvent.title}</h2>
+              </div>
+
+              <div className="p-8 bg-white space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date</p>
+                    <div className="flex items-center gap-2 text-gray-900 font-bold">
+                      <CalendarIcon className="h-4 w-4 text-blue-500" />
+                      {new Date(selectedEvent.start_time).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</p>
+                    <div className="flex items-center gap-2 text-gray-900 font-bold">
+                      <Clock className="h-4 w-4 text-blue-500" />
+                      {new Date(selectedEvent.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+
+                {selectedEvent.client_name && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Associated Client</p>
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center border border-gray-100 shadow-sm text-blue-600">
+                        <User className="h-5 w-5" />
+                      </div>
+                      <p className="font-bold text-gray-900">{selectedEvent.client_name}</p>
+                    </div>
+                  </div>
+                )}
+
+                {selectedEvent.description && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Description</p>
+                    <p className="text-gray-600 leading-relaxed font-medium">{selectedEvent.description}</p>
+                  </div>
+                )}
+
+                <div className="pt-4">
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 rounded-2xl font-bold border-gray-200 hover:bg-gray-50 hover:text-gray-900 transition-all"
+                    onClick={() => setSelectedEvent(null)}
+                  >
+                    Close Details
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

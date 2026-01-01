@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS clients (
     -- Self-service
     has_portal_access BOOLEAN DEFAULT false,
     portal_user_id UUID REFERENCES auth.users(id),
+    intake_completed_at TIMESTAMP WITH TIME ZONE,
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -185,6 +186,11 @@ CREATE TABLE IF NOT EXISTS case_management (
     ssi_ssdi_renewal_date DATE,
     receives_tanf BOOLEAN DEFAULT false,
     tanf_renewal_date DATE,
+    -- Health & Benefits
+    health_insurance BOOLEAN DEFAULT false,
+    health_insurance_type TEXT,
+    non_cash_benefits TEXT[], -- Array for multiple selections (SNAP, WIC, etc.)
+    health_status TEXT,
     -- Notes
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

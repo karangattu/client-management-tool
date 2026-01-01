@@ -14,7 +14,6 @@ export const metadata: Metadata = {
   title: "ClientHub - Client Management System",
   description: "A comprehensive client intake and management system for case managers, social workers, and service providers.",
   keywords: ["client management", "intake form", "case management", "social services"],
-  manifest: "/manifest.json",
 };
 
 export default function RootLayout({

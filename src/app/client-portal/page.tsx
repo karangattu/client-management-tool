@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -227,78 +228,23 @@ export default function ClientPortalPage() {
     setError(null);
 
     try {
-      const supabase = createClient();
-
-      // Create the user account
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      const result = await submitSelfServiceApplication({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
         email: formData.email,
+        phone: formData.phone,
+        dateOfBirth: formData.dateOfBirth,
         password: formData.password,
-        options: {
-          data: {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-          },
-        },
+        street: formData.street,
+        city: formData.city,
+        state: formData.state,
+        zipCode: formData.zipCode,
+        preferredLanguage: formData.preferredLanguage,
+        signature: signature || undefined,
       });
 
-      if (signUpError) throw signUpError;
-
-      if (authData.user) {
-        // Create profile entry (required for auth context)
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: authData.user.id,
-          email: formData.email,
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          role: 'client',
-          is_active: true,
-          created_at: new Date().toISOString(),
-        });
-
-        if (profileError) throw profileError;
-
-        // Create client record
-        const { error: clientError } = await supabase.from('clients').insert({
-          portal_user_id: authData.user.id,
-          has_portal_access: true,
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          email: formData.email,
-          phone: formData.phone || null,
-          date_of_birth: formData.dateOfBirth || null,
-          street_address: formData.street,
-          city: formData.city,
-          state: formData.state,
-          zip_code: formData.zipCode,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-        });
-
-        if (clientError) throw clientError;
-
-        // Store signature if available
-        if (signature) {
-          // Convert base64 to blob
-          const base64Data = signature.split(',')[1];
-          const blob = await fetch(`data:image/png;base64,${base64Data}`).then(r => r.blob());
-
-          const { error: uploadError } = await supabase.storage
-            .from('signatures')
-            .upload(`${authData.user.id}/engagement-letter-${Date.now()}.png`, blob);
-
-          if (uploadError) {
-            console.error('Signature upload error:', uploadError);
-          }
-        }
-
-        // Create audit log entry
-        await supabase.from('audit_log').insert({
-          user_id: authData.user.id,
-          action: 'client_self_registration',
-          table_name: 'client',
-          record_id: authData.user.id,
-          new_values: { email: formData.email },
-        });
+      if (!result.success) {
+        throw new Error(result.error);
       }
 
       setSuccess(true);

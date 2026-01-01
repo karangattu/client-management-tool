@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import NextLink from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { NavigationTile, NavigationTileGrid } from '@/components/layout/NavigationTile';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,9 +26,11 @@ import {
   Hand,
   AlertCircle,
   User,
+  Check,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
+import { completeTask } from '@/app/actions/tasks';
 
 interface DashboardStats {
   totalClients: number;
@@ -221,12 +224,26 @@ export default function DashboardPage() {
     }
   };
 
+  const handleCompleteTask = async (taskId: string) => {
+    try {
+      const result = await completeTask(taskId);
+      if (result.success) {
+        // Optimistically update UI or just refetch
+        fetchDashboardData();
+      } else {
+        alert(result.error || "Failed to complete task");
+      }
+    } catch (error) {
+      console.error("Error completing task:", error);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     router.push('/login');
   };
 
-  if (authLoading || !profile) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Dashboard" showBackButton={false} />
@@ -244,6 +261,37 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Dashboard" showBackButton={false} />
+        <main className="container px-4 py-6 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-600">
+                <AlertCircle className="h-5 w-5" />
+                Profile Error
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-gray-600">
+                We could not find a profile associated with your account. This may happen if your account creation did not complete successfully.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button onClick={() => window.location.reload()} variant="outline">
+                  Retry
+                </Button>
+                <Button onClick={handleSignOut} variant="destructive">
+                  Sign Out
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </main>
       </div>
     );
@@ -367,7 +415,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title="Dashboard"
+        title={t('dashboard.title')}
         showBackButton={false}
         alertCount={stats.unreadAlerts}
       />
@@ -377,12 +425,12 @@ export default function DashboardPage() {
         <div className="mb-8 flex items-start justify-between">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              Welcome back, {profile.first_name}!
+              {t('auth.welcomeBack')}, {profile.first_name}!
             </h1>
             <p className="text-gray-600 mt-1">
               {isClient
-                ? "View your case status and upcoming appointments."
-                : "Here's what's happening with your clients today."
+                ? t('dashboard.clientWelcome')
+                : t('dashboard.staffWelcome')
               }
             </p>
             <Badge variant="outline" className="mt-2 capitalize">
@@ -391,7 +439,7 @@ export default function DashboardPage() {
           </div>
           <Button variant="outline" size="sm" onClick={handleSignOut}>
             <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
+            {t('auth.signOut')}
           </Button>
         </div>
 
@@ -403,8 +451,8 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">Language Preference</p>
-                    <p className="text-xs text-gray-500">Select your preferred language</p>
+                    <p className="text-sm font-medium text-gray-900">{t('dashboard.languagePref')}</p>
+                    <p className="text-xs text-gray-500">{t('dashboard.selectLang')}</p>
                   </div>
                   <LanguageSelector />
                 </div>
@@ -420,18 +468,17 @@ export default function DashboardPage() {
                       <AlertCircle className="h-5 w-5 text-amber-600" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-amber-900">Complete Your Profile</p>
+                      <p className="font-medium text-amber-900">{t('dashboard.completeProfile')}</p>
                       <p className="text-sm text-amber-700 mt-1">
-                        Please complete your profile information to help us serve you better. 
-                        This includes emergency contacts, housing status, and other important details.
+                        {t('dashboard.completeProfileDesc')}
                       </p>
-                      <Button 
-                        className="mt-3 bg-amber-600 hover:bg-amber-700"
+                      <Button asChild
+                        className="mt-3 w-full bg-amber-600 hover:bg-amber-700"
                         size="sm"
-                        onClick={() => router.push('/profile-completion')}
                       >
-                        <User className="h-4 w-4 mr-2" />
-                        Complete Profile
+                        <NextLink href="/profile-completion">
+                          {t('dashboard.profileAction')}
+                        </NextLink>
                       </Button>
                     </div>
                   </div>
@@ -448,7 +495,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Active Tasks</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.activeTasks')}</p>
                     <div className="text-2xl font-bold text-orange-600">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
                     </div>
@@ -463,7 +510,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Appointments</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.appointments')}</p>
                     <div className="text-2xl font-bold text-purple-600">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.upcomingEvents}
                     </div>
@@ -484,7 +531,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Clients</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.totalClients')}</p>
                     <div className="text-2xl font-bold text-gray-900">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.totalClients}
                     </div>
@@ -499,7 +546,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Active Clients</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.activeClients')}</p>
                     <div className="text-2xl font-bold text-green-600">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.activeClients}
                     </div>
@@ -514,7 +561,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">My Tasks</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.myTasks')}</p>
                     <div className="text-2xl font-bold text-orange-600">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
                     </div>
@@ -529,7 +576,7 @@ export default function DashboardPage() {
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Open Tasks</p>
+                    <p className="text-sm text-gray-600">{t('dashboard.openTasks')}</p>
                     <div className="text-2xl font-bold text-purple-600">
                       {loading ? <Skeleton className="h-8 w-12" /> : stats.openTasks}
                     </div>
@@ -544,11 +591,11 @@ export default function DashboardPage() {
         )}
 
         {/* Navigation Tiles */}
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('dashboard.quickActions')}</h2>
         <NavigationTileGrid>
           {canViewClients && (
             <NavigationTile
-              title="Clients"
+              title={t('clients.title')}
               description="View and manage client records"
               icon={Users}
               href="/clients"
@@ -558,7 +605,7 @@ export default function DashboardPage() {
           )}
           {canCreateIntake && (
             <NavigationTile
-              title="New Intake"
+              title={t('dashboard.newIntake')}
               description="Start a new client intake"
               icon={UserPlus}
               href="/client-intake"
@@ -567,7 +614,7 @@ export default function DashboardPage() {
           )}
           {canViewCalendar && (
             <NavigationTile
-              title="Calendar"
+              title={t('calendar.title')}
               description="Appointments and deadlines"
               icon={Calendar}
               href="/calendar"
@@ -577,7 +624,7 @@ export default function DashboardPage() {
           )}
           {canViewTasks && (
             <NavigationTile
-              title="Tasks"
+              title={t('tasks.title')}
               description={isVolunteer || isCaseManager ? "View & claim open tasks" : "Manage tasks"}
               icon={CheckSquare}
               href="/tasks"
@@ -587,7 +634,7 @@ export default function DashboardPage() {
           )}
           {(isVolunteer || isCaseManager) && stats.openTasks > 0 && (
             <NavigationTile
-              title="Open Tasks"
+              title={t('tasks.openToClaim')}
               description="Claim available tasks"
               icon={Hand}
               href="/tasks?filter=open"
@@ -597,7 +644,7 @@ export default function DashboardPage() {
           )}
           {canViewHousing && (
             <NavigationTile
-              title="Housing"
+              title={t('housing.title')}
               description="Housing applications"
               icon={Home}
               href="/housing"
@@ -606,7 +653,7 @@ export default function DashboardPage() {
           )}
           {canViewDocuments && (
             <NavigationTile
-              title="Documents"
+              title={t('documents.title')}
               description="Document management"
               icon={FileText}
               href="/documents"
@@ -625,7 +672,7 @@ export default function DashboardPage() {
           )}
           {canViewAdmin && (
             <NavigationTile
-              title="Admin"
+              title={t('admin.title')}
               description="User management & settings"
               icon={Settings}
               href="/admin"
@@ -642,7 +689,7 @@ export default function DashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <CheckSquare className="h-5 w-5 text-orange-500" />
-                  My Tasks
+                  {t('dashboard.myTasks')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -673,12 +720,22 @@ export default function DashboardPage() {
                             </p>
                           )}
                         </div>
-                        {getPriorityBadge(task.priority, task.status)}
+                        <div className="flex items-center gap-2">
+                          {getPriorityBadge(task.priority, task.status)}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-gray-400 hover:text-green-600"
+                            onClick={() => handleCompleteTask(task.id)}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">No active tasks</p>
+                  <p className="text-gray-500 text-sm text-center py-4">{t('dashboard.noActiveTasks')}</p>
                 )}
               </CardContent>
             </Card>
@@ -688,7 +745,7 @@ export default function DashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-purple-500" />
-                  Upcoming Appointments
+                  {t('dashboard.upcomingAppointments')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -725,7 +782,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">No upcoming appointments</p>
+                  <p className="text-gray-500 text-sm text-center py-4">{t('dashboard.noAppointments')}</p>
                 )}
               </CardContent>
             </Card>
@@ -740,7 +797,7 @@ export default function DashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Clock className="h-5 w-5 text-red-500" />
-                  Upcoming Deadlines
+                  {t('dashboard.upcomingDeadlines')}
                 </CardTitle>
               </CardHeader>
               <CardContent>

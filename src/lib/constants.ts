@@ -157,7 +157,55 @@ export const MONTHS = [
   { value: "07", label: "July" },
   { value: "08", label: "August" },
   { value: "09", label: "September" },
-  { value: "10", label: "October" },
   { value: "11", label: "November" },
   { value: "12", label: "December" },
+];
+
+export const EMPLOYMENT_STATUS_OPTIONS = [
+  { value: "full_time", label: "Full Time" },
+  { value: "part_time", label: "Part Time" },
+  { value: "unemployed", label: "Unemployed" },
+  { value: "retired", label: "Retired" },
+  { value: "student", label: "Student" },
+  { value: "disabled", label: "Disabled" },
+  { value: "other", label: "Other" },
+];
+
+export const INCOME_SOURCES = [
+  { value: "earned", label: "Earned Income" },
+  { value: "unemployment", label: "Unemployment Benefits" },
+  { value: "ssi", label: "SSI" },
+  { value: "ssdi", label: "SSDI" },
+  { value: "pension", label: "Pension" },
+  { value: "child_support", label: "Child Support" },
+  { value: "other", label: "Other" },
+  { value: "none", label: "No Income" },
+];
+
+export const HEALTH_INSURANCE_TYPES = [
+  { value: "medicaid", label: "Medicaid/Medi-Cal" },
+  { value: "medicare", label: "Medicare" },
+  { value: "private", label: "Private Insurance" },
+  { value: "va", label: "VA Health Care" },
+  { value: "employer", label: "Employer Provided" },
+  { value: "none", label: "None" },
+  { value: "other", label: "Other" },
+];
+
+export const BENEFITS_OPTIONS = [
+  { value: "snap", label: "SNAP (Food Stamps)" },
+  { value: "wic", label: "WIC" },
+  { value: "tanf", label: "TANF/CalWORKs" },
+  { value: "housing", label: "Housing Assistance (Section 8, etc.)" },
+  { value: "utilities", label: "Utility Assistance (LIHEAP)" },
+  { value: "childcare", label: "Childcare Subsidy" },
+  { value: "other", label: "Other" },
+];
+
+export const HEALTH_STATUS_OPTIONS = [
+  { value: "excellent", label: "Excellent" },
+  { value: "very_good", label: "Very Good" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+  { value: "poor", label: "Poor" },
 ];

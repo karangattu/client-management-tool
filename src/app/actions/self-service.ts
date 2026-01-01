@@ -102,11 +102,12 @@ export async function submitSelfServiceApplication(
     dueDate.setDate(dueDate.getDate() + 7);
 
     const { error: taskError } = await supabase.from("tasks").insert({
-      title: "Complete Profile Information",
-      description: `New client ${formData.firstName} ${formData.lastName} registered via self-service. Please review their profile and ensure all required information is collected.`,
+      title: "Complete Full Intake Form",
+      description: "Please complete all 7 sections of the intake form to help us process your case. This is an essential step for receiving support.",
       client_id: clientData.id,
+      assigned_to: authData.user.id, // Assign to the client themselves
       status: "pending",
-      priority: "medium",
+      priority: "urgent",
       due_date: dueDate.toISOString(),
       created_by: authData.user.id,
       created_at: new Date().toISOString(),

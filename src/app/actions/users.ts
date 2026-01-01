@@ -21,18 +21,18 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
     // Get the current user to verify they're an admin
     const supabase = await createClient();
     const { data: { user: currentUser } } = await supabase.auth.getUser();
-    
+
     if (!currentUser) {
       return { success: false, error: "Not authenticated" };
     }
-    
+
     // Check if current user is admin
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', currentUser.id)
       .single();
-    
+
     if (!profile || profile.role !== 'admin') {
       return { success: false, error: "Only admins can create users" };
     }
@@ -44,7 +44,7 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
     } catch {
       // If service role key not available, fall back to regular signup
       console.warn('Service role key not available, using regular signup');
-      
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -162,18 +162,18 @@ export async function archiveUser(userId: string): Promise<{ success: boolean; e
   try {
     const supabase = await createClient();
     const { data: { user: currentUser } } = await supabase.auth.getUser();
-    
+
     if (!currentUser) {
       return { success: false, error: "Not authenticated" };
     }
-    
+
     // Check if current user is admin
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', currentUser.id)
       .single();
-    
+
     if (!profile || profile.role !== 'admin') {
       return { success: false, error: "Only admins can archive users" };
     }
@@ -224,6 +224,35 @@ export async function getAllUsers() {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to fetch users",
+    };
+  }
+}
+
+export async function getCurrentUserProfile() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: profile };
+  } catch (error) {
+    console.error("Error fetching current user profile:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch profile",
     };
   }
 }

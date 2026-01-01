@@ -63,6 +63,7 @@ interface Client {
   phone: string;
   status: string;
   created_at: string;
+  intake_completed_at: string | null;
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -90,7 +91,7 @@ export default function ClientsPage() {
     try {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, first_name, last_name, email, phone, status, created_at')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -323,6 +324,16 @@ export default function ClientsPage() {
                               {client.first_name} {client.last_name}
                             </h3>
                             {getStatusBadge(client.status)}
+                            {client.intake_completed_at ? (
+                              <Badge className="bg-blue-50 text-blue-700 border-blue-200">
+                                <Check className="h-3 w-3 mr-1" />
+                                Intake Complete
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-gray-500">
+                                Intake In Progress
+                              </Badge>
+                            )}
                           </div>
 
                           {/* Contact info with copy buttons */}

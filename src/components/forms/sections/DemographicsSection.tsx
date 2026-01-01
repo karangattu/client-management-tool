@@ -58,6 +58,22 @@ export function DemographicsSection() {
           />
         </div>
 
+        {/* Status Checkboxes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
+          <FormField
+            name="demographics.veteranStatus"
+            label="Veteran Status"
+            type="checkbox"
+            tooltip="Is the participant a veteran?"
+          />
+          <FormField
+            name="demographics.disabilityStatus"
+            label="Disability Status"
+            type="checkbox"
+            tooltip="Does the participant have a disability?"
+          />
+        </div>
+
         {/* Language */}
         <FormField
           name="demographics.language"

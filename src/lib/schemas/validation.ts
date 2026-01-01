@@ -42,6 +42,11 @@ export const caseManagementSchema = z.object({
   calFreshMediCalId: z.string().optional(),
   calFreshMediCalPartnerMonth: z.string().optional(),
   race: z.array(z.string()).optional(),
+  // New fields
+  healthInsurance: z.string().optional(),
+  healthInsuranceType: z.string().optional(),
+  nonCashBenefits: z.array(z.string()).optional(),
+  healthStatus: z.string().optional(),
 });
 
 // Demographics Schema
@@ -51,6 +56,12 @@ export const demographicsSchema = z.object({
   ethnicity: z.string().optional(),
   maritalStatus: z.string().optional(),
   language: z.string().optional(),
+  // Financials
+  employmentStatus: z.string().optional(),
+  monthlyIncome: z.string().optional(), // Text input for currency
+  incomeSource: z.string().optional(),
+  veteranStatus: z.boolean().optional(),
+  disabilityStatus: z.boolean().optional(),
 });
 
 // Household Member Schema
@@ -126,6 +137,10 @@ export const defaultCaseManagement: CaseManagement = {
   calFreshMediCalId: "",
   calFreshMediCalPartnerMonth: "",
   race: [],
+  healthInsurance: "",
+  healthInsuranceType: "",
+  nonCashBenefits: [],
+  healthStatus: "",
 };
 
 export const defaultDemographics: Demographics = {
@@ -134,6 +149,11 @@ export const defaultDemographics: Demographics = {
   ethnicity: "",
   maritalStatus: "",
   language: "",
+  employmentStatus: "",
+  monthlyIncome: "",
+  incomeSource: "",
+  veteranStatus: false,
+  disabilityStatus: false,
 };
 
 export const defaultHousehold: Household = {
