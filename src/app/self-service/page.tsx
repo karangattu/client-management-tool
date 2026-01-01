@@ -226,8 +226,18 @@ export default function SelfServiceIntakePage() {
         doc.text(splitText, margin, 65);
 
         const textLines = splitText.length;
+        // Estimate text height (approx 5mm per line for 10pt font)
         const textHeight = textLines * 5;
-        const signatureY = Math.min(65 + textHeight + 20, 250);
+
+        // Calculate signature start position with padding
+        let signatureY = 65 + textHeight + 20;
+
+        // Check if signature block fits on page (approx 60mm needed)
+        const pageHeight = doc.internal.pageSize.getHeight();
+        if (signatureY + 60 > pageHeight) {
+          doc.addPage();
+          signatureY = margin; // Reset to top margin on new page
+        }
 
         doc.line(margin, signatureY, pageWidth - margin, signatureY);
         doc.setFontSize(12);

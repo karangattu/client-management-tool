@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getAppUrl } from "@/lib/utils";
 
 interface SelfServiceFormData {
   firstName: string;
@@ -49,6 +50,7 @@ export async function submitSelfServiceApplication(
           first_name: formData.firstName,
           last_name: formData.lastName,
         },
+        emailRedirectTo: `${getAppUrl()}/auth/callback`,
       },
     });
 
@@ -150,7 +152,12 @@ export async function submitSelfServiceApplication(
       try {
         const timestamp = Date.now();
         const signatureFileName = `${authData.user.id}/engagement-letter-${timestamp}-sig.png`;
-        const documentFileName = `engagement-letter-${timestamp}.pdf`;
+
+        // Sanitize names for filename
+        const sanitizedFirst = formData.firstName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const sanitizedLast = formData.lastName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const documentFileName = `engage-letter-${sanitizedFirst}-${sanitizedLast}.pdf`;
+
         const documentFilePath = `${clientData.id}/consent/${documentFileName}`;
 
         // 1. Upload signature image (if provided)

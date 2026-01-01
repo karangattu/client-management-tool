@@ -1206,3 +1206,59 @@ CREATE POLICY "Staff can insert enrollment activity" ON program_enrollment_activ
     FOR INSERT WITH CHECK (
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
     );
+-- Allow clients to insert their own tasks (needed for self-service intake task creation if service role fails)
+DROP POLICY IF EXISTS "Clients can insert own tasks" ON tasks;
+CREATE POLICY "Clients can insert own tasks" ON tasks
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM clients 
+            WHERE clients.id = tasks.client_id 
+            AND clients.portal_user_id = auth.uid()
+        )
+    );
+-- Allow clients to upload their own documents to storage
+-- (Policy allows insert if the path starts with their client ID)
+-- Note: We can't easily check client ID ownership in storage RLS without a complex join or a helper function.
+-- A simpler approach for the bucket policy: Allow authenticated users to upload to folders matching their claimed client ID?
+-- But 'auth.uid()' is the user ID, not client ID.
+-- The file path is `${clientData.id}/consent/${documentFileName}`.
+-- We need to check if the folder name is the client ID owned by the user.
+
+-- Let's enable a broader upload policy for authenticated users to the 'client-documents' bucket, 
+-- but we might want to restrict it.
+-- However, for now, to unblock the feature:
+
+DROP POLICY IF EXISTS "Clients can upload own documents" ON storage.objects;
+create policy "Clients can upload own documents"
+on storage.objects for insert
+with check (
+  bucket_id = 'client-documents' and
+  auth.role() = 'authenticated' and
+  (
+    -- Ensure the user is the one associated with the folder (client_id)
+    -- This requires a subquery to clients table using the folder name as client ID
+    exists (
+      select 1 from clients 
+      where 
+        clients.portal_user_id = auth.uid() and
+        -- This is a bit tricky in exact SQL for storage paths, attempting simplified check:
+        -- storage.objects.name like (clients.id || '/%')
+        (storage.foldername(name))[1] = clients.id::text
+    )
+  )
+);
+
+-- Also allow them to read their own documents
+DROP POLICY IF EXISTS "Clients can view own documents" ON storage.objects;
+create policy "Clients can view own documents"
+on storage.objects for select
+using (
+  bucket_id = 'client-documents' and
+  auth.role() = 'authenticated' and
+  exists (
+    select 1 from clients 
+    where 
+      clients.portal_user_id = auth.uid() and
+      (storage.foldername(name))[1] = clients.id::text
+  )
+);

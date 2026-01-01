@@ -53,6 +53,7 @@ const en: Translations = {
     refresh: 'Refresh',
     logout: 'Sign Out',
     login: 'Sign In',
+    print: 'Print',
   },
   auth: {
     email: 'Email',
@@ -265,6 +266,7 @@ const es: Translations = {
     refresh: 'Actualizar',
     logout: 'Cerrar sesión',
     login: 'Iniciar sesión',
+    print: 'Imprimir',
   },
   auth: {
     email: 'Correo electrónico',
@@ -463,6 +465,7 @@ const zh: Translations = {
     refresh: '刷新',
     logout: '退出登录',
     login: '登录',
+    print: '打印',
   },
   auth: {
     email: '电子邮件',
@@ -661,6 +664,7 @@ const vi: Translations = {
     refresh: 'Làm mới',
     logout: 'Đăng xuất',
     login: 'Đăng nhập',
+    print: 'In',
   },
   auth: {
     email: 'Email',

@@ -47,3 +47,15 @@ export function generateClientId(): string {
   const random = Math.random().toString(36).substring(2, 8);
   return `CLT-${timestamp}-${random}`.toUpperCase();
 }
+
+export function getAppUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3000";
+}
