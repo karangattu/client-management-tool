@@ -18,11 +18,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
@@ -53,8 +48,8 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
 
     return (
         <TooltipProvider>
-            <Card className={cn("border-none shadow-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 overflow-hidden", className)}>
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
+            <Card className={cn("border border-slate-200 shadow-xl bg-gradient-to-br from-white to-slate-50/50 overflow-hidden", className)}>
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-primary to-purple-500" />
 
                 <CardHeader className="pb-4 space-y-1">
                     <CardTitle className="flex items-center gap-2.5 text-xl font-bold tracking-tight">
@@ -84,12 +79,12 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                                 {eligible.map((r) => (
                                     <div
                                         key={r.programId}
-                                        className="group relative flex items-center justify-between p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-green-200 dark:hover:border-green-900/50 hover:shadow-md transition-all duration-300 cursor-default overflow-hidden"
+                                        className="group relative flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 hover:border-green-300 hover:shadow-md transition-all duration-300 cursor-default"
                                     >
                                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                                        <div className="flex flex-col gap-1 pr-2">
-                                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-tight group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">
+                                        <div className="flex flex-col gap-1 pr-2 min-w-0 flex-1">
+                                            <span className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-green-700 transition-colors line-clamp-2">
                                                 {r.programName}
                                             </span>
                                             {r.metConditions.length > 0 && (
@@ -103,7 +98,7 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                                         <div className="flex items-center gap-2 shrink-0">
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <div className="p-1.5 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600">
+                                                    <div className="p-1.5 rounded-full bg-green-50 text-green-600">
                                                         <CheckCircle2 className="h-4 w-4" />
                                                     </div>
                                                 </TooltipTrigger>
@@ -123,31 +118,31 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                         )}
                     </div>
 
-                    {/* Potential Matches - Collapsible */}
+                    {/* Potential Matches - Toggle Section */}
                     {potential.length > 0 && (
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                            <Collapsible
-                                open={showPotential}
-                                onOpenChange={setShowPotential}
-                                className="space-y-2"
+                        <div className="pt-2 border-t border-slate-100">
+                            <button
+                                onClick={() => setShowPotential(!showPotential)}
+                                className="flex items-center justify-between w-full hover:opacity-80 transition-opacity py-1 outline-none"
+                                aria-expanded={showPotential}
                             >
-                                <CollapsibleTrigger className="flex items-center justify-between w-full hover:opacity-80 transition-opacity py-1">
-                                    <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                        Potential ({potential.length})
-                                    </h4>
-                                    {showPotential ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                                </CollapsibleTrigger>
+                                <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                    Potential ({potential.length})
+                                </h4>
+                                {showPotential ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                            </button>
 
-                                <CollapsibleContent className="space-y-3 pt-2">
+                            {showPotential && (
+                                <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
                                     <div className="grid gap-2">
                                         {potential.map((r) => (
                                             <div
                                                 key={r.programId}
-                                                className="group flex items-center justify-between p-3 rounded-lg bg-slate-50/50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 hover:bg-amber-50/30 dark:hover:bg-amber-900/10 transition-colors"
+                                                className="group flex items-center justify-between p-3 rounded-lg bg-slate-50/50 border border-slate-100 hover:bg-amber-50/30 transition-colors"
                                             >
                                                 <div className="flex flex-col gap-0.5">
-                                                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                                                    <span className="text-xs font-medium text-slate-700">
                                                         {r.programName}
                                                     </span>
                                                     <span className="text-[10px] text-amber-600/80 font-medium">
@@ -161,12 +156,12 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                                     <p className="text-[10px] text-muted-foreground italic leading-relaxed px-1">
                                         Complete the profile to confirm eligibility for these programs.
                                     </p>
-                                </CollapsibleContent>
-                            </Collapsible>
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-start gap-2">
+                    <div className="pt-4 border-t border-slate-100 flex items-start gap-2">
                         <Info className="h-3 w-3 text-slate-400 mt-0.5 shrink-0" />
                         <p className="text-[9px] text-slate-400 leading-normal italic">
                             Recommendations are based on extracted rules and for screening purposes only. Official determination is made by agency staff.

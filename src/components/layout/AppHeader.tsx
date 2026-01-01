@@ -34,14 +34,14 @@ export function AppHeader({
 }: AppHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { profile, signOut } = useAuth();
+  const { profile, loading: authLoading, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isHomePage = pathname === '/' || pathname === '/dashboard';
 
   // Use passed props or fall back to profile data
-  const displayName = userName || (profile ? `${profile.first_name} ${profile.last_name}` : 'User');
-  const displayRole = userRole || (profile?.role ? profile.role.replace('_', ' ') : 'Guest');
+  const displayName = userName || (authLoading ? 'Loading...' : (profile ? `${profile.first_name} ${profile.last_name}` : 'User'));
+  const displayRole = userRole || (authLoading ? 'Please wait' : (profile?.role ? profile.role.replace('_', ' ') : 'Guest'));
   const avatarUrl = profile?.profile_picture_url;
 
   const handleBack = () => {

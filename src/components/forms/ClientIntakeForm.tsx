@@ -40,8 +40,17 @@ import {
   Loader2,
   DollarSign,
   HeartPulse,
+  LayoutDashboard,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const FORM_STEPS = [
   { id: "participant", title: "Personal Info", icon: User },
@@ -307,7 +316,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
           <Progress value={progress} className="h-2 mb-4" />
 
           {/* Step Indicators */}
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
             {FORM_STEPS.map((step, index) => {
               const StepIcon = step.icon;
               const isActive = index === currentStep;
@@ -321,30 +330,27 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
                   onClick={() => handleStepClick(index)}
                   disabled={index > currentStep + 1}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors min-w-fit",
-                    isActive && "bg-primary text-primary-foreground",
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all min-w-fit whitespace-nowrap",
+                    isActive && "bg-primary text-primary-foreground shadow-sm",
                     !isActive &&
                     isCompleted &&
-                    "bg-primary/10 text-primary hover:bg-primary/20",
+                    "bg-primary/5 text-primary hover:bg-primary/10",
                     !isActive &&
                     !isCompleted &&
-                    "bg-muted text-muted-foreground",
+                    "bg-muted/50 text-muted-foreground hover:bg-muted",
                     index > currentStep + 1 && "opacity-50 cursor-not-allowed"
                   )}
                 >
-                  {hasError ? (
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                  ) : isCompleted ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <StepIcon className="h-4 w-4" />
-                  )}
-                  <span className="hidden sm:inline">{step.title}</span>
-                  {hasError && (
-                    <Badge variant="destructive" className="h-5 px-1.5">
-                      !
-                    </Badge>
-                  )}
+                  <div className="relative">
+                    {hasError ? (
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                    ) : isCompleted ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <StepIcon className="h-4 w-4" />
+                    )}
+                  </div>
+                  <span>{step.title}</span>
                 </button>
               );
             })}
@@ -352,8 +358,8 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
         </div>
 
         {/* Form Content */}
-        <div className="grid lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-3 min-h-[400px]">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 xl:col-span-9 min-h-[400px]">
             {currentStep === 0 && <ParticipantDetailsSection />}
             {currentStep === 1 && <EmergencyContactSection />}
             {currentStep === 2 && <DemographicsSection />}
@@ -363,58 +369,79 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
             {currentStep === 6 && <CaseManagementSection caseManagers={caseManagers} />}
           </div>
 
-          <aside className="hidden lg:block lg:col-span-1">
-            <EligibilityPanel results={benefits} className="sticky top-24" />
+          <aside className="hidden lg:block lg:col-span-4 xl:col-span-3">
+            <div className="sticky top-24">
+              <EligibilityPanel results={benefits} />
+            </div>
           </aside>
-
-          {/* Mobile Eligibility Panel (shown at the bottom) */}
-          <div className="lg:hidden mt-6">
-            <EligibilityPanel results={benefits} />
-          </div>
         </div>
 
-        {/* Navigation Buttons */}
-        <div className="sticky bottom-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t pt-4 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <div className="flex justify-between gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handlePrevious}
-              disabled={currentStep === 0}
-              className="flex-1 sm:flex-none"
-            >
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              Previous
-            </Button>
+        {/* Navigation Buttons & Mobile Panel Toggle */}
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t py-4 -mx-4 px-4 sm:mx-0 sm:px-0 z-50">
+          <div className="flex items-center gap-4 max-w-7xl mx-auto">
+            {/* Mobile Benefit Toggle */}
+            <div className="lg:hidden">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="icon" className="relative group">
+                    <Sparkles className="h-5 w-5 text-purple-600" />
+                    {benefits.filter(r => r.isEligible).length > 0 && (
+                      <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-purple-600">
+                        {benefits.filter(r => r.isEligible).length}
+                      </Badge>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-[calc(100vw-2rem)] rounded-xl h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Recommended Benefits</DialogTitle>
+                  </DialogHeader>
+                  <EligibilityPanel results={benefits} />
+                </DialogContent>
+              </Dialog>
+            </div>
 
-            {currentStep < FORM_STEPS.length - 1 ? (
+            <div className="flex flex-1 justify-between gap-4">
               <Button
                 type="button"
-                onClick={handleNext}
+                variant="outline"
+                onClick={handlePrevious}
+                disabled={currentStep === 0}
                 className="flex-1 sm:flex-none"
               >
-                Next
-                <ChevronRight className="h-4 w-4 ml-2" />
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Previous
               </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex-1 sm:flex-none"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Submit
-                  </>
-                )}
-              </Button>
-            )}
+
+              {currentStep < FORM_STEPS.length - 1 ? (
+                <Button
+                  type="button"
+                  onClick={handleNext}
+                  className="flex-1 sm:flex-none"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Submit
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </form>

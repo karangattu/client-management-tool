@@ -217,7 +217,6 @@ export async function getClientFullData(clientId: string) {
         state: client.state || "",
         county: "", // County not in clients table directly
         zipCode: client.zip_code || "",
-        addressNotListed: false,
       },
       emergencyContacts: client.emergency_contacts.map((ec: any) => ({
         name: ec.name,

@@ -48,10 +48,19 @@ import {
   AlertCircle,
   Copy,
   Check,
+  Printer,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { getAllUsers } from '@/app/actions/users';
+import { getClientHistory, InteractionType } from '@/app/actions/history';
+import { ClientHistory } from '@/components/clients/ClientHistory';
+import { LogInteractionDialog } from '@/components/clients/LogInteractionDialog';
+import { PrintableCaseHistory } from '@/components/clients/PrintableCaseHistory';
+import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementLetterDialog';
+import { updateTaskStatus } from '@/app/actions/tasks';
+import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
 
 interface ClientDetail {
   id: string;
@@ -72,6 +81,7 @@ interface ClientDetail {
   is_veteran?: boolean;
   is_chronically_homeless?: boolean;
   created_at: string;
+  signed_engagement_letter_at?: string | null;
 }
 
 interface Task {
@@ -85,6 +95,7 @@ interface Task {
 interface Document {
   id: string;
   file_name: string;
+  file_path: string;
   document_type: string;
   created_at: string;
   is_verified: boolean;
@@ -95,6 +106,18 @@ interface Activity {
   action: string;
   created_at: string;
   user_name?: string;
+}
+
+interface Interaction {
+  id: string;
+  action_type: InteractionType;
+  title: string;
+  description?: string;
+  created_at: string;
+  profiles?: {
+    first_name: string;
+    last_name: string;
+  };
 }
 
 const statusColors: Record<string, string> = {
@@ -135,6 +158,67 @@ const getPriorityDotColor = (priority: string) => {
   }
 };
 
+// Component to display enrollment activity log
+function EnrollmentActivityLog({ enrollmentId }: { enrollmentId: string }) {
+  const [activity, setActivity] = useState<Array<{
+    id: string;
+    old_status: string | null;
+    new_status: string;
+    changed_at: string;
+    notes: string | null;
+    changed_by_profile: { first_name: string; last_name: string } | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      setLoading(true);
+      const result = await getEnrollmentActivity(enrollmentId);
+      if (result.success) {
+        setActivity(result.data || []);
+      }
+      setLoading(false);
+    };
+    fetchActivity();
+  }, [enrollmentId]);
+
+  if (loading) {
+    return <p className="text-sm text-gray-500 py-2">Loading activity...</p>;
+  }
+
+  if (activity.length === 0) {
+    return <p className="text-sm text-gray-500 py-2">No activity recorded yet.</p>;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {activity.map((entry) => (
+        <div key={entry.id} className="text-xs text-gray-600 flex items-start gap-2 py-1 border-b border-gray-100 last:border-0">
+          <span className="text-gray-400 whitespace-nowrap">
+            {new Date(entry.changed_at).toLocaleString()}
+          </span>
+          <span>
+            {entry.old_status ? (
+              <>
+                <span className="capitalize">{entry.old_status}</span>
+                <span className="mx-1">→</span>
+                <span className="capitalize font-medium">{entry.new_status}</span>
+              </>
+            ) : (
+              <span className="capitalize font-medium">{entry.new_status}</span>
+            )}
+          </span>
+          {entry.changed_by_profile && (
+            <span className="text-gray-400">
+              by {entry.changed_by_profile.first_name} {entry.changed_by_profile.last_name}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params);
   const { profile } = useAuth();
@@ -143,6 +227,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [tasks, setTasks] = useState<Task[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -157,6 +242,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [availableCaseManagers, setAvailableCaseManagers] = useState<{ id: string; name: string }[]>([]);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [assigningLoading, setAssigningLoading] = useState(false);
+  const [taskUpdating, setTaskUpdating] = useState<string | null>(null);
+  const [availablePrograms, setAvailablePrograms] = useState<Program[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [showProgramDialog, setShowProgramDialog] = useState(false);
+  const [programLoading, setProgramLoading] = useState(false);
+  const [newEnrollment, setNewEnrollment] = useState({
+    programId: '',
+    status: 'interested',
+    startDate: '',
+    endDate: '',
+    volunteerId: '',
+    notes: ''
+  });
+  const [volunteers, setVolunteers] = useState<{ id: string; name: string }[]>([]);
 
   const supabase = createClient();
 
@@ -164,24 +263,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const fetchClientData = async () => {
       setLoading(true);
       try {
-        // Fetch all client-related data in parallel
         const [
           { data: clientData, error: clientError },
           { data: tasksData },
           { data: docsData },
-          { data: activityData }
+          activityDataResult,
+          historyData,
+          enrollmentsData,
+          programsData
         ] = await Promise.all([
           supabase.from('clients').select('*').eq('id', clientId).single(),
           supabase.from('tasks').select('id, title, due_date, status, priority').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
-          supabase.from('documents').select('id, file_name, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
-          supabase.from('audit_log').select('id, action, created_at, old_values, new_values').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
+          supabase.from('documents').select('id, file_name, file_path, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
+          profile?.role === 'admin'
+            ? supabase.from('audit_log').select('id, action, created_at').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
+            : Promise.resolve({ data: [] }),
+          getClientHistory(clientId),
+          getClientEnrollments(clientId),
+          getPrograms()
         ]);
 
         if (clientError) throw clientError;
         setClient(clientData);
         setTasks(tasksData || []);
         setDocuments(docsData || []);
-        setActivities(activityData?.map(a => ({
+        setEnrollments((enrollmentsData?.success ? enrollmentsData.data : []) as Enrollment[]);
+        setAvailablePrograms((programsData?.success ? programsData.data : []) as Program[]);
+        setInteractions((historyData?.success ? historyData.data : []) as Interaction[]);
+
+        const activityData = (activityDataResult as any)?.data || [];
+        setActivities(activityData.map((a: any) => ({
           id: a.id,
           action: formatAuditAction(a.action),
           created_at: a.created_at,
@@ -217,13 +328,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             last_name: string;
             role: string;
           }
-          const managers = (result.data as ProfileRecord[])
-            .filter((u) => u.role === 'case_manager' || u.role === 'staff')
-            .map((u) => ({
-              id: u.id,
-              name: `${u.first_name} ${u.last_name}`,
-            }));
-          setAvailableCaseManagers(managers);
+          const allStaff = (result.data as ProfileRecord[])
+            .filter((u) => u.role !== 'client')
+            .map((u) => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
+
+          setAvailableCaseManagers(allStaff.filter(s => {
+            const user = (result.data as ProfileRecord[]).find(u => u.id === s.id);
+            return user?.role === 'case_manager' || user?.role === 'staff' || user?.role === 'admin';
+          }));
+          setVolunteers(allStaff);
         }
       } catch (err) {
         console.error('Error fetching managers:', err);
@@ -233,6 +346,133 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     fetchClientData();
     fetchManagers();
   }, [clientId, supabase]);
+
+  const handleToggleTask = async (taskId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    setTaskUpdating(taskId);
+
+    // Optimistically update UI
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, status: newStatus } : t
+    ));
+
+    try {
+      const result = await updateTaskStatus(taskId, newStatus as any, clientId);
+      if (!result.success) {
+        // Revert on error
+        setTasks(prev => prev.map(t =>
+          t.id === taskId ? { ...t, status: currentStatus } : t
+        ));
+        alert('Failed to update task status');
+      }
+    } catch (err) {
+      console.error('Error toggling task:', err);
+      // Revert on error
+      setTasks(prev => prev.map(t =>
+        t.id === taskId ? { ...t, status: currentStatus } : t
+      ));
+    } finally {
+      setTaskUpdating(null);
+    }
+  };
+
+  const handleUpsertEnrollment = async () => {
+    if (!newEnrollment.programId) {
+      alert('Please select a program');
+      return;
+    }
+    setProgramLoading(true);
+    try {
+      const result = await upsertEnrollment({
+        clientId,
+        programId: newEnrollment.programId,
+        status: newEnrollment.status,
+        startDate: newEnrollment.startDate,
+        endDate: newEnrollment.endDate,
+        volunteerId: newEnrollment.volunteerId || null,
+        notes: newEnrollment.notes
+      });
+
+      if (result.success) {
+        // Refresh enrollments
+        const enrollResult = await getClientEnrollments(clientId);
+        if (enrollResult.success) {
+          setEnrollments(enrollResult.data as Enrollment[]);
+        }
+        setShowProgramDialog(false);
+        setNewEnrollment({
+          programId: '',
+          status: 'interested',
+          startDate: '',
+          endDate: '',
+          volunteerId: '',
+          notes: ''
+        });
+      } else {
+        alert(result.error || 'Failed to save enrollment');
+      }
+    } catch (error) {
+      console.error('Error saving enrollment:', error);
+      alert('An unexpected error occurred');
+    } finally {
+      setProgramLoading(false);
+    }
+  };
+
+  const handleRemoveEnrollment = async (enrollmentId: string) => {
+    if (!confirm('Are you sure you want to remove this enrollment?')) return;
+
+    try {
+      const result = await removeEnrollment(enrollmentId, clientId);
+      if (result.success) {
+        setEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
+      } else {
+        alert(result.error || 'Failed to remove enrollment');
+      }
+    } catch (error) {
+      console.error('Error removing enrollment:', error);
+      alert('An unexpected error occurred');
+    }
+  };
+
+  const refreshHistory = async () => {
+    const result = await getClientHistory(clientId);
+    if (result.success) {
+      setInteractions(result.data as Interaction[]);
+    }
+  };
+
+  const refreshDocuments = async () => {
+    const { data: docsData } = await supabase
+      .from('documents')
+      .select('id, file_name, document_type, created_at, is_verified, file_path')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (docsData) {
+      setDocuments(docsData as Document[]);
+    }
+  };
+
+  const handleViewDocument = async (doc: Document) => {
+    try {
+      if (!doc.file_path) {
+        alert('Document file path not available.');
+        return;
+      }
+      const { data, error } = await supabase.storage
+        .from('client-documents')
+        .createSignedUrl(doc.file_path, 3600);
+
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error viewing document:', err);
+      alert('Failed to open document. Please try again.');
+    }
+  };
 
   const handleAssignManager = async (managerId: string) => {
     if (!managerId) return;
@@ -384,7 +624,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       // Refresh documents list
       const { data: docsData } = await supabase
         .from('documents')
-        .select('id, file_name, document_type, created_at, is_verified')
+        .select('id, file_name, file_path, document_type, created_at, is_verified')
         .eq('client_id', clientId)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -415,7 +655,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       DELETE: 'Deleted client record',
     };
     return actionMap[action] || action;
-  }; if (loading) {
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Loading..." showBackButton />
@@ -493,6 +735,27 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         <Badge className={statusColors[client.status] || 'bg-gray-100 text-gray-800'}>
                           {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
                         </Badge>
+
+                        <SignEngagementLetterDialog
+                          clientId={client.id}
+                          clientName={`${client.first_name} ${client.last_name}`}
+                          isSigned={!!client.signed_engagement_letter_at}
+                          signedAt={client.signed_engagement_letter_at}
+                          onSuccess={() => {
+                            refreshDocuments();
+                            // Also refresh client data for the badge
+                            supabase.from('clients').select('signed_engagement_letter_at').eq('id', clientId).single().then(({ data }) => {
+                              if (data) setClient(prev => prev ? { ...prev, signed_engagement_letter_at: data.signed_engagement_letter_at } : null);
+                            });
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        {!client.signed_engagement_letter_at && (
+                          <Badge variant="destructive" className="animate-pulse">
+                            Pending Signature
+                          </Badge>
+                        )}
                         {client.is_veteran && (
                           <Badge variant="outline" className="border-blue-500 text-blue-700">
                             Veteran
@@ -611,19 +874,6 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-100 rounded-lg">
-                    <Home className="h-5 w-5 text-cyan-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold capitalize">{client.housing_status || 'Unknown'}</p>
-                    <p className="text-xs text-gray-500">Housing Status</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 rounded-lg">
                     <Calendar className="h-5 w-5 text-green-600" />
                   </div>
@@ -632,6 +882,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       {new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                     </p>
                     <p className="text-xs text-gray-500">Client Since</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <TrendingUp className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold">{client.status || 'Active'}</p>
+                    <p className="text-xs text-gray-500">Status</p>
                   </div>
                 </div>
               </CardContent>
@@ -645,6 +908,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <TabsTrigger value="intake">Intake</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger value="programs">Programs</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
             </TabsList>
 
@@ -696,36 +960,38 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   </CardContent>
                 </Card>
 
-                {/* Recent Activity */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg">Recent Activity</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {activities.length > 0 ? (
-                      <div className="space-y-3">
-                        {activities.slice(0, 5).map((item) => (
-                          <div key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                              <AlertCircle className="h-4 w-4 text-blue-600" />
+                {/* Recent Activity (Admin Only) */}
+                {profile?.role === 'admin' && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg">Recent Activity</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {activities.length > 0 ? (
+                        <div className="space-y-3">
+                          {activities.slice(0, 5).map((item) => (
+                            <div key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                <AlertCircle className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium text-sm capitalize">{item.action}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-sm capitalize">{item.action}</p>
-                              <p className="text-xs text-gray-500">
-                                {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-6">
-                        <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500">No activity recorded</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6">
+                          <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500">No activity recorded</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </TabsContent>
 
@@ -841,11 +1107,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       {tasks.map((task) => (
                         <div
                           key={task.id}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                          className={`flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors ${task.status === 'completed' ? 'bg-gray-50 opacity-75' : ''}`}
                         >
                           <div className="flex items-center gap-4">
-                            <input type="checkbox" className="h-5 w-5 rounded border-gray-300" />
-                            <div>
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-gray-300 cursor-pointer"
+                              checked={task.status === 'completed'}
+                              onChange={() => handleToggleTask(task.id, task.status)}
+                              disabled={taskUpdating === task.id}
+                            />
+                            <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
                               <p className="font-medium">{task.title}</p>
                               <p className="text-sm text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>
                             </div>
@@ -908,7 +1180,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             ) : (
                               <Badge className="bg-yellow-100 text-yellow-800">Pending Verification</Badge>
                             )}
-                            <Button variant="outline" size="sm">View</Button>
+                            <Button variant="outline" size="sm" onClick={() => handleViewDocument(doc)}>View</Button>
                           </div>
                         </div>
                       ))}
@@ -924,41 +1196,185 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               </Card>
             </TabsContent>
 
-            {/* History Tab */}
-            <TabsContent value="history" className="mt-6">
+            {/* Programs Tab */}
+            <TabsContent value="programs" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Activity History</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Program Enrollments</CardTitle>
+                    {canEdit && (
+                      <Button onClick={() => setShowProgramDialog(true)}>
+                        <Plus className="h-4 w-4 mr-2" /> New Enrollment
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  {activities.length > 0 ? (
+                  {enrollments.length > 0 ? (
                     <div className="space-y-4">
-                      {activities.map((item, index) => (
-                        <div key={item.id} className="flex gap-4">
-                          <div className="flex flex-col items-center">
-                            <div className="w-3 h-3 rounded-full bg-blue-500" />
-                            {index < activities.length - 1 && (
-                              <div className="w-0.5 h-full bg-gray-200 my-1" />
+                      {enrollments.map((enrollment) => (
+                        <Card key={enrollment.id} className="border">
+                          <CardContent className="pt-4">
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h4 className="font-bold text-lg">{enrollment.programs.name}</h4>
+                                <p className="text-sm text-gray-500">{enrollment.programs.category}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {canEdit ? (
+                                  <Select
+                                    value={enrollment.status}
+                                    onValueChange={async (newStatus) => {
+                                      if (newStatus !== enrollment.status) {
+                                        await updateEnrollmentStatus({
+                                          enrollmentId: enrollment.id,
+                                          clientId: clientId,
+                                          oldStatus: enrollment.status,
+                                          newStatus: newStatus
+                                        });
+                                        // Refresh enrollments
+                                        const result = await getClientEnrollments(clientId);
+                                        if (result.success) {
+                                          setEnrollments(result.data as Enrollment[]);
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[140px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="interested">Interested</SelectItem>
+                                      <SelectItem value="applying">Applying</SelectItem>
+                                      <SelectItem value="enrolled">Enrolled</SelectItem>
+                                      <SelectItem value="completed">Completed</SelectItem>
+                                      <SelectItem value="denied">Denied</SelectItem>
+                                      <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Badge className="capitalize">{enrollment.status.replace('_', ' ')}</Badge>
+                                )}
+                                {canEdit && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => handleRemoveEnrollment(enrollment.id)}
+                                  >
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                              <div>
+                                <span className="text-gray-400">Start Date:</span>
+                                <span className="ml-2">{enrollment.start_date ? new Date(enrollment.start_date).toLocaleDateString() : 'Not set'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Volunteer:</span>
+                                <span className="ml-2 text-blue-600">
+                                  {enrollment.volunteer ? `${enrollment.volunteer.first_name} ${enrollment.volunteer.last_name}` : 'Unassigned'}
+                                </span>
+                              </div>
+                            </div>
+                            {enrollment.notes && (
+                              <p className="mt-3 text-sm italic text-gray-500 border-t pt-2">{enrollment.notes}</p>
                             )}
-                          </div>
-                          <div className="flex-1 pb-4">
-                            <p className="font-medium capitalize">{item.action}</p>
-                            <p className="text-sm text-gray-500">
-                              {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
+                            {/* Activity Log Section */}
+                            <details className="mt-4 border-t pt-3">
+                              <summary className="text-sm font-medium cursor-pointer text-blue-600 hover:underline">
+                                View Activity Log
+                              </summary>
+                              <EnrollmentActivityLog enrollmentId={enrollment.id} />
+                            </details>
+                          </CardContent>
+                        </Card>
                       ))}
                     </div>
                   ) : (
                     <div className="text-center py-12">
-                      <Clock className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold">No Activity</h3>
-                      <p className="text-gray-500 mt-1">Activity will be recorded as changes are made</p>
+                      <TrendingUp className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold">No Enrollments</h3>
+                      <p className="text-gray-500 mt-1">Enroll this client in programs to track their progress</p>
                     </div>
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* History Tab */}
+            <TabsContent value="history" className="mt-6">
+              <div className="grid grid-cols-1 gap-6">
+                <Card className="print:hidden">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-lg font-bold">Case History & interactions</CardTitle>
+                    <div className="flex gap-2">
+                      <LogInteractionDialog
+                        clientId={clientId}
+                        clientName={`${client.first_name} ${client.last_name}`}
+                        onSuccess={refreshHistory}
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ClientHistory history={interactions} />
+                  </CardContent>
+                </Card>
+
+                {profile?.role === 'admin' && (
+                  <Card className="print:hidden">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-bold">System Audit Logs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {activities.length > 0 ? (
+                        <div className="space-y-4">
+                          {activities.map((item, index) => (
+                            <div key={item.id} className="flex gap-4">
+                              <div className="flex flex-col items-center">
+                                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                                {index < activities.length - 1 && (
+                                  <div className="w-0.5 h-full bg-gray-100 my-1" />
+                                )}
+                              </div>
+                              <div className="flex-1 pb-4">
+                                <p className="font-medium text-sm capitalize">{item.action}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6">
+                          <Clock className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500">No system activity recorded</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Printable Section - only shown when needed or in print */}
+                <div className="hidden print:block border-t pt-8 mt-8">
+                  <PrintableCaseHistory
+                    client={client}
+                    history={interactions}
+                    tasks={tasks}
+                  />
+                </div>
+
+                {/* Print Trigger Button */}
+                <div className="flex justify-center mt-4 print:hidden">
+                  <Button variant="outline" onClick={() => window.print()} className="gap-2">
+                    <Printer className="w-4 h-4" />
+                    Download/Print Case Summary
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
 
@@ -1115,6 +1531,103 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </Button>
                 <Button type="button" disabled={!uploadFile || uploading} onClick={handleUploadDocument}>
                   {uploading ? 'Uploading...' : 'Upload'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Program Enrollment Dialog */}
+          <Dialog open={showProgramDialog} onOpenChange={setShowProgramDialog}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Enroll in Program</DialogTitle>
+                <DialogDescription>
+                  Select a program from the catalog to enroll this client.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Program *</Label>
+                  <Select value={newEnrollment.programId} onValueChange={(val) => setNewEnrollment({ ...newEnrollment, programId: val })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availablePrograms.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} ({p.category})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={newEnrollment.status} onValueChange={(val) => setNewEnrollment({ ...newEnrollment, status: val })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="interested">Interested</SelectItem>
+                        <SelectItem value="applying">Applying</SelectItem>
+                        <SelectItem value="enrolled">Enrolled</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="denied">Denied</SelectItem>
+                        <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Assigned Volunteer</Label>
+                    <Select value={newEnrollment.volunteerId} onValueChange={(val) => setNewEnrollment({ ...newEnrollment, volunteerId: val })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select volunteer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {volunteers.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Start Date</Label>
+                    <Input
+                      type="date"
+                      value={newEnrollment.startDate}
+                      onChange={(e) => setNewEnrollment({ ...newEnrollment, startDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>End Date</Label>
+                    <Input
+                      type="date"
+                      value={newEnrollment.endDate}
+                      onChange={(e) => setNewEnrollment({ ...newEnrollment, endDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notes</Label>
+                  <Input
+                    placeholder="Any specific notes or requirements"
+                    value={newEnrollment.notes}
+                    onChange={(e) => setNewEnrollment({ ...newEnrollment, notes: e.target.value })}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowProgramDialog(false)} disabled={programLoading}>
+                  Cancel
+                </Button>
+                <Button onClick={handleUpsertEnrollment} disabled={programLoading}>
+                  {programLoading ? 'Saving...' : 'Enroll Client'}
                 </Button>
               </DialogFooter>
             </DialogContent>

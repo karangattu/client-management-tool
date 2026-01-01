@@ -27,10 +27,34 @@ import {
   AlertCircle,
   User,
   Check,
+  Printer,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
-import { completeTask } from '@/app/actions/tasks';
+import { completeTask, claimTask, assignTask } from '@/app/actions/tasks';
+import { getClientHistory, InteractionType } from '@/app/actions/history';
+import { getAllUsers } from '@/app/actions/users';
+import { ClientHistory } from '@/components/clients/ClientHistory';
+import { PrintableCaseHistory } from '@/components/clients/PrintableCaseHistory';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface Interaction {
+  id: string;
+  action_type: InteractionType;
+  title: string;
+  description?: string;
+  created_at: string;
+  profiles?: {
+    first_name: string;
+    last_name: string;
+  };
+}
 
 interface DashboardStats {
   totalClients: number;
@@ -49,13 +73,17 @@ interface Deadline {
   client_name?: string;
 }
 
-interface Activity {
+interface OpenTask {
   id: string;
-  action: string;
-  table_name?: string;
-  entity_type: string;
-  created_at: string;
-  details: Record<string, unknown>;
+  title: string;
+  description?: string;
+  priority: string;
+  due_date: string;
+  client_id?: string;
+  clients?: {
+    first_name: string;
+    last_name: string;
+  } | null;
 }
 
 interface ClientTask {
@@ -86,11 +114,14 @@ export default function DashboardPage() {
     unreadAlerts: 0,
   });
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [openTasksToClaim, setOpenTasksToClaim] = useState<OpenTask[]>([]);
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
+  const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
+  const [currentClient, setCurrentClient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -152,6 +183,16 @@ export default function DashboardPage() {
             pendingTasks: tasksData?.length || 0,
             upcomingEvents: eventsData?.length || 0,
           }));
+
+          // Fetch client interactions
+          const { data: historyData } = await getClientHistory(clientData.id);
+          if (historyData) {
+            setClientInteractions(historyData as Interaction[]);
+          }
+
+          // Store client data for printing
+          const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientData.id).single();
+          setCurrentClient(fullClient);
         }
 
         // Fetch unread alerts for client
@@ -173,7 +214,7 @@ export default function DashboardPage() {
           { count: upcomingEvents },
           { count: unreadAlerts },
           { data: deadlineData },
-          { data: activityData }
+          { data: openTasksData }
         ] = await Promise.all([
           supabase.from('clients').select('*', { count: 'exact', head: true }),
           supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
@@ -184,7 +225,9 @@ export default function DashboardPage() {
           supabase.from('tasks').select(`
             id, title, due_date, priority, clients (first_name, last_name)
           `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
-          supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(5)
+          supabase.from('tasks').select(`
+            id, title, description, priority, due_date, clients (first_name, last_name)
+          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10)
         ]);
 
         setStats({
@@ -213,8 +256,17 @@ export default function DashboardPage() {
           })));
         }
 
-        if (activityData) {
-          setActivities(activityData);
+        if (openTasksData) {
+          setOpenTasksToClaim(openTasksData as unknown as OpenTask[]);
+        }
+
+        // Fetch staff profiles for assignment
+        const usersResult = await getAllUsers();
+        if (usersResult.success && usersResult.data) {
+          const staffList = (usersResult.data as any[])
+            .filter(u => u.role !== 'client')
+            .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
+          setStaff(staffList);
         }
       }
     } catch (error) {
@@ -228,13 +280,38 @@ export default function DashboardPage() {
     try {
       const result = await completeTask(taskId);
       if (result.success) {
-        // Optimistically update UI or just refetch
         fetchDashboardData();
       } else {
         alert(result.error || "Failed to complete task");
       }
     } catch (error) {
       console.error("Error completing task:", error);
+    }
+  };
+
+  const handleClaimTask = async (taskId: string) => {
+    try {
+      const result = await claimTask(taskId);
+      if (result.success) {
+        fetchDashboardData();
+      } else {
+        alert(result.error || "Failed to claim task");
+      }
+    } catch (error) {
+      console.error("Error claiming task:", error);
+    }
+  };
+
+  const handleAssignTask = async (taskId: string, staffId: string) => {
+    try {
+      const result = await assignTask(taskId, staffId);
+      if (result.success) {
+        fetchDashboardData();
+      } else {
+        alert(result.error || "Failed to assign task");
+      }
+    } catch (error) {
+      console.error("Error assigning task:", error);
     }
   };
 
@@ -312,76 +389,8 @@ export default function DashboardPage() {
   const canViewAlerts = true; // Everyone can view their alerts
   const canViewAdmin = isAdmin;
 
-  const formatActivityAction = (activity: Activity) => {
-    // Map of custom actions to friendly names
-    const customActions: Record<string, string> = {
-      'client_created': 'Created new client',
-      'client_updated': 'Updated client profile',
-      'client_self_registration': 'New client self-registered',
-      'task_created': 'Created new task',
-      'task_completed': 'Completed a task',
-      'task_claimed': 'Claimed a task',
-      'task_archived': 'Archived a task',
-      'document_uploaded': 'Uploaded document',
-      'housing_application_created': 'Created housing application',
-    };
-
-    // Check for custom action first
-    if (customActions[activity.action]) {
-      return customActions[activity.action];
-    }
-
-    // Map table names to friendly entity names
-    const tableNames: Record<string, string> = {
-      'clients': 'client record',
-      'tasks': 'task',
-      'profiles': 'user profile',
-      'documents': 'document',
-      'calendar_events': 'calendar event',
-      'housing_applications': 'housing application',
-      'case_management': 'case details',
-      'alerts': 'alert',
-      'demographics': 'demographics',
-      'emergency_contacts': 'emergency contact',
-      'household_members': 'household member',
-    };
-
-    // Map raw SQL actions to friendly verbs
-    const actionVerbs: Record<string, string> = {
-      'INSERT': 'Created',
-      'UPDATE': 'Updated',
-      'DELETE': 'Deleted',
-    };
-
-    const verb = actionVerbs[activity.action] || activity.action;
-    const entity = activity.table_name ? (tableNames[activity.table_name] || activity.table_name) : 'record';
-
-    return `${verb} ${entity}`;
-  };
-
-  const formatEntityType = (activity: Activity) => {
-    // Map table names to friendly category names
-    const categories: Record<string, string> = {
-      'clients': 'Client Management',
-      'tasks': 'Tasks',
-      'profiles': 'User Management',
-      'documents': 'Documents',
-      'calendar_events': 'Calendar',
-      'housing_applications': 'Housing',
-      'case_management': 'Case Management',
-      'alerts': 'Notifications',
-    };
-
-    if (activity.table_name && categories[activity.table_name]) {
-      return categories[activity.table_name];
-    }
-    if (activity.entity_type && categories[activity.entity_type]) {
-      return categories[activity.entity_type];
-    }
-    return activity.table_name || activity.entity_type || 'System';
-  };
-
   const formatTimeAgo = (dateString: string) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -642,15 +651,6 @@ export default function DashboardPage() {
               badge={stats.openTasks}
             />
           )}
-          {canViewHousing && (
-            <NavigationTile
-              title={t('housing.title')}
-              description="Housing applications"
-              icon={Home}
-              href="/housing"
-              color="cyan"
-            />
-          )}
           {canViewDocuments && (
             <NavigationTile
               title={t('documents.title')}
@@ -786,6 +786,40 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Case History (Checkpoints) */}
+            <Card className="md:col-span-2 print:hidden">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                  My Case History & Progress
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2">
+                  <Printer className="w-4 h-4" />
+                  {t('common.print') || 'Print'}
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-4">
+                    {[1, 2].map(i => <Skeleton key={i} className="h-24" />)}
+                  </div>
+                ) : (
+                  <ClientHistory history={clientInteractions} isCompact />
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Printable View - only shown during print */}
+            <div className="hidden print:block md:col-span-2">
+              {currentClient && (
+                <PrintableCaseHistory
+                  client={currentClient}
+                  history={clientInteractions}
+                  tasks={clientTasks as any}
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -834,42 +868,75 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Recent Activity */}
+            {/* Open Tasks to Claim */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-blue-500" />
-                  Recent Activity
+                  <Hand className="h-5 w-5 text-blue-500" />
+                  Open Tasks to Claim
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-16" />
+                      <Skeleton className="h-20 w-full" key={i} />
                     ))}
                   </div>
-                ) : activities.length > 0 ? (
+                ) : openTasksToClaim.length > 0 ? (
                   <div className="space-y-3">
-                    {activities.map((activity) => (
+                    {openTasksToClaim.map((task) => (
                       <div
-                        key={activity.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                        key={task.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg group"
                       >
-                        <div>
-                          <p className="font-medium text-gray-900 text-sm">
-                            {formatActivityAction(activity)}
+                        <div className="flex-1 min-w-0 mr-4">
+                          <p className="font-medium text-gray-900 text-sm truncate">
+                            {task.title}
                           </p>
-                          <p className="text-xs text-gray-500">{formatEntityType(activity)}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {task.clients && (
+                              <span className="text-xs text-gray-400">
+                                {task.clients.first_name} {task.clients.last_name}
+                              </span>
+                            )}
+                            {task.due_date && (
+                              <span className="text-xs text-gray-400">
+                                • {new Date(task.due_date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-400">
-                          {formatTimeAgo(activity.created_at)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {getPriorityBadge(task.priority)}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-8 text-xs"
+                              onClick={() => handleClaimTask(task.id)}
+                            >
+                              Claim
+                            </Button>
+                            <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
+                              <SelectTrigger className="h-8 w-[100px] text-xs">
+                                <SelectValue placeholder="Assign" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {staff.map((s) => (
+                                  <SelectItem key={s.id} value={s.id} className="text-xs">
+                                    {s.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">No recent activity</p>
+                  <p className="text-gray-500 text-sm text-center py-4">No open tasks available</p>
                 )}
               </CardContent>
             </Card>

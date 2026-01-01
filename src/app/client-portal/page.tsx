@@ -31,45 +31,8 @@ import {
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
+import { US_STATES, ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 
-// Engagement Letter Content
-const engagementLetterContent = `
-ENGAGEMENT LETTER AND CONSENT FOR SERVICES
-
-Welcome to our Client Management Services. This letter outlines our agreement to provide services to you.
-
-SERVICES PROVIDED:
-We agree to provide the following services:
-• Case management and support services
-• Housing assistance and referrals
-• Benefits enrollment assistance
-• Document management and storage
-• Connection to community resources
-
-YOUR RESPONSIBILITIES:
-As a client, you agree to:
-• Provide accurate and truthful information
-• Notify us of any changes to your contact information
-• Attend scheduled appointments
-• Actively participate in your case plan
-
-CONFIDENTIALITY:
-All information you provide will be kept confidential in accordance with applicable privacy laws. Your information will only be shared with your written consent or as required by law.
-
-RELEASE OF INFORMATION:
-By signing this agreement, you authorize us to:
-• Collect and store your personal information
-• Share information with partner organizations as needed for your services
-• Contact you regarding your case and services
-
-DIGITAL SIGNATURE CONSENT:
-By providing your electronic signature below, you acknowledge that:
-• Your electronic signature has the same legal effect as a handwritten signature
-• You have read and understood this engagement letter
-• You consent to receive services as described above
-
-This agreement is effective upon signing and remains in effect until terminated by either party.
-`;
 
 export default function ClientPortalPage() {
   const { t } = useLanguage();
@@ -500,13 +463,21 @@ export default function ClientPortalPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="state">{t('clients.state')} *</Label>
-                    <Input
-                      id="state"
-                      name="state"
+                    <Select
                       value={formData.state}
-                      onChange={handleInputChange}
-                      placeholder={t('clients.state')}
-                    />
+                      onValueChange={(value) => handleSelectChange('state', value)}
+                    >
+                      <SelectTrigger id="state">
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {US_STATES.map((state) => (
+                          <SelectItem key={state.value} value={state.value}>
+                            {state.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -534,7 +505,7 @@ export default function ClientPortalPage() {
 
                 <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto bg-gray-50">
                   <pre className="whitespace-pre-wrap text-sm font-sans">
-                    {engagementLetterContent}
+                    {ENGAGEMENT_LETTER_TEXT}
                   </pre>
                 </div>
 

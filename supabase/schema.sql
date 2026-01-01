@@ -124,6 +124,9 @@ CREATE TABLE IF NOT EXISTS clients (
     has_portal_access BOOLEAN DEFAULT false,
     portal_user_id UUID REFERENCES auth.users(id),
     intake_completed_at TIMESTAMP WITH TIME ZONE,
+    -- Engagement Letter Tracking
+    signed_engagement_letter_at TIMESTAMP WITH TIME ZONE,
+    engagement_letter_version TEXT DEFAULT 'March 2024',
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -912,6 +915,97 @@ CREATE POLICY "Staff can manage documents" ON documents
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
     );
 
+-- Emergency Contacts policies
+DROP POLICY IF EXISTS "Staff can manage all emergency contacts" ON emergency_contacts;
+CREATE POLICY "Staff can manage all emergency contacts" ON emergency_contacts
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own emergency contacts" ON emergency_contacts;
+CREATE POLICY "Clients can view own emergency contacts" ON emergency_contacts
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = emergency_contacts.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Case Management policies
+DROP POLICY IF EXISTS "Staff can manage all case management" ON case_management;
+CREATE POLICY "Staff can manage all case management" ON case_management
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own case management" ON case_management;
+CREATE POLICY "Clients can view own case management" ON case_management
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = case_management.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Demographics policies
+DROP POLICY IF EXISTS "Staff can manage all demographics" ON demographics;
+CREATE POLICY "Staff can manage all demographics" ON demographics
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own demographics" ON demographics;
+CREATE POLICY "Clients can view own demographics" ON demographics
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = demographics.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Household Members policies
+DROP POLICY IF EXISTS "Staff can manage all household members" ON household_members;
+CREATE POLICY "Staff can manage all household members" ON household_members
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own household members" ON household_members;
+CREATE POLICY "Clients can view own household members" ON household_members
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = household_members.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Signature Requests policies
+DROP POLICY IF EXISTS "Staff can manage all signature requests" ON signature_requests;
+CREATE POLICY "Staff can manage all signature requests" ON signature_requests
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view/update own signature requests" ON signature_requests;
+CREATE POLICY "Clients can view/update own signature requests" ON signature_requests
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = signature_requests.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Housing Applications policies
+DROP POLICY IF EXISTS "Staff can manage all housing applications" ON housing_applications;
+CREATE POLICY "Staff can manage all housing applications" ON housing_applications
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own housing applications" ON housing_applications;
+CREATE POLICY "Clients can view own housing applications" ON housing_applications
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = housing_applications.client_id AND portal_user_id = auth.uid())
+    );
+
+-- Client History policies
+DROP POLICY IF EXISTS "Staff can manage all client history" ON client_history;
+CREATE POLICY "Staff can manage all client history" ON client_history
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own history" ON client_history;
+CREATE POLICY "Clients can view own history" ON client_history
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE id = client_history.client_id AND portal_user_id = auth.uid())
+    );
+
 -- Audit log - staff and admins can view
 DROP POLICY IF EXISTS "Staff and admins can view audit log" ON audit_log;
 CREATE POLICY "Staff and admins can view audit log" ON audit_log
@@ -929,3 +1023,186 @@ INSERT INTO housing_programs (name, description, program_type, max_capacity) VAL
     ('Rapid Re-Housing', 'Short-term rental assistance and services', 'RRH', 100),
     ('Transitional Housing', '2-year transitional housing program', 'TH', 25),
     ('Emergency Shelter', 'Emergency overnight shelter', 'Emergency', 200);
+
+-- ============================================
+-- MIGRATION: PROGRAMS & ENROLLMENTS
+-- ============================================
+
+-- 1. Create Programs table
+CREATE TABLE IF NOT EXISTS programs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL, -- e.g., 'Financial', 'Housing', 'Food', 'Health'
+    description TEXT,
+    requirements TEXT, -- Summary of eligibility
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 2. Create Program Enrollments table
+CREATE TABLE IF NOT EXISTS program_enrollments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    program_id UUID NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'interested', -- 'interested', 'applying', 'enrolled', 'completed', 'denied', 'withdrawn'
+    start_date DATE,
+    end_date DATE,
+    assigned_volunteer_id UUID REFERENCES profiles(id),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(client_id, program_id) -- Avoid duplicate enrollments in the same program
+);
+
+-- 3. Seed Programs from programs.pdf
+INSERT INTO programs (name, category, description, requirements) VALUES
+('General Assistance (GA)', 'Financial', 'Monthly cash aid for adults without dependent children.', 'Adult 18+, US citizen/qualified immigrant, asset limit <$500, income <$150/mo.'),
+('CalWORKs', 'Financial', 'Cash aid and services for families with children or pregnant women.', 'Low income, citizen/qualified immigrant, responsible for child <19.'),
+('Money Management', 'Financial', 'Support for bank accounts, budgeting, and credit repair.', 'Open to all seeking financial stability.'),
+('Homelessness Prevention', 'Housing', 'Rental assistance for those at risk of eviction.', 'Housed, low income, at risk of eviction.'),
+('CARE / FERA', 'Housing', 'Discounted utility rates for electricity and gas.', 'Income limits or receiving benefits (Medi-Cal, SSI, CalFresh).'),
+('AirBnB Temporary Housing', 'Housing', 'Temporary housing solutions for unhoused individuals.', 'Unhoused, stable income preferred.'),
+('Housing Solutions & Recertification', 'Housing', 'Assistance with finding housing or maintaining current status.', 'Open to unhoused or those requiring recertification.'),
+('CalFresh (Food Stamps)', 'Food', 'Monthly food assistance (EBT).', 'US citizen/qualified immigrant, meeting gross income limits.'),
+('CHIP', 'Health', 'Children''s Health Insurance Program for those under 19.', 'Under 19, household income limits. No citizenship requirement.'),
+('Dental Concerns', 'Health', 'Information and referral for dental care.', 'Open to those needing dental support.'),
+('ADSA', 'Disability', 'Assistance Dog Special Allowance for service dog care.', 'Disability, uses service dog, receiving SSI/SSDI/IHSS.'),
+('DP Parking Placard', 'Disability', 'Assistance applying for Disabled Person DMV placards.', 'Documented disability, valid ID.'),
+('Adult Education', 'Education', 'Support for attending or planning for school.', 'Open to adults seeking education.'),
+('Vital Documents', 'Legal', 'Assistance with Birth Certificates and Green Card replacements.', 'Open to those needing identification or residency docs.'),
+('Community Involvement', 'Community', 'Connecting clients with local resources and activities.', 'Open to all seeking community connection.')
+ON CONFLICT (name) DO UPDATE SET 
+    category = EXCLUDED.category,
+    description = EXCLUDED.description,
+    requirements = EXCLUDED.requirements;
+
+-- 4. Enable RLS
+ALTER TABLE programs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE program_enrollments ENABLE ROW LEVEL SECURITY;
+
+-- 5. Create Policies
+DROP POLICY IF EXISTS "Anyone can view active programs" ON programs;
+CREATE POLICY "Anyone can view active programs" ON programs
+    FOR SELECT USING (is_active = true);
+
+DROP POLICY IF EXISTS "Staff can manage program enrollments" ON program_enrollments;
+CREATE POLICY "Staff can manage program enrollments" ON program_enrollments
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );
+
+DROP POLICY IF EXISTS "Clients can view own enrollments" ON program_enrollments;
+CREATE POLICY "Clients can view own enrollments" ON program_enrollments
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM clients WHERE portal_user_id = auth.uid() AND id = program_enrollments.client_id)
+    );
+
+-- 6. Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_programs_updated_at ON programs;
+CREATE TRIGGER update_programs_updated_at BEFORE UPDATE ON programs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_enrollments_updated_at ON program_enrollments;
+CREATE TRIGGER update_enrollments_updated_at BEFORE UPDATE ON program_enrollments
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================
+-- MIGRATION: FIX DOCUMENT UPLOAD POLICIES
+-- ============================================
+
+-- Fix storage policies for client-documents bucket
+DO $$
+BEGIN
+    -- Drop existing policies first
+    DROP POLICY IF EXISTS "Staff can view client documents" ON storage.objects;
+    DROP POLICY IF EXISTS "Staff can upload client documents" ON storage.objects;
+    DROP POLICY IF EXISTS "Staff can update client documents" ON storage.objects;
+    
+    -- Re-create with 'volunteer' role included
+    CREATE POLICY "Staff can view client documents"
+    ON storage.objects FOR SELECT
+    USING (
+        bucket_id = 'client-documents' AND
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
+        )
+    );
+
+    CREATE POLICY "Staff can upload client documents"
+    ON storage.objects FOR INSERT
+    WITH CHECK (
+        bucket_id = 'client-documents' AND
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
+        )
+    );
+
+    CREATE POLICY "Staff can update client documents"
+    ON storage.objects FOR UPDATE
+    USING (
+        bucket_id = 'client-documents' AND
+        EXISTS (
+            SELECT 1 FROM profiles 
+            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
+        )
+    );
+EXCEPTION WHEN undefined_table THEN
+    NULL; -- Resume execution if storage.objects doesn't exist yet (unlikely in Supabase context)
+END $$;
+
+-- Fix documents table policies
+DROP POLICY IF EXISTS "Staff can view all documents" ON documents;
+CREATE POLICY "Staff can view all documents" ON documents
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );
+
+DROP POLICY IF EXISTS "Staff can manage documents" ON documents;
+CREATE POLICY "Staff can manage documents" ON documents
+    FOR ALL USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );
+
+-- Clients can insert their own documents
+DROP POLICY IF EXISTS "Clients can upload own documents" ON documents;
+CREATE POLICY "Clients can upload own documents" ON documents
+    FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM clients WHERE id = documents.client_id AND portal_user_id = auth.uid())
+    );
+
+-- ============================================
+-- MIGRATION: ENROLLMENT ACTIVITY LOG
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS program_enrollment_activity (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    enrollment_id UUID NOT NULL REFERENCES program_enrollments(id) ON DELETE CASCADE,
+    old_status TEXT,
+    new_status TEXT NOT NULL,
+    changed_by UUID REFERENCES profiles(id),
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrollment_activity_enrollment ON program_enrollment_activity(enrollment_id);
+CREATE INDEX IF NOT EXISTS idx_enrollment_activity_changed_at ON program_enrollment_activity(changed_at);
+
+-- RLS Policies
+ALTER TABLE program_enrollment_activity ENABLE ROW LEVEL SECURITY;
+
+-- Staff can view all enrollment activity
+DROP POLICY IF EXISTS "Staff can view enrollment activity" ON program_enrollment_activity;
+CREATE POLICY "Staff can view enrollment activity" ON program_enrollment_activity
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );
+
+-- Staff can insert enrollment activity
+DROP POLICY IF EXISTS "Staff can insert enrollment activity" ON program_enrollment_activity;
+CREATE POLICY "Staff can insert enrollment activity" ON program_enrollment_activity
+    FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+    );

@@ -409,7 +409,7 @@ function evaluateVAPension(formData: Partial<ClientIntakeForm>, isVeteran: boole
 
 function evaluateWIC(formData: Partial<ClientIntakeForm>, income: number, benefits: string[]): EligibilityResult {
     const receivesBenefits = benefits.some(b => ['medical', 'calfresh'].includes(b.toLowerCase()));
-    const hasYoungChildren = formData.household?.members?.some(m => getAge(m.dateOfBirth) < 5);
+    const hasYoungChildren = formData.household?.members?.some(m => getAge(m.dateOfBirth) < 5) || false;
     return {
         programId: 22,
         programName: PROGRAM_NAMES[22],

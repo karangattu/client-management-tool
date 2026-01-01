@@ -76,15 +76,52 @@ export async function completeTaskByTitle(clientId: string, title: string) {
     }
 }
 
-export async function completeTask(taskId: string) {
+export async function updateTaskStatus(taskId: string, status: TaskStatus, clientId?: string) {
     try {
         const supabase = await createClient();
+
+        const updateData: any = { status };
+        if (status === 'completed') {
+            updateData.completed_at = new Date().toISOString();
+        } else {
+            updateData.completed_at = null;
+        }
+
+        const { error } = await supabase
+            .from('tasks')
+            .update(updateData)
+            .eq('id', taskId);
+
+        if (error) throw error;
+
+        revalidatePath('/dashboard');
+        revalidatePath('/tasks');
+        if (clientId) revalidatePath(`/clients/${clientId}`);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating task status:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update task status" };
+    }
+}
+
+export async function completeTask(taskId: string) {
+    return updateTaskStatus(taskId, 'completed');
+}
+
+export async function claimTask(taskId: string) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) throw new Error("User not authenticated");
 
         const { error } = await supabase
             .from('tasks')
             .update({
-                status: 'completed',
-                completed_at: new Date().toISOString()
+                assigned_to: user.id,
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
             })
             .eq('id', taskId);
 
@@ -95,26 +132,32 @@ export async function completeTask(taskId: string) {
 
         return { success: true };
     } catch (error) {
-        console.error("Error completing task:", error);
-        return { success: false, error: error instanceof Error ? error.message : "Failed to complete task" };
+        console.error("Error claiming task:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to claim task" };
     }
 }
 
-export async function getClientTasks(clientId: string) {
+export async function assignTask(taskId: string, userId: string) {
     try {
         const supabase = await createClient();
 
-        const { data, error } = await supabase
+        const { error } = await supabase
             .from('tasks')
-            .select('*')
-            .eq('client_id', clientId)
-            .order('created_at', { ascending: false });
+            .update({
+                assigned_to: userId,
+                status: 'in_progress',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', taskId);
 
         if (error) throw error;
 
-        return { success: true, data };
+        revalidatePath('/dashboard');
+        revalidatePath('/tasks');
+
+        return { success: true };
     } catch (error) {
-        console.error("Error fetching client tasks:", error);
-        return { success: false, error: error instanceof Error ? error.message : "Failed to fetch tasks" };
+        console.error("Error assigning task:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to assign task" };
     }
 }

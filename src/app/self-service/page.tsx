@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { jsPDF } from "jspdf";
 import {
   FileText,
   CheckCircle,
@@ -36,49 +37,22 @@ import {
   AlertTriangle,
   Loader2,
   AlertCircle,
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  Calendar,
+  Lock,
+  ChevronRight,
+  ChevronLeft,
+  RotateCcw,
+  BadgeCheck
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 
-// Engagement Letter Content
-const engagementLetterContent = `
-ENGAGEMENT LETTER AND CONSENT FOR SERVICES
-
-Welcome to our Client Management Services. This letter outlines our agreement to provide services to you.
-
-SERVICES PROVIDED:
-We agree to provide the following services:
-• Case management and support services
-• Housing assistance and referrals
-• Benefits enrollment assistance
-• Document management and storage
-• Connection to community resources
-
-YOUR RESPONSIBILITIES:
-As a client, you agree to:
-• Provide accurate and truthful information
-• Notify us of any changes to your contact information
-• Attend scheduled appointments
-• Actively participate in your case plan
-
-CONFIDENTIALITY:
-All information you provide will be kept confidential in accordance with applicable privacy laws. Your information will only be shared with your written consent or as required by law.
-
-RELEASE OF INFORMATION:
-By signing this agreement, you authorize us to:
-• Collect and store your personal information
-• Share information with partner organizations as needed for your services
-• Contact you regarding your case and services
-
-DIGITAL SIGNATURE CONSENT:
-By providing your electronic signature below, you acknowledge that:
-• Your electronic signature has the same legal effect as a handwritten signature
-• You have read and understood this engagement letter
-• You consent to receive services as described above
-
-This agreement is effective upon signing and remains in effect until terminated by either party.
-`;
+import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 
 export default function SelfServiceIntakePage() {
   const { t } = useLanguage();
@@ -230,15 +204,48 @@ export default function SelfServiceIntakePage() {
     setError(null);
 
     try {
+      // Generate PDF if signature exists
+      let pdfData = undefined;
+      if (signature) {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20;
+        const contentWidth = pageWidth - (margin * 2);
+
+        doc.setFontSize(18);
+        doc.setFont("helvetica", "bold");
+        doc.text("ENGAGEMENT LETTER AND CONSENT FOR SERVICES", margin, 30);
+
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Client: ${formData.firstName} ${formData.lastName}`, margin, 45);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 52);
+
+        doc.setFontSize(10);
+        const splitText = doc.splitTextToSize(ENGAGEMENT_LETTER_TEXT, contentWidth);
+        doc.text(splitText, margin, 65);
+
+        const textLines = splitText.length;
+        const textHeight = textLines * 5;
+        const signatureY = Math.min(65 + textHeight + 20, 250);
+
+        doc.line(margin, signatureY, pageWidth - margin, signatureY);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("CLIENT SIGNATURE", margin, signatureY + 10);
+
+        doc.addImage(signature, 'PNG', margin, signatureY + 15, 60, 25);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        doc.text(`Digitally signed by ${formData.firstName} ${formData.lastName} on ${new Date().toLocaleString()}`, margin, signatureY + 45);
+
+        pdfData = doc.output('datauristring').split(',')[1];
+      }
+
       const result = await submitSelfServiceApplication({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: formData.phone,
-        dateOfBirth: formData.dateOfBirth,
-        password: formData.password,
-        preferredLanguage: formData.preferredLanguage,
+        ...formData,
         signature: signature || undefined,
+        pdfData
       });
 
       if (!result.success) {
@@ -246,7 +253,7 @@ export default function SelfServiceIntakePage() {
       }
 
       setSuccess(true);
-      
+
       // Redirect to profile completion after 3 seconds
       setTimeout(() => {
         router.push('/login?registered=true');
@@ -516,7 +523,7 @@ export default function SelfServiceIntakePage() {
 
                 <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto bg-gray-50">
                   <pre className="whitespace-pre-wrap text-sm font-sans">
-                    {engagementLetterContent}
+                    {ENGAGEMENT_LETTER_TEXT}
                   </pre>
                 </div>
 
@@ -554,32 +561,40 @@ export default function SelfServiceIntakePage() {
                 </div>
 
                 {signature ? (
-                  <div className="border rounded-lg p-4">
-                    <p className="text-sm text-gray-500 mb-2">Your Signature:</p>
-                    <div className="bg-white border rounded p-2 flex justify-center">
+                  <div className="border rounded-xl p-6 bg-white shadow-sm ring-1 ring-gray-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-medium text-gray-700">Digital Signature Captured</p>
+                      <BadgeCheck className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="bg-gray-50 border rounded-lg p-4 flex justify-center">
                       <Image src={signature} alt="Your signature" width={300} height={96} className="max-h-24 object-contain" />
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => {
-                        setSignature(null);
-                        setSignatureOpen(true);
-                      }}
-                    >
-                      Clear & Re-sign
-                    </Button>
+                    <div className="flex justify-between items-center mt-4">
+                      <p className="text-xs text-gray-500 italic">Signed on {new Date().toLocaleDateString()}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-500 hover:text-red-600 h-8 gap-1"
+                        onClick={() => {
+                          setSignature(null);
+                          setSignatureOpen(true);
+                        }}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Redraw
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-full h-24 border-2 border-dashed"
+                    className="w-full h-32 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all rounded-xl group"
                     onClick={() => setSignatureOpen(true)}
                   >
                     <div className="flex flex-col items-center">
-                      <PenLine className="h-8 w-8 text-gray-400 mb-2" />
-                      <span>Click to sign</span>
+                      <PenLine className="h-10 w-10 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" />
+                      <span className="font-medium text-gray-600 group-hover:text-blue-600">Click to sign engagement letter</span>
+                      <p className="text-xs text-gray-400 mt-1">Draw using mouse or touch</p>
                     </div>
                   </Button>
                 )}

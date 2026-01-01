@@ -26,6 +26,7 @@ import {
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { uploadProfilePicture } from '@/lib/supabase/storage';
+import { US_STATES } from '@/lib/constants';
 
 interface ClientData {
   first_name: string;
@@ -428,12 +429,21 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <div className="space-y-2">
                   <Label>State</Label>
-                  <Input
+                  <Select
                     value={clientData.state}
-                    onChange={(e) => handleChange('state', e.target.value)}
-                    placeholder="State"
-                    maxLength={2}
-                  />
+                    onValueChange={(value) => handleChange('state', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {US_STATES.map((state) => (
+                        <SelectItem key={state.value} value={state.value}>
+                          {state.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>ZIP Code</Label>

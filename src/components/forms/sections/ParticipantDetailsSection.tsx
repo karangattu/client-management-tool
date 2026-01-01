@@ -11,8 +11,6 @@ import type { ClientIntakeForm } from "@/lib/schemas/validation";
 export function ParticipantDetailsSection() {
   const { watch, setValue } = useFormContext<ClientIntakeForm>();
   const dateOfBirth = watch("participantDetails.dateOfBirth");
-  const addressNotListed = watch("participantDetails.addressNotListed");
-
   const age = dateOfBirth ? calculateAge(new Date(dateOfBirth)) : null;
 
   const handlePhoneChange = useCallback(
@@ -152,19 +150,13 @@ export function ParticipantDetailsSection() {
           <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
             Address Information
           </h4>
-          
-          <FormField
-            name="participantDetails.addressNotListed"
-            label="Manual Address Entry"
-            type="checkbox"
-            tooltip="Check this to enable manual address entry"
-          />
+
 
           <FormField
             name="participantDetails.streetAddress"
             label="Street Address"
             placeholder="123 Main Street, Apt 4B"
-            required={!addressNotListed}
+            required
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

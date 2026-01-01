@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 interface SelfServiceFormData {
   firstName: string;
@@ -15,6 +15,7 @@ interface SelfServiceFormData {
   zipCode?: string;
   preferredLanguage?: string;
   signature?: string;
+  pdfData?: string;
 }
 
 interface SaveResult {
@@ -30,7 +31,16 @@ export async function submitSelfServiceApplication(
   try {
     const supabase = await createClient();
 
-    // Create the user account
+    // Attempt to use service role for admin operations, fallback to regular client if not available
+    let db: any = supabase;
+    try {
+      db = createServiceClient();
+    } catch (e) {
+      console.warn("SUPABASE_SERVICE_ROLE_KEY not available, falling back to regular client. Database operations may fail due to RLS.");
+    }
+
+    // Create the user account using the standard client
+    // This ensures verification emails are sent and cookies are handled
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
@@ -48,8 +58,11 @@ export async function submitSelfServiceApplication(
       throw new Error("User creation failed");
     }
 
-    // Create profile entry (required for auth context)
-    const { error: profileError } = await supabase.from("profiles").insert({
+    // Use 'db' (service role or regular client) for database operations
+    // Note: if using regular client, RLS policies must allow the new user to create these records.
+
+    // Create profile entry
+    const { error: profileError } = await db.from("profiles").insert({
       id: authData.user.id,
       email: formData.email,
       first_name: formData.firstName,
@@ -62,7 +75,7 @@ export async function submitSelfServiceApplication(
     if (profileError) throw profileError;
 
     // Create client record
-    const { data: clientData, error: clientError } = await supabase
+    const { data: clientData, error: clientError } = await db
       .from("clients")
       .insert({
         portal_user_id: authData.user.id,
@@ -85,7 +98,7 @@ export async function submitSelfServiceApplication(
     if (clientError) throw clientError;
 
     // Create case_management record with preferred language
-    const { error: caseError } = await supabase.from("case_management").insert({
+    const { error: caseError } = await db.from("case_management").insert({
       client_id: clientData.id,
       primary_language: formData.preferredLanguage || "English",
       housing_status: "unknown",
@@ -101,7 +114,7 @@ export async function submitSelfServiceApplication(
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 7);
 
-    const { error: taskError } = await supabase.from("tasks").insert({
+    const { error: taskError } = await db.from("tasks").insert({
       title: "Complete Full Intake Form",
       description: "Please complete all 7 sections of the intake form to help us process your case. This is an essential step for receiving support.",
       client_id: clientData.id,
@@ -118,30 +131,82 @@ export async function submitSelfServiceApplication(
       console.error("Error creating profile completion task:", taskError);
     }
 
-    // Store signature if available
-    if (formData.signature) {
+    // Create a task for STAFF to perform outreach (unassigned so anyone can claim)
+    await db.from("tasks").insert({
+      title: "Outreach: New Self-Registration",
+      description: `New client ${formData.firstName} ${formData.lastName} has self-registered. Please perform initial outreach and verify their information.`,
+      client_id: clientData.id,
+      assigned_to: null, // Unassigned
+      status: "pending",
+      priority: "high",
+      due_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Due in 24 hours
+      created_by: authData.user.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    // Store signature and PDF document if available
+    if (formData.pdfData) {
       try {
-        const base64Data = formData.signature.split(",")[1];
-        const blob = Buffer.from(base64Data, "base64");
+        const timestamp = Date.now();
+        const signatureFileName = `${authData.user.id}/engagement-letter-${timestamp}-sig.png`;
+        const documentFileName = `engagement-letter-${timestamp}.pdf`;
+        const documentFilePath = `${clientData.id}/consent/${documentFileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("signatures")
-          .upload(
-            `${authData.user.id}/engagement-letter-${Date.now()}.png`,
-            blob,
-            { contentType: "image/png" }
-          );
-
-        if (uploadError) {
-          console.error("Signature upload error:", uploadError);
+        // 1. Upload signature image (if provided)
+        if (formData.signature) {
+          const base64Signature = formData.signature.split(',')[1];
+          const signatureBuffer = Buffer.from(base64Signature, 'base64');
+          await db.storage
+            .from('signatures')
+            .upload(signatureFileName, signatureBuffer, {
+              contentType: 'image/png',
+              upsert: true
+            });
         }
+
+        // 2. Upload PDF document
+        const pdfBuffer = Buffer.from(formData.pdfData, 'base64');
+        const { error: docUploadError } = await db.storage
+          .from('client-documents')
+          .upload(documentFilePath, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (docUploadError) throw docUploadError;
+
+        // 3. Record in documents table
+        const { error: dbError } = await db.from('documents').insert({
+          client_id: clientData.id,
+          file_name: documentFileName,
+          document_type: 'engagement_letter',
+          file_path: documentFilePath,
+          file_size: pdfBuffer.length,
+          mime_type: 'application/pdf',
+          description: 'Signed Engagement Letter (Self-registration)',
+          is_verified: true,
+          uploaded_by: authData.user.id
+        });
+
+        if (dbError) console.error("Error creating document record:", dbError);
+
+        // 4. Update client status to record signature time and version
+        await db
+          .from('clients')
+          .update({
+            signed_engagement_letter_at: new Date().toISOString(),
+            engagement_letter_version: 'March 2024'
+          })
+          .eq('id', clientData.id);
+
       } catch (sigError) {
-        console.error("Error processing signature:", sigError);
+        console.error("Error processing signature and document:", sigError);
       }
     }
 
     // Create audit log entry
-    await supabase.from("audit_log").insert({
+    await db.from("audit_log").insert({
       user_id: authData.user.id,
       action: "client_self_registration",
       table_name: "clients",

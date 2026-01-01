@@ -45,9 +45,12 @@ import {
   Hand,
   Archive,
   Loader2,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { assignTask } from '@/app/actions/tasks';
+import { getAllUsers } from '@/app/actions/users';
 
 interface Task {
   id: string;
@@ -85,6 +88,7 @@ function TasksContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
 
   const [newTask, setNewTask] = useState({
     title: '',
@@ -100,8 +104,19 @@ function TasksContent() {
   useEffect(() => {
     fetchTasks();
     fetchClients();
+    fetchStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchStaff = async () => {
+    const result = await getAllUsers();
+    if (result.success && result.data) {
+      const staffList = (result.data as any[])
+        .filter(u => u.role !== 'client')
+        .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
+      setStaff(staffList);
+    }
+  };
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -242,6 +257,19 @@ function TasksContent() {
       fetchTasks();
     } catch (err) {
       console.error('Error archiving task:', err);
+    }
+  };
+
+  const handleAssignTask = async (taskId: string, staffId: string) => {
+    try {
+      const result = await assignTask(taskId, staffId);
+      if (result.success) {
+        fetchTasks();
+      } else {
+        alert(result.error || "Failed to assign task");
+      }
+    } catch (err) {
+      console.error('Error assigning task:', err);
     }
   };
 
@@ -676,8 +704,8 @@ function TasksContent() {
                   <div
                     key={task.id}
                     className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${task.assigned_to === null && task.status === 'pending'
-                        ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
-                        : 'hover:bg-gray-50'
+                      ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
+                      : 'hover:bg-gray-50'
                       }`}
                   >
                     <div className="mt-1">
@@ -724,16 +752,30 @@ function TasksContent() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* Claim button for open tasks */}
+                      {/* Claim and Assign buttons for open tasks */}
                       {canClaimTasks && !task.assigned_to && task.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          className="bg-purple-600 hover:bg-purple-700"
-                          onClick={() => handleClaimTask(task.id)}
-                        >
-                          <Hand className="h-4 w-4 mr-1" />
-                          Claim
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={() => handleClaimTask(task.id)}
+                          >
+                            <Hand className="h-4 w-4 mr-1" />
+                            Claim
+                          </Button>
+                          <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
+                            <SelectTrigger className="h-9 w-[110px] text-xs">
+                              <SelectValue placeholder="Assign" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {staff.map((s) => (
+                                <SelectItem key={s.id} value={s.id} className="text-xs">
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       )}
 
                       {/* Complete button for assigned tasks */}

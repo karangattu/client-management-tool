@@ -15,7 +15,6 @@ export const participantDetailsSchema = z.object({
   state: z.string().min(1, "State is required"),
   county: z.string().optional(),
   zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, "Please enter a valid ZIP code"),
-  addressNotListed: z.boolean().optional(),
 });
 
 // Emergency Contact Schema
@@ -112,7 +111,6 @@ export const defaultParticipantDetails: ParticipantDetails = {
   state: "",
   county: "",
   zipCode: "",
-  addressNotListed: false,
 };
 
 export const defaultEmergencyContact: EmergencyContact = {
