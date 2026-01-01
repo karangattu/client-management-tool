@@ -769,10 +769,16 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       </div>
                     </div>
                     {canEdit && (
-                      <Button onClick={() => router.push(`/clients/${client.id}/edit`)}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit Profile
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => router.push(`/clients/${client.id}/edit`)}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Quick Edit
+                        </Button>
+                        <Button onClick={() => router.push(`/clients/${client.id}/edit-intake`)}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Edit Full Intake
+                        </Button>
+                      </div>
                     )}
                   </div>
 
@@ -1002,9 +1008,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                   <div className="flex items-center justify-between">
                     <CardTitle>Intake Information</CardTitle>
                     {canEdit && (
-                      <Button variant="outline" onClick={() => router.push(`/clients/${client.id}/edit`)}>
-                        <Edit className="h-4 w-4 mr-2" /> Edit Intake
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => router.push(`/clients/${client.id}/edit`)}>
+                          <Edit className="h-4 w-4 mr-2" /> Quick Edit
+                        </Button>
+                        <Button onClick={() => router.push(`/clients/${client.id}/edit-intake`)}>
+                          <FileText className="h-4 w-4 mr-2" /> Edit Full Intake
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </CardHeader>

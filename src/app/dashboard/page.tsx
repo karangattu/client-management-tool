@@ -478,8 +478,11 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Profile Completion Prompt - Show if there are pending profile tasks */}
-            {clientTasks.some(task => task.title.toLowerCase().includes('profile')) && (
+            {/* Profile Completion Prompt - Show if there are pending profile/intake tasks */}
+            {clientTasks.some(task => 
+              task.title.toLowerCase().includes('profile') || 
+              task.title.toLowerCase().includes('intake')
+            ) && (
               <Card className="border-amber-200 bg-amber-50">
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start gap-3">

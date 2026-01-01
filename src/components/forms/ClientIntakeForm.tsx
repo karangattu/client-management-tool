@@ -183,34 +183,48 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
 
   const validateCurrentStep = async () => {
     const fieldsToValidate = getFieldsForStep(currentStep);
-    const isValid = await trigger(fieldsToValidate as (keyof ClientIntakeFormType)[]);
-    return isValid;
+    if (fieldsToValidate.length === 0) return true;
+    
+    try {
+      const isValid = await trigger(fieldsToValidate as (keyof ClientIntakeFormType)[]);
+      return isValid;
+    } catch (error) {
+      console.error("Validation error:", error);
+      return false;
+    }
   };
 
   const getFieldsForStep = (step: number): string[] => {
     switch (step) {
-      case 0:
+      case 0: // Personal Info
         return ["participantDetails"];
-      case 1:
+      case 1: // Emergency Contact
         return ["emergencyContacts"];
-      case 2:
-        return ["demographics"];
-      case 3:
+      case 2: // Demographics
+        return ["demographics.race", "demographics.genderIdentity", "demographics.ethnicity", "demographics.maritalStatus", "demographics.language"];
+      case 3: // Household
         return ["household"];
-      case 4:
-        return ["demographics"];
-      case 5:
-        return ["caseManagement"];
-      case 6:
-        return ["caseManagement"];
+      case 4: // Financial
+        return ["demographics.employmentStatus", "demographics.monthlyIncome", "demographics.incomeSource", "demographics.veteranStatus", "demographics.disabilityStatus"];
+      case 5: // Benefits & Health
+        return ["caseManagement.healthInsurance", "caseManagement.healthInsuranceType", "caseManagement.nonCashBenefits", "caseManagement.healthStatus"];
+      case 6: // Case Details
+        return ["caseManagement.clientManager", "caseManagement.clientStatus", "caseManagement.housingStatus", "caseManagement.primaryLanguage"];
       default:
         return [];
     }
   };
 
-  const handleNext = async () => {
+  const handleNext = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (currentStep >= FORM_STEPS.length - 1) {
+      return; // Don't proceed if on last step
+    }
+    
     const isValid = await validateCurrentStep();
-    if (isValid && currentStep < FORM_STEPS.length - 1) {
+    if (isValid) {
       setCurrentStep(currentStep + 1);
       saveDraft();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -225,12 +239,23 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
   };
 
   const handleStepClick = async (stepIndex: number) => {
+    // Allow going back to any previous step freely
     if (stepIndex < currentStep) {
       setCurrentStep(stepIndex);
-    } else if (stepIndex === currentStep + 1) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } 
+    // Allow going to next step only if current step is valid
+    else if (stepIndex === currentStep + 1) {
       const isValid = await validateCurrentStep();
       if (isValid) {
         setCurrentStep(stepIndex);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        toast({
+          title: "Please complete this step",
+          description: "Fix any errors before proceeding to the next step.",
+          variant: "destructive",
+        });
       }
     }
   };
@@ -283,9 +308,20 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
 
   const progress = ((currentStep + 1) / FORM_STEPS.length) * 100;
 
+  // Prevent form submission on Enter key (except on last step)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && currentStep < FORM_STEPS.length - 1) {
+      e.preventDefault();
+    }
+  };
+
   return (
     <FormProvider {...methods}>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form 
+        onSubmit={handleSubmit(onSubmit)} 
+        onKeyDown={handleKeyDown}
+        className="space-y-6"
+      >
         {/* Progress Header */}
         <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b pb-4">
           <div className="flex items-center justify-between mb-4">
