@@ -446,10 +446,20 @@ export default function DashboardPage() {
               {profile.role.replace('_', ' ')}
             </Badge>
           </div>
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            {t('auth.signOut')}
-          </Button>
+          <div className="flex gap-2">
+            {canCreateIntake && (
+              <Button asChild className="bg-green-600 hover:bg-green-700">
+                <NextLink href="/client-intake">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {t('dashboard.newIntake')}
+                </NextLink>
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              {t('auth.signOut')}
+            </Button>
+          </div>
         </div>
 
         {/* Client-specific: Language Selector and Profile Completion Prompt */}
@@ -612,15 +622,6 @@ export default function DashboardPage() {
               badge={stats.totalClients > 0 ? stats.totalClients : undefined}
             />
           )}
-          {canCreateIntake && (
-            <NavigationTile
-              title={t('dashboard.newIntake')}
-              description="Start a new client intake"
-              icon={UserPlus}
-              href="/client-intake"
-              color="green"
-            />
-          )}
           {canViewCalendar && (
             <NavigationTile
               title={t('calendar.title')}
@@ -658,16 +659,6 @@ export default function DashboardPage() {
               icon={FileText}
               href="/documents"
               color="amber"
-            />
-          )}
-          {canViewAlerts && (
-            <NavigationTile
-              title="Alerts"
-              description="Notifications & reminders"
-              icon={Bell}
-              href="/alerts"
-              color="red"
-              badge={stats.unreadAlerts > 0 ? stats.unreadAlerts : undefined}
             />
           )}
           {canViewAdmin && (
