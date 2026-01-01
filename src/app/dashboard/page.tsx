@@ -27,7 +27,7 @@ import {
   User,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
-
+import { useLanguage } from '@/lib/language-context';
 
 interface DashboardStats {
   totalClients: number;
@@ -87,6 +87,8 @@ export default function DashboardPage() {
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!authLoading && !user) {
