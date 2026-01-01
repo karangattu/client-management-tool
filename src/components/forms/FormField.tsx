@@ -250,7 +250,13 @@ export function FormField({
         max={max}
         className={cn(error && "border-destructive", inputClassName)}
         {...register(name, {
-          valueAsNumber: type === "number",
+          setValueAs: type === "number" 
+            ? (v: string | number | null | undefined) => {
+                if (v === "" || v === undefined || v === null) return null;
+                const num = Number(v);
+                return Number.isNaN(num) ? null : num;
+              }
+            : undefined,
         })}
       />
       {renderError()}
