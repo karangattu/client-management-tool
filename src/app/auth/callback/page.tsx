@@ -31,11 +31,29 @@ export default function AuthCallbackPage() {
           setStatus('success');
           setMessage('Email verified successfully!');
 
-          // Redirect to dashboard after a short delay
-          setTimeout(() => {
-            router.push('/dashboard');
-            router.refresh();
-          }, 2000);
+          // Check if user is a client or staff and redirect appropriately
+          const checkUserTypeAndRedirect = async () => {
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', data.session.user.id)
+                .single();
+              
+              if (profile?.role === 'client') {
+                router.push('/my-portal');
+              } else {
+                router.push('/dashboard');
+              }
+              router.refresh();
+            } catch (error) {
+              console.error('Error checking user role:', error);
+              router.push('/dashboard');
+              router.refresh();
+            }
+          };
+
+          setTimeout(checkUserTypeAndRedirect, 2000);
         } else {
           // No session found - might be a new signup that needs login
           setStatus('success');
