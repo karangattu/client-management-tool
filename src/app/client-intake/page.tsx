@@ -24,19 +24,37 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
   if (!resolvedClientId) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // Get the client record for this user
-      const { data: clientData, error } = await supabase
-        .from('clients')
-        .select('id')
-        .eq('portal_user_id', user.id)
+
+    // If not authenticated, send to login so staff/volunteers can sign in and create an intake
+    if (!user) {
+      // Preserve intended destination so user can come back after sign in
+      redirect('/login?redirect=/client-intake');
+    } else {
+      // Fetch profile role to decide behavior
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
         .single();
-      
-      if (clientData) {
-        resolvedClientId = clientData.id;
-        showBackButton = false; // Clients should go back to their portal
+
+      const role = (profile as any)?.role as string | undefined;
+
+      if (role === 'client') {
+        // Client users should go to their portal if they don't have a client record
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('portal_user_id', user.id)
+          .single();
+
+        if (clientData) {
+          resolvedClientId = clientData.id;
+          showBackButton = false; // Clients should go back to their portal
+        } else {
+          redirect('/client-portal');
+        }
       }
+      // For staff/admin/case_manager roles, allow opening a blank intake to create a new client
     }
   }
 
@@ -50,10 +68,7 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
     }
   }
 
-  // If no client found, redirect to client portal
-  if (!resolvedClientId) {
-    redirect('/client-portal');
-  }
+  // If no clientId, staff/admin/case_manager can create a new client with undefined initialData
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">

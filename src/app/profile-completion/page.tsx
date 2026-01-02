@@ -76,21 +76,19 @@ export default function ProfileCompletionPage() {
   return (
     <div className="min-h-screen bg-muted/30">
       <AppHeader />
-      <main className="container max-w-5xl py-8">
-        <div className="mb-8 px-4 sm:px-0">
+      <main className="container max-w-4xl mx-auto py-8 px-4">
+        <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Complete Your Profile</h1>
           <p className="text-muted-foreground mt-2">
             Please provide your details to help us serve you better. This information will only be used by our team to manage your case.
           </p>
         </div>
 
-        <div className="px-4 sm:px-0">
-          <ClientIntakeForm
-            initialData={initialData}
-            clientId={clientId}
-            showStaffFields={false}
-          />
-        </div>
+        <ClientIntakeForm
+          initialData={initialData}
+          clientId={clientId}
+          showStaffFields={false}
+        />
       </main>
     </div>
   );

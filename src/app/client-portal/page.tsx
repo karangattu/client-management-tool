@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
 import { US_STATES, ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
@@ -45,6 +47,11 @@ export default function ClientPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const router = useRouter();
+
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -79,6 +86,26 @@ export default function ClientPortalPage() {
       }
     }
   }, [signatureOpen]);
+
+  // Fetch current user and verification status so we can show CTA and auto-redirect
+  useEffect(() => {
+    const supabase = createClient();
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser(user);
+          setIsVerified(!!user.email_confirmed_at);
+        } else {
+          setCurrentUser(null);
+          setIsVerified(false);
+        }
+      } catch (err) {
+        setCurrentUser(null);
+        setIsVerified(false);
+      }
+    })();
+  }, []);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
@@ -211,6 +238,15 @@ export default function ClientPortalPage() {
       }
 
       setSuccess(true);
+
+      // If the new user is already verified (rare), redirect them to complete profile
+      if (result.userId) {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && user.email_confirmed_at) {
+          router.push('/profile-completion');
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
@@ -229,13 +265,33 @@ export default function ClientPortalPage() {
               </div>
             </div>
             <h2 className="text-2xl font-bold mb-2">Registration Complete!</h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-4">
               Thank you for registering. Please check your email to verify your account.
               A case manager will review your information and contact you soon.
             </p>
-            <Link href="/login">
-              <Button>Go to Login</Button>
-            </Link>
+            <p className="text-sm text-gray-500 mb-6">
+              After verifying your email, you'll be able to complete your full profile with additional details (demographics, household, finances, and health).
+            </p>
+
+            <div className="flex gap-3 justify-center">
+              <Link href="/login">
+                <Button variant="outline">Go to Login</Button>
+              </Link>
+
+              {/* Direct link to profile completion - will prompt login if necessary */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/profile-completion">
+                      <Button>Complete Your Profile</Button>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -271,6 +327,24 @@ export default function ClientPortalPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold">{t('clientPortal.title')}</h1>
           <p className="text-gray-600 mt-1">{t('clientPortal.description')}</p>
+
+          {/* CTA for logged-in, verified clients to complete full profile */}
+          {currentUser && isVerified && (
+            <div className="mt-4">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/profile-completion">
+                      <Button variant="ghost">Complete your full profile</Button>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Complete the full intake (demographics, household, finances, and health) to finish your profile.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
         </div>
 
         {/* Progress */}

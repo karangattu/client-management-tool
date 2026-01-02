@@ -118,6 +118,7 @@ export default function DashboardPage() {
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
   const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
+  const [clientDocuments, setClientDocuments] = useState<any[]>([]);
   const [currentClient, setCurrentClient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
@@ -125,7 +126,11 @@ export default function DashboardPage() {
   const { t } = useLanguage();
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
       router.push('/login');
       return;
     }
@@ -193,6 +198,18 @@ export default function DashboardPage() {
           // Store client data for printing
           const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientData.id).single();
           setCurrentClient(fullClient);
+
+          // Fetch documents for this client
+          const { data: docsData } = await supabase
+            .from('documents')
+            .select('id, file_name, document_type, status, created_at, file_path')
+            .eq('client_id', clientData.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          if (docsData) {
+            setClientDocuments(docsData);
+          }
         }
 
         // Fetch unread alerts for client
@@ -320,7 +337,8 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  if (authLoading) {
+  // Show loading state while auth is loading
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Dashboard" showBackButton={false} />
@@ -777,6 +795,56 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <p className="text-gray-500 text-sm text-center py-4">{t('dashboard.noAppointments')}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* My Documents */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-amber-500" />
+                  My Documents
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-12" />
+                    ))}
+                  </div>
+                ) : clientDocuments.length > 0 ? (
+                  <div className="space-y-2">
+                    {clientDocuments.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <FileText className="h-4 w-4 text-amber-600 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 text-sm truncate">{doc.file_name}</p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(doc.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 ml-2">
+                          {doc.document_type?.replace(/_/g, ' ') || 'Document'}
+                        </Badge>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-400 mt-4 text-center">
+                      Your documents are securely stored
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm text-center py-6">No documents yet</p>
                 )}
               </CardContent>
             </Card>

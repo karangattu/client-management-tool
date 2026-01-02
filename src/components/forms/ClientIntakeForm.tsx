@@ -42,6 +42,8 @@ import {
   HeartPulse,
   LayoutDashboard,
   Sparkles,
+  Edit,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -308,6 +310,17 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
 
   const progress = ((currentStep + 1) / FORM_STEPS.length) * 100;
 
+  // Compute subtitle for new vs edit intake
+  const isEdit = !!clientId;
+  const clientName = initialData?.participantDetails
+    ? `${initialData.participantDetails.firstName} ${initialData.participantDetails.lastName}`.trim()
+    : "";
+  const subtitle = isEdit
+    ? clientName
+      ? `Editing intake for ${clientName}`
+      : "Editing existing client intake"
+    : "Create a new client intake (staff/admin only)";
+
   // Prevent form submission on Enter key (except on last step)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && currentStep < FORM_STEPS.length - 1) {
@@ -327,6 +340,17 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold">Client Intake Form</h1>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                {isEdit ? (
+                  <Edit className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Plus className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="truncate">{subtitle}</span>
+              </p>
+              {!isEdit && (
+                <p className="text-xs text-muted-foreground mt-1">Staff/volunteers: You can create a client record on behalf of someone who cannot self-register.</p>
+              )}
               <p className="text-sm text-muted-foreground">
                 Step {currentStep + 1} of {FORM_STEPS.length}
               </p>

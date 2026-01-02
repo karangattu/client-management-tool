@@ -84,9 +84,16 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
                                         <div className="flex flex-col gap-1 pr-2 min-w-0 flex-1">
-                                            <span className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-green-700 transition-colors line-clamp-2">
-                                                {r.programName}
-                                            </span>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-green-700 transition-colors line-clamp-2 cursor-help">
+                                                        {r.programName}
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="text-xs leading-relaxed">{r.eligibilityReason}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
                                             {r.metConditions.length > 0 && (
                                                 <div className="flex flex-wrap gap-1 mt-0.5">
                                                     <Badge variant="secondary" className="bg-green-50 text-[9px] text-green-700 border-none px-1.5 h-4">
@@ -137,20 +144,26 @@ export function EligibilityPanel({ results, className }: EligibilityPanelProps) 
                                 <div className="space-y-3 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
                                     <div className="grid gap-2">
                                         {potential.map((r) => (
-                                            <div
-                                                key={r.programId}
-                                                className="group flex items-center justify-between p-3 rounded-lg bg-slate-50/50 border border-slate-100 hover:bg-amber-50/30 transition-colors"
-                                            >
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="text-xs font-medium text-slate-700">
-                                                        {r.programName}
-                                                    </span>
-                                                    <span className="text-[10px] text-amber-600/80 font-medium">
-                                                        Needs info
-                                                    </span>
-                                                </div>
-                                                <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
-                                            </div>
+                                            <Tooltip key={r.programId}>
+                                                <TooltipTrigger asChild>
+                                                    <div
+                                                        className="group flex items-center justify-between p-3 rounded-lg bg-slate-50/50 border border-slate-100 hover:bg-amber-50/30 transition-colors cursor-help"
+                                                    >
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-xs font-medium text-slate-700">
+                                                                {r.programName}
+                                                            </span>
+                                                            <span className="text-[10px] text-amber-600/80 font-medium">
+                                                                Needs info
+                                                            </span>
+                                                        </div>
+                                                        <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left" className="max-w-xs">
+                                                    <p className="text-xs leading-relaxed">{r.eligibilityReason}</p>
+                                                </TooltipContent>
+                                            </Tooltip>
                                         ))}
                                     </div>
                                     <p className="text-[10px] text-muted-foreground italic leading-relaxed px-1">

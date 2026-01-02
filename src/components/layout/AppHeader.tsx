@@ -2,7 +2,9 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronLeft, Menu, X, Bell, User, LogOut } from 'lucide-react';
-import { useState } from 'react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,8 +38,35 @@ export function AppHeader({
   const pathname = usePathname();
   const { profile, loading: authLoading, signOut } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [clientIntakeIncomplete, setClientIntakeIncomplete] = useState<boolean | null>(null);
 
   const isHomePage = pathname === '/' || pathname === '/dashboard';
+
+  // Check if logged-in client has an incomplete intake
+  useEffect(() => {
+    const checkIntake = async () => {
+      if (!profile || profile.role !== 'client') {
+        setClientIntakeIncomplete(null);
+        return;
+      }
+
+      try {
+        const supabase = createClient();
+        const { data: client } = await supabase
+          .from('clients')
+          .select('id, intake_completed_at')
+          .eq('portal_user_id', profile.id)
+          .single();
+
+        if (client) setClientIntakeIncomplete(!client.intake_completed_at);
+        else setClientIntakeIncomplete(true);
+      } catch (err) {
+        setClientIntakeIncomplete(null);
+      }
+    };
+
+    checkIntake();
+  }, [profile]);
 
   // Use passed props or fall back to profile data
   const displayName = userName || (authLoading ? 'Loading...' : (profile ? `${profile.first_name} ${profile.last_name}` : 'User'));
@@ -111,6 +140,27 @@ export function AppHeader({
         <div className="flex items-center gap-2">
           {/* Language Selector */}
           <LanguageSelector />
+
+          {/* If client hasn't completed intake, show CTA */}
+          {profile?.role === 'client' && clientIntakeIncomplete && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push('/profile-completion')}
+                    className="hidden sm:inline-flex ml-2"
+                  >
+                    Complete Profile
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Finish the full intake to add demographics, household, financial, and medical details.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* Notifications */}
           <Button
