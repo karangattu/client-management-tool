@@ -32,16 +32,18 @@ export async function submitSelfServiceApplication(
   try {
     const supabase = await createClient();
 
-    // Attempt to use service role for admin operations, fallback to regular client if not available
-    let db: any = supabase;
+    // Attempt to use service role for admin operations
+    let db: any;
     try {
       db = createServiceClient();
     } catch (e) {
-      console.warn("SUPABASE_SERVICE_ROLE_KEY not available, falling back to regular client. Database operations may fail due to RLS.");
+      console.error("SUPABASE_SERVICE_ROLE_KEY missing. Cannot proceed with privileged operations.");
+      throw new Error("Configuration error: Service access not available.");
     }
 
-    // Create the user account using the standard client
-    // This ensures verification emails are sent and cookies are handled
+    // Create the user account using the standard client to handle auth flow (emails, etc.)
+    // We pass role and names in metadata so the trigger can pick them up if needed,
+    // though we will also try to create the profile explicitly for robustness.
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
@@ -49,6 +51,7 @@ export async function submitSelfServiceApplication(
         data: {
           first_name: formData.firstName,
           last_name: formData.lastName,
+          role: 'client', // Important for the trigger
         },
         emailRedirectTo: `${getAppUrl()}/auth/callback`,
       },
@@ -60,21 +63,25 @@ export async function submitSelfServiceApplication(
       throw new Error("User creation failed");
     }
 
-    // Use 'db' (service role or regular client) for database operations
-    // Note: if using regular client, RLS policies must allow the new user to create these records.
+    // Wait a brief moment for the trigger to fire (if it exists)
+    // but proceed to explicit creation just in case, using ON CONFLICT DO NOTHING
 
-    // Create profile entry
-    const { error: profileError } = await db.from("profiles").insert({
+    // Create profile entry (Idempotent)
+    // Create profile entry (Idempotent)
+    const { error: profileError } = await db.from("profiles").upsert({
       id: authData.user.id,
       email: formData.email,
       first_name: formData.firstName,
       last_name: formData.lastName,
       role: "client",
       is_active: true,
-      created_at: new Date().toISOString(),
-    });
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' }).select().single();
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      console.error("Profile creation error:", profileError);
+      throw new Error(`Failed to create user profile: ${profileError.message} (Code: ${profileError.code})`);
+    }
 
     // Create client record
     const { data: clientData, error: clientError } = await db
@@ -97,7 +104,10 @@ export async function submitSelfServiceApplication(
       .select()
       .single();
 
-    if (clientError) throw clientError;
+    if (clientError) {
+      console.error("Client creation error:", clientError);
+      throw new Error(`Failed to create client record: ${clientError.message}`);
+    }
 
     // Create case_management record with preferred language
     const { error: caseError } = await db.from("case_management").insert({

@@ -51,16 +51,22 @@ export function AppHeader({
 
       try {
         const supabase = createClient();
-        const { data: client } = await supabase
+        const { data: client, error } = await supabase
           .from('clients')
           .select('id, intake_completed_at')
           .eq('portal_user_id', profile.id)
           .single();
 
-        if (client) setClientIntakeIncomplete(!client.intake_completed_at);
-        else setClientIntakeIncomplete(true);
+        // If column doesn't exist yet (migration pending), assume incomplete
+        if (error?.code === '42703') {
+          setClientIntakeIncomplete(true);
+        } else if (client) {
+          setClientIntakeIncomplete(!client.intake_completed_at);
+        } else {
+          setClientIntakeIncomplete(true);
+        }
       } catch (err) {
-        setClientIntakeIncomplete(null);
+        setClientIntakeIncomplete(true);
       }
     };
 

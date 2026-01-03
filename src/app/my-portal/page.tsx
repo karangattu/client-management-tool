@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
     Select,
     SelectContent,
@@ -33,8 +34,19 @@ import {
     Clock,
     Loader2,
     AlertCircle,
+    Bell,
+    ClipboardList,
+    PenLine,
+    ArrowRight,
+    X,
+    AlertTriangle,
 } from 'lucide-react';
 import { uploadClientDocument, ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES, MAX_FILE_SIZES } from '@/lib/supabase/storage';
+import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
+import { signEngagementLetter } from '@/app/actions/signature';
+import { completeTaskByTitle } from '@/app/actions/tasks';
+import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
+import { jsPDF } from 'jspdf';
 
 interface ClientInfo {
     id: string;
@@ -42,6 +54,25 @@ interface ClientInfo {
     last_name: string;
     email: string;
     signed_engagement_letter_at: string | null;
+}
+
+interface Task {
+    id: string;
+    title: string;
+    description: string | null;
+    status: string;
+    priority: string;
+    due_date: string | null;
+    category: string | null;
+}
+
+interface AlertItem {
+    id: string;
+    title: string;
+    message: string | null;
+    alert_type: string;
+    is_read: boolean;
+    created_at: string;
 }
 
 interface Document {
@@ -67,6 +98,8 @@ export default function MyPortalPage() {
 
     const [loading, setLoading] = useState(true);
     const [client, setClient] = useState<ClientInfo | null>(null);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [alerts, setAlerts] = useState<AlertItem[]>([]);
     const [documents, setDocuments] = useState<Document[]>([]);
     const [error, setError] = useState<string | null>(null);
 
@@ -77,73 +110,105 @@ export default function MyPortalPage() {
     const [uploadDescription, setUploadDescription] = useState('');
     const [uploading, setUploading] = useState(false);
 
-    useEffect(() => {
-        const fetchClientData = async () => {
-            setLoading(true);
-            try {
-                // Get current user
-                const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Engagement letter signing state
+    const [showEngagementLetter, setShowEngagementLetter] = useState(false);
+    const [signatureOpen, setSignatureOpen] = useState(false);
+    const [signature, setSignature] = useState<string | null>(null);
+    const [signing, setSigning] = useState(false);
 
-                if (authError || !user) {
-                    router.push('/login');
-                    return;
-                }
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-                // Check if email is verified
-                if (!user.email_confirmed_at) {
-                    setError('Please verify your email address before accessing the portal.');
-                    setLoading(false);
-                    return;
-                }
-
-                // Fetch client record linked to this user
-                const { data: clientData, error: clientError } = await supabase
-                    .from('clients')
-                    .select('id, first_name, last_name, email, signed_engagement_letter_at')
-                    .eq('portal_user_id', user.id)
-                    .single();
-
-                if (clientError || !clientData) {
-                    setError('No client account found. Please complete registration first.');
-                    setLoading(false);
-                    return;
-                }
-
-                setClient(clientData);
-
-                // Fetch documents for this client
-                const { data: docsData } = await supabase
-                    .from('documents')
-                    .select('id, file_name, document_type, created_at, is_verified')
-                    .eq('client_id', clientData.id)
-                    .order('created_at', { ascending: false });
-
-                setDocuments(docsData || []);
-            } catch (err) {
-                console.error('Error fetching client data:', err);
-                setError('An error occurred while loading your information.');
-            } finally {
-                setLoading(false);
+            if (authError || !user) {
+                router.push('/login');
+                return;
             }
-        };
 
-        fetchClientData();
+            if (!user.email_confirmed_at) {
+                setError('Please verify your email address before accessing the portal.');
+                setLoading(false);
+                return;
+            }
+
+            // Fetch client record
+            const { data: clientData, error: clientError } = await supabase
+                .from('clients')
+                .select('id, first_name, last_name, email, signed_engagement_letter_at')
+                .eq('portal_user_id', user.id)
+                .single();
+
+            if (clientError || !clientData) {
+                setError('No client account found. Please complete registration first.');
+                setLoading(false);
+                return;
+            }
+
+            setClient(clientData);
+
+            // Fetch tasks assigned to this user
+            const { data: tasksData } = await supabase
+                .from('tasks')
+                .select('id, title, description, status, priority, due_date, category')
+                .eq('assigned_to', user.id)
+                .in('status', ['pending', 'in_progress'])
+                .order('priority', { ascending: false })
+                .order('due_date', { ascending: true });
+
+            setTasks(tasksData || []);
+
+            // Fetch alerts for this user
+            const { data: alertsData } = await supabase
+                .from('alerts')
+                .select('id, title, message, alert_type, is_read, created_at')
+                .eq('user_id', user.id)
+                .eq('is_dismissed', false)
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            setAlerts(alertsData || []);
+
+            // Fetch documents
+            const { data: docsData } = await supabase
+                .from('documents')
+                .select('id, file_name, document_type, created_at, is_verified')
+                .eq('client_id', clientData.id)
+                .order('created_at', { ascending: false });
+
+            setDocuments(docsData || []);
+        } catch (err) {
+            console.error('Error fetching client data:', err);
+            setError('An error occurred while loading your information.');
+        } finally {
+            setLoading(false);
+        }
     }, [supabase, router]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         router.push('/login');
     };
 
+    const handleDismissAlert = async (alertId: string) => {
+        await supabase
+            .from('alerts')
+            .update({ is_dismissed: true })
+            .eq('id', alertId);
+        setAlerts(prev => prev.filter(a => a.id !== alertId));
+    };
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            // Validate file type
             if (!ALLOWED_DOCUMENT_TYPES.includes(file.type) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
                 alert('Invalid file type. Please upload a PDF, Word document, Excel file, or image.');
                 return;
             }
-            // Validate file size
             if (file.size > MAX_FILE_SIZES.DOCUMENT) {
                 alert('File too large. Maximum size is 25MB.');
                 return;
@@ -153,14 +218,10 @@ export default function MyPortalPage() {
     };
 
     const handleUploadDocument = async () => {
-        if (!uploadFile || !client) {
-            alert('Please select a file');
-            return;
-        }
+        if (!uploadFile || !client) return;
 
         setUploading(true);
         try {
-            // Upload file to storage
             const { document: documentRecord, error: uploadError } = await uploadClientDocument(
                 uploadFile,
                 client.id,
@@ -170,15 +231,12 @@ export default function MyPortalPage() {
 
             if (uploadError || !documentRecord) {
                 alert(`Upload failed: ${uploadError || 'Unknown error'}`);
-                setUploading(false);
                 return;
             }
 
-            // Get current user for uploaded_by field
             const { data: { user } } = await supabase.auth.getUser();
 
-            // Save document metadata to database
-            const { error: dbError } = await supabase.from('documents').insert({
+            await supabase.from('documents').insert({
                 client_id: client.id,
                 file_name: documentRecord.file_name,
                 document_type: uploadDocumentType,
@@ -190,34 +248,105 @@ export default function MyPortalPage() {
                 is_verified: false,
             });
 
-            if (dbError) {
-                console.error('Error saving document metadata:', dbError);
-                alert('File uploaded but failed to save record.');
-                setUploading(false);
-                return;
-            }
+            // Refresh data
+            await fetchData();
 
-            // Refresh documents list
-            const { data: docsData } = await supabase
-                .from('documents')
-                .select('id, file_name, document_type, created_at, is_verified')
-                .eq('client_id', client.id)
-                .order('created_at', { ascending: false });
-
-            setDocuments(docsData || []);
-
-            // Reset form and close dialog
             setUploadFile(null);
             setUploadDocumentType('id');
             setUploadDescription('');
             setShowUploadDialog(false);
-            alert('Document uploaded successfully!');
         } catch (err) {
             console.error('Error uploading document:', err);
             alert('An error occurred while uploading.');
         } finally {
             setUploading(false);
         }
+    };
+
+    const handleSignEngagementLetter = async () => {
+        if (!signature || !client) return;
+
+        setSigning(true);
+        try {
+            // Generate PDF
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 20;
+            const contentWidth = pageWidth - (margin * 2);
+
+            doc.setFontSize(18);
+            doc.setFont("helvetica", "bold");
+            doc.text("ENGAGEMENT LETTER AND CONSENT FOR SERVICES", margin, 30);
+
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "normal");
+            doc.text(`Client: ${client.first_name} ${client.last_name}`, margin, 45);
+            doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 52);
+
+            doc.setFontSize(10);
+            const splitText = doc.splitTextToSize(ENGAGEMENT_LETTER_TEXT, contentWidth);
+            doc.text(splitText, margin, 65);
+
+            const textLines = splitText.length;
+            const textHeight = textLines * 5;
+            let signatureY = 65 + textHeight + 20;
+
+            const pageHeight = doc.internal.pageSize.getHeight();
+            if (signatureY + 60 > pageHeight) {
+                doc.addPage();
+                signatureY = margin;
+            }
+
+            doc.line(margin, signatureY, pageWidth - margin, signatureY);
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text("CLIENT SIGNATURE", margin, signatureY + 10);
+
+            doc.addImage(signature, 'PNG', margin, signatureY + 15, 60, 25);
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "italic");
+            doc.text(`Digitally signed by ${client.first_name} ${client.last_name} on ${new Date().toLocaleString()}`, margin, signatureY + 45);
+
+            const pdfData = doc.output('datauristring').split(',')[1];
+
+            const result = await signEngagementLetter(client.id, pdfData, signature);
+
+            if (result.success) {
+                // Complete the task
+                await completeTaskByTitle(client.id, 'Sign Engagement Letter');
+
+                // Refresh data
+                await fetchData();
+                setShowEngagementLetter(false);
+                setSignature(null);
+            } else {
+                alert('Failed to sign engagement letter. Please try again.');
+            }
+        } catch (err) {
+            console.error('Error signing engagement letter:', err);
+            alert('An error occurred. Please try again.');
+        } finally {
+            setSigning(false);
+        }
+    };
+
+    const getPriorityColor = (priority: string) => {
+        switch (priority) {
+            case 'urgent': return 'bg-red-100 text-red-800 border-red-200';
+            case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
+            case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+        }
+    };
+
+    const getTaskAction = (task: Task) => {
+        if (task.title === 'Complete Intake Form') {
+            return { href: '/client-intake', label: 'Complete Form' };
+        }
+        if (task.title === 'Sign Engagement Letter') {
+            return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
+        }
+        return null;
     };
 
     if (loading) {
@@ -233,10 +362,8 @@ export default function MyPortalPage() {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
                 <Card className="w-full max-w-md text-center">
                     <CardContent className="pt-8 pb-8">
-                        <div className="mb-6">
-                            <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
-                                <AlertCircle className="h-8 w-8 text-red-600" />
-                            </div>
+                        <div className="h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+                            <AlertCircle className="h-8 w-8 text-red-600" />
                         </div>
                         <h2 className="text-xl font-bold mb-2">Access Error</h2>
                         <p className="text-gray-600 mb-6">{error}</p>
@@ -249,10 +376,13 @@ export default function MyPortalPage() {
         );
     }
 
+    const urgentTasks = tasks.filter(t => t.priority === 'urgent' || t.priority === 'high');
+    const needsEngagementLetter = !client?.signed_engagement_letter_at;
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
-            <header className="bg-white border-b shadow-sm">
+            <header className="bg-white border-b shadow-sm sticky top-0 z-10">
                 <div className="container px-4 py-4 max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center">
@@ -269,14 +399,96 @@ export default function MyPortalPage() {
                 </div>
             </header>
 
-            <main className="container px-4 py-8 max-w-4xl mx-auto">
+            <main className="container px-4 py-6 max-w-4xl mx-auto space-y-6">
+                {/* Alerts Banner */}
+                {alerts.length > 0 && (
+                    <div className="space-y-2">
+                        {alerts.map((alert) => (
+                            <Alert key={alert.id} className="bg-blue-50 border-blue-200">
+                                <Bell className="h-4 w-4 text-blue-600" />
+                                <AlertTitle className="text-blue-800">{alert.title}</AlertTitle>
+                                <AlertDescription className="text-blue-700 flex items-center justify-between">
+                                    <span>{alert.message}</span>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 hover:bg-blue-100"
+                                        onClick={() => handleDismissAlert(alert.id)}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </AlertDescription>
+                            </Alert>
+                        ))}
+                    </div>
+                )}
+
+                {/* Urgent Tasks Section */}
+                {(urgentTasks.length > 0 || needsEngagementLetter) && (
+                    <Card className="border-orange-200 bg-orange-50/50">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="flex items-center gap-2 text-orange-800">
+                                <AlertTriangle className="h-5 w-5" />
+                                Action Required
+                            </CardTitle>
+                            <CardDescription className="text-orange-700">
+                                Please complete these items to finish setting up your account
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {urgentTasks.map((task) => {
+                                const action = getTaskAction(task);
+                                return (
+                                    <div
+                                        key={task.id}
+                                        className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-orange-100 rounded-lg">
+                                                {task.title.includes('Intake') ? (
+                                                    <ClipboardList className="h-5 w-5 text-orange-600" />
+                                                ) : (
+                                                    <PenLine className="h-5 w-5 text-orange-600" />
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="font-medium">{task.title}</p>
+                                                <p className="text-sm text-gray-500">{task.description}</p>
+                                            </div>
+                                        </div>
+                                        {action && (
+                                            action.href ? (
+                                                <Link href={action.href}>
+                                                    <Button size="sm">
+                                                        {action.label}
+                                                        <ArrowRight className="h-4 w-4 ml-1" />
+                                                    </Button>
+                                                </Link>
+                                            ) : (
+                                                <Button size="sm" onClick={action.onClick}>
+                                                    {action.label}
+                                                    <ArrowRight className="h-4 w-4 ml-1" />
+                                                </Button>
+                                            )
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Status Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card>
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-4">
-                                <div className="p-3 bg-green-100 rounded-lg">
-                                    <CheckCircle className="h-6 w-6 text-green-600" />
+                                <div className={`p-3 rounded-lg ${client?.signed_engagement_letter_at ? 'bg-green-100' : 'bg-yellow-100'}`}>
+                                    {client?.signed_engagement_letter_at ? (
+                                        <CheckCircle className="h-6 w-6 text-green-600" />
+                                    ) : (
+                                        <Clock className="h-6 w-6 text-yellow-600" />
+                                    )}
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-500">Engagement Letter</p>
@@ -291,16 +503,77 @@ export default function MyPortalPage() {
                         <CardContent className="pt-6">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-blue-100 rounded-lg">
-                                    <FileText className="h-6 w-6 text-blue-600" />
+                                    <ClipboardList className="h-6 w-6 text-blue-600" />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500">Documents Uploaded</p>
+                                    <p className="text-sm text-gray-500">Open Tasks</p>
+                                    <p className="font-semibold">{tasks.length}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-purple-100 rounded-lg">
+                                    <FileText className="h-6 w-6 text-purple-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500">Documents</p>
                                     <p className="font-semibold">{documents.length}</p>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* All Tasks Section */}
+                {tasks.length > 0 && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>My Tasks</CardTitle>
+                            <CardDescription>Tasks assigned to you by your case manager</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {tasks.map((task) => {
+                                const action = getTaskAction(task);
+                                return (
+                                    <div
+                                        key={task.id}
+                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Badge className={getPriorityColor(task.priority)}>
+                                                {task.priority}
+                                            </Badge>
+                                            <div>
+                                                <p className="font-medium">{task.title}</p>
+                                                {task.due_date && (
+                                                    <p className="text-sm text-gray-500">
+                                                        Due: {new Date(task.due_date).toLocaleDateString()}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {action && (
+                                            action.href ? (
+                                                <Link href={action.href}>
+                                                    <Button variant="outline" size="sm">
+                                                        {action.label}
+                                                    </Button>
+                                                </Link>
+                                            ) : (
+                                                <Button variant="outline" size="sm" onClick={action.onClick}>
+                                                    {action.label}
+                                                </Button>
+                                            )
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Documents Section */}
                 <Card>
@@ -311,7 +584,7 @@ export default function MyPortalPage() {
                                 <CardDescription>Upload and manage your documents</CardDescription>
                             </div>
                             <Button onClick={() => setShowUploadDialog(true)}>
-                                <Upload className="h-4 w-4 mr-2" /> Upload Document
+                                <Upload className="h-4 w-4 mr-2" /> Upload
                             </Button>
                         </div>
                     </CardHeader>
@@ -330,19 +603,17 @@ export default function MyPortalPage() {
                                             <div>
                                                 <p className="font-medium">{doc.file_name}</p>
                                                 <p className="text-sm text-gray-500">
-                                                    {doc.document_type.toUpperCase()} • Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                                                    {doc.document_type.toUpperCase()} • {new Date(doc.created_at).toLocaleDateString()}
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            {doc.is_verified ? (
-                                                <Badge className="bg-green-100 text-green-800">Verified</Badge>
-                                            ) : (
-                                                <Badge className="bg-yellow-100 text-yellow-800">
-                                                    <Clock className="h-3 w-3 mr-1" /> Pending Review
-                                                </Badge>
-                                            )}
-                                        </div>
+                                        {doc.is_verified ? (
+                                            <Badge className="bg-green-100 text-green-800">Verified</Badge>
+                                        ) : (
+                                            <Badge className="bg-yellow-100 text-yellow-800">
+                                                <Clock className="h-3 w-3 mr-1" /> Pending
+                                            </Badge>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -420,6 +691,64 @@ export default function MyPortalPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Engagement Letter Dialog */}
+            <Dialog open={showEngagementLetter} onOpenChange={setShowEngagementLetter}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Engagement Letter</DialogTitle>
+                        <DialogDescription>
+                            Please review and sign the engagement letter below.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-6 py-4">
+                        <div className="border rounded-lg p-4 max-h-[300px] overflow-y-auto bg-gray-50">
+                            <pre className="whitespace-pre-wrap text-sm font-sans">
+                                {ENGAGEMENT_LETTER_TEXT}
+                            </pre>
+                        </div>
+
+                        <div className="space-y-4">
+                            <Label className="text-base font-semibold">Your Signature</Label>
+                            <SignatureDisplay
+                                signature={signature}
+                                onRequestSign={() => setSignatureOpen(true)}
+                                onClear={() => setSignature(null)}
+                                signerName={`${client?.first_name} ${client?.last_name}`}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowEngagementLetter(false)} disabled={signing}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSignEngagementLetter}
+                            disabled={!signature || signing}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            {signing ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Signing...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="h-4 w-4 mr-2" /> Sign & Submit
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Signature Pad Dialog */}
+            <SignaturePadDialog
+                open={signatureOpen}
+                onOpenChange={setSignatureOpen}
+                onSave={setSignature}
+                title="Draw Your Signature"
+                description="Use your finger or mouse to sign below."
+            />
         </div>
     );
 }

@@ -373,62 +373,7 @@ export default function AlertsPage() {
           </CardHeader>
         </Card>
 
-        {/* Alert Settings Preview */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Notification Settings
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
-                  <div>
-                    <p className="font-medium">Benefit Renewals</p>
-                    <p className="text-sm text-gray-500">Get notified 30, 14, and 7 days before expiration</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-              </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-red-500" />
-                  <div>
-                    <p className="font-medium">Task Deadlines</p>
-                    <p className="text-sm text-gray-500">Daily summary of tasks due</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-5 w-5 text-blue-500" />
-                  <div>
-                    <p className="font-medium">Document Uploads</p>
-                    <p className="text-sm text-gray-500">When clients upload new documents</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Home className="h-5 w-5 text-green-500" />
-                  <div>
-                    <p className="font-medium">Housing Updates</p>
-                    <p className="text-sm text-gray-500">Application status changes</p>
-                  </div>
-                </div>
-                <Badge className="bg-green-100 text-green-800">Enabled</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </main>
     </div>
   );

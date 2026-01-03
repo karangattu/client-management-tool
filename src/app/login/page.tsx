@@ -52,19 +52,52 @@ function LoginForm() {
       }
 
       // Check user role to redirect appropriately
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single();
+      // Retry logic for profile fetch to handle potential race conditions
+      let profileData = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (!profileData && attempts < maxAttempts) {
+        const { data: fetchedProfile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (fetchedProfile) {
+          profileData = fetchedProfile;
+          break;
+        }
+
+        // Wait 500ms before retrying
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      if (!profileData) {
+        console.error("Login succeeded but profile not found for user:", data.user.id);
+        setError("Account setup appears incomplete. Please contact support.");
+        setLoading(false);
+        return;
+      }
 
       const redirectPath = profileData?.role === 'client' ? '/my-portal' : '/dashboard';
 
-      // Use window.location for a full page navigation to ensure clean state
-      window.location.href = redirectPath;
+      // Give a small delay to ensure session is properly stored, then redirect
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Use router.push for client-side navigation to ensure proper state handling
+      router.push(redirectPath);
     } catch (err) {
       console.error('Login error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      // More specific error message if it's an AuthApiError
+      if (err instanceof Error && err.message.includes('Invalid login credentials')) {
+        setError('Invalid email or password.');
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
       setLoading(false);
     }
   };

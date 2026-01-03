@@ -21,60 +21,129 @@ function AuthCallbackContent() {
         // Get the code from URL params (Supabase sends this after email verification)
         const code = searchParams.get('code');
 
-        if (code) {
-          // Exchange the code for a session
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (!code) {
+          // No code provided, check if already authenticated
+          const { data } = await supabase.auth.getSession();
+          if (data.session) {
+            // Already authenticated, redirect based on role
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', data.session.user.id)
+              .single();
 
-          if (exchangeError) {
-            console.error('Code exchange error:', exchangeError);
-            setStatus('error');
-            setMessage('Failed to verify email. Please try again or contact support.');
-            return;
+            const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+            window.location.href = redirectPath;
           }
-        }
-
-        // Get the current session
-        const { data, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Auth callback error:', error);
-          setStatus('error');
-          setMessage(error.message);
           return;
         }
 
-        if (data.session) {
+        // Exchange the code for a session
+        const { error: exchangeError, data: authData } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (exchangeError) {
+          console.error('Code exchange error:', exchangeError);
+          setStatus('error');
+          setMessage('Failed to verify email. Please try again or contact support.');
+          return;
+        }
+
+        // Clear the code from URL immediately after successful exchange
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        if (authData?.session) {
           setStatus('success');
           setMessage('Email verified successfully!');
 
-          // Check if user is a client or staff and redirect appropriately
-          const checkUserTypeAndRedirect = async () => {
-            try {
-              const { data: profile } = await supabase
+          const userId = authData.session.user.id;
+
+          try {
+            // Retry logic for profile fetch to handle potential race conditions
+            // (profile may not be immediately accessible due to RLS/session propagation)
+            let profile = null;
+            let attempts = 0;
+            const maxAttempts = 3;
+
+            while (!profile && attempts < maxAttempts) {
+              const { data: fetchedProfile } = await supabase
                 .from('profiles')
                 .select('role')
-                .eq('id', data.session.user.id)
+                .eq('id', userId)
                 .single();
-              
-              const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
-              // Use window.location for a full page navigation to ensure clean state
-              window.location.href = redirectPath;
-            } catch (error) {
-              console.error('Error checking user role:', error);
-              window.location.href = '/dashboard';
+
+              if (fetchedProfile) {
+                profile = fetchedProfile;
+                break;
+              }
+
+              attempts++;
+              if (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
             }
-          };
 
-          setTimeout(checkUserTypeAndRedirect, 1500);
+            if (!profile) {
+              console.error('Profile not found after verification for user:', userId);
+              // Still try to redirect - the profile might exist but RLS is blocking
+              // Default to my-portal since this is the email verification flow (for clients)
+              window.location.href = '/my-portal';
+              return;
+            }
+
+            // If this is a client, create onboarding tasks
+            if (profile?.role === 'client') {
+              try {
+                // Fetch client record to get client_id
+                const { data: clientData } = await supabase
+                  .from('clients')
+                  .select('id, signed_engagement_letter_at')
+                  .eq('portal_user_id', userId)
+                  .single();
+
+                if (clientData) {
+                  // Import and call the task creation action
+                  const { createClientOnboardingTasks } = await import('@/app/actions/tasks');
+                  await createClientOnboardingTasks(clientData.id, userId);
+                }
+              } catch (taskError) {
+                console.error('Error creating onboarding tasks:', taskError);
+                // Continue with redirect even if task creation fails
+              }
+            }
+
+            const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+            window.location.href = redirectPath;
+          } catch (error) {
+            console.error('Error checking user role:', error);
+            // Default to my-portal for verified users coming from email
+            window.location.href = '/my-portal';
+          }
         } else {
-          // No session found - might be a new signup that needs login
+          // Session exchange succeeded but no session in response
           setStatus('success');
-          setMessage('Email verified! Please log in to continue.');
+          setMessage('Email verified! Logging you in...');
 
-          // Redirect to login after a short delay using window.location for clean state
-          setTimeout(() => {
-            window.location.href = '/login?verified=true';
-          }, 1500);
+          // Try to get session after a brief moment
+          setTimeout(async () => {
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData?.session) {
+              try {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('role')
+                  .eq('id', sessionData.session.user.id)
+                  .single();
+
+                const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+                window.location.href = redirectPath;
+              } catch (error) {
+                console.error('Error checking user role:', error);
+                window.location.href = '/dashboard';
+              }
+            }
+          }, 500);
         }
       } catch (error) {
         console.error('Unexpected auth callback error:', error);

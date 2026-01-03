@@ -64,17 +64,17 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
         return { success: false, error: "Failed to create auth user" };
       }
 
-      // Insert profile - this will work now with the new RLS policy
+      // Insert/update profile - use upsert in case trigger already created it
       const { error: profileError } = await supabase
         .from('profiles')
-        .insert({
+        .upsert({
           id: authData.user.id,
           email: data.email,
           first_name: data.first_name,
           last_name: data.last_name,
           role: data.role,
           is_active: true,
-        });
+        }, { onConflict: 'id' });
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
@@ -112,17 +112,19 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
       return { success: false, error: "Failed to create auth user" };
     }
 
-    // Create profile with service role (bypasses RLS)
+    // Create or update profile with service role (bypasses RLS)
+    // Note: A trigger may have already created a profile with default 'client' role,
+    // so we use upsert to ensure the correct role is set
     const { error: profileError, data: profileData } = await serviceClient
       .from('profiles')
-      .insert({
+      .upsert({
         id: authData.user.id,
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
         role: data.role,
         is_active: true,
-      });
+      }, { onConflict: 'id' });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
