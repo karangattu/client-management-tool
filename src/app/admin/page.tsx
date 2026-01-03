@@ -43,9 +43,11 @@ import {
   Info,
   Archive,
   Key,
+  Trash2,
 } from 'lucide-react';
 import { useAuth, UserRole } from '@/lib/auth-context';
 import { createUser, archiveUser, getAllUsers } from '@/app/actions/users';
+import { deleteUserAndData } from '@/app/actions/user-deletion';
 
 
 interface UserProfile {
@@ -93,6 +95,10 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -205,6 +211,42 @@ export default function AdminPage() {
     // Note: This would need a server action as well for full security
     // For now, we'll skip this since it's not critical
     console.log('Update role functionality needs server action', userId, newRole);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    // Verify confirmation text
+    const expectedText = `DELETE ${userToDelete.first_name.toUpperCase()} ${userToDelete.last_name.toUpperCase()}`;
+    if (deleteConfirmText !== expectedText) {
+      setError('Confirmation text does not match');
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const result = await deleteUserAndData(userToDelete.id);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete user');
+      }
+
+      setSuccess(result.message || 'User deleted successfully');
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      setDeleteConfirmText('');
+      
+      // Refresh users list
+      setTimeout(() => {
+        fetchUsers();
+      }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete user');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const stats = {
@@ -529,6 +571,17 @@ export default function AdminPage() {
                             <Archive className="h-4 w-4 mr-2" />
                             Archive User
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setUserToDelete(user);
+                              setDeleteConfirmText('');
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete User
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -546,6 +599,108 @@ export default function AdminPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Delete User Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-red-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Permanently Delete User
+              </DialogTitle>
+              <DialogDescription>
+                This action cannot be undone. All data associated with this user will be permanently deleted.
+              </DialogDescription>
+            </DialogHeader>
+
+            {userToDelete && (
+              <div className="space-y-4 py-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                  <p className="font-medium text-sm mb-2">User to delete:</p>
+                  <p className="font-semibold">{userToDelete.first_name} {userToDelete.last_name}</p>
+                  <p className="text-sm text-gray-600">{userToDelete.email}</p>
+                  <Badge className="mt-2">{userToDelete.role}</Badge>
+                </div>
+
+                <div className="space-y-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="font-medium text-sm">What will be deleted:</p>
+                  <ul className="text-sm space-y-1 text-gray-700">
+                    <li>• User account and login credentials</li>
+                    <li>• Profile information</li>
+                    {userToDelete.role === 'client' && (
+                      <>
+                        <li>• Client record and all intake data</li>
+                        <li>• All uploaded documents and signatures</li>
+                        <li>• Task assignments and calendar events</li>
+                        <li>• Case management notes and history</li>
+                      </>
+                    )}
+                    {userToDelete.role !== 'client' && (
+                      <>
+                        <li>• Assigned tasks and records</li>
+                        <li>• Audit trail entries</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    To confirm deletion, type: <span className="font-mono text-red-600 font-bold">DELETE {userToDelete.first_name.toUpperCase()} {userToDelete.last_name.toUpperCase()}</span>
+                  </Label>
+                  <Input
+                    placeholder="Type confirmation text above"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    disabled={deleting}
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteDialogOpen(false);
+                      setUserToDelete(null);
+                      setDeleteConfirmText('');
+                      setError(null);
+                    }}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteUser}
+                    disabled={
+                      deleting ||
+                      deleteConfirmText !== `DELETE ${userToDelete.first_name.toUpperCase()} ${userToDelete.last_name.toUpperCase()}`
+                    }
+                  >
+                    {deleting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Permanently Delete
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

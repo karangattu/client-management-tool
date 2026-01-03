@@ -31,21 +31,42 @@ function LoginForm() {
     setLoading(true);
     setError(null);
 
-    const supabase = createClient();
+    try {
+      const supabase = createClient();
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (signInError) {
-      setError(signInError.message);
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        setError('Login succeeded but no session was created. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Check user role to redirect appropriately
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      const redirectPath = profileData?.role === 'client' ? '/my-portal' : '/dashboard';
+
+      // Use window.location for a full page navigation to ensure clean state
+      window.location.href = redirectPath;
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again.');
       setLoading(false);
-      return;
     }
-
-    router.push('/dashboard');
-    router.refresh();
   };
 
   return (

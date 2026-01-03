@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { LanguageSelector } from '@/components/ui/language-selector';
 import { useAuth } from '@/lib/auth-context';
 
 interface AppHeaderProps {
@@ -136,11 +135,8 @@ export function AppHeader({
           </div>
         </div>
 
-        {/* Right section - Language, Notifications and Profile */}
+        {/* Right section - Notifications and Profile */}
         <div className="flex items-center gap-2">
-          {/* Language Selector */}
-          <LanguageSelector />
-
           {/* If client hasn't completed intake, show CTA */}
           {profile?.role === 'client' && clientIntakeIncomplete && (
             <TooltipProvider>

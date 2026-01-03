@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -51,9 +53,13 @@ import {
   Phone,
   Copy,
   Check,
+  Trash2,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { deleteClientRecord } from '@/app/actions/user-deletion';
 
 interface Client {
   id: string;
@@ -82,6 +88,12 @@ export default function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [clientToArchive, setClientToArchive] = useState<Client | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -159,6 +171,42 @@ export default function ClientsPage() {
     } finally {
       setArchiveDialogOpen(false);
       setClientToArchive(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!clientToDelete) return;
+
+    // Verify confirmation text
+    const expectedText = `DELETE ${clientToDelete.first_name.toUpperCase()} ${clientToDelete.last_name.toUpperCase()}`;
+    if (deleteConfirmText !== expectedText) {
+      setError('Confirmation text does not match');
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const result = await deleteClientRecord(clientToDelete.id);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete client');
+      }
+
+      setSuccess(result.message || 'Client deleted successfully');
+      setDeleteDialogOpen(false);
+      setClientToDelete(null);
+      setDeleteConfirmText('');
+
+      // Refresh clients list
+      setTimeout(() => {
+        fetchClients();
+      }, 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete client');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -418,6 +466,20 @@ export default function ClientsPage() {
                               <Archive className="h-4 w-4 mr-2" />
                               Archive
                             </DropdownMenuItem>
+                            {profile?.role === 'admin' && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setClientToDelete(client);
+                                  setDeleteConfirmText('');
+                                  setError(null);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -447,6 +509,97 @@ export default function ClientsPage() {
                   Archive
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Client Confirmation Dialog */}
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-red-600 flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5" />
+                  Permanently Delete Client
+                </DialogTitle>
+                <DialogDescription>
+                  This action cannot be undone. All data associated with this client will be permanently deleted.
+                </DialogDescription>
+              </DialogHeader>
+
+              {clientToDelete && (
+                <div className="space-y-4 py-4">
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <p className="font-medium text-sm mb-2">Client to delete:</p>
+                    <p className="font-semibold">{clientToDelete.first_name} {clientToDelete.last_name}</p>
+                    <p className="text-sm text-gray-600">{clientToDelete.email}</p>
+                  </div>
+
+                  <div className="space-y-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <p className="font-medium text-sm">What will be deleted:</p>
+                    <ul className="text-sm space-y-1 text-gray-700">
+                      <li>• Client record and all intake data</li>
+                      <li>• All uploaded documents and signatures</li>
+                      <li>• Task assignments and calendar events</li>
+                      <li>• Case management notes and history</li>
+                      <li>• Household and emergency contact information</li>
+                      <li>• Benefits and programs information</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      To confirm deletion, type: <span className="font-mono text-red-600 font-bold">DELETE {clientToDelete.first_name.toUpperCase()} {clientToDelete.last_name.toUpperCase()}</span>
+                    </Label>
+                    <Input
+                      placeholder="Type confirmation text above"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      disabled={deleting}
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDeleteDialogOpen(false);
+                        setClientToDelete(null);
+                        setDeleteConfirmText('');
+                        setError(null);
+                      }}
+                      disabled={deleting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleDelete}
+                      disabled={
+                        deleting ||
+                        deleteConfirmText !== `DELETE ${clientToDelete.first_name.toUpperCase()} ${clientToDelete.last_name.toUpperCase()}`
+                      }
+                    >
+                      {deleting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Permanently Delete
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
         </main>

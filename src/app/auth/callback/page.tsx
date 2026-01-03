@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
@@ -17,7 +18,22 @@ export default function AuthCallbackPage() {
       try {
         const supabase = createClient();
 
-        // Handle the auth callback
+        // Get the code from URL params (Supabase sends this after email verification)
+        const code = searchParams.get('code');
+
+        if (code) {
+          // Exchange the code for a session
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (exchangeError) {
+            console.error('Code exchange error:', exchangeError);
+            setStatus('error');
+            setMessage('Failed to verify email. Please try again or contact support.');
+            return;
+          }
+        }
+
+        // Get the current session
         const { data, error } = await supabase.auth.getSession();
 
         if (error) {
@@ -40,30 +56,25 @@ export default function AuthCallbackPage() {
                 .eq('id', data.session.user.id)
                 .single();
               
-              if (profile?.role === 'client') {
-                router.push('/my-portal');
-              } else {
-                router.push('/dashboard');
-              }
-              router.refresh();
+              const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+              // Use window.location for a full page navigation to ensure clean state
+              window.location.href = redirectPath;
             } catch (error) {
               console.error('Error checking user role:', error);
-              router.push('/dashboard');
-              router.refresh();
+              window.location.href = '/dashboard';
             }
           };
 
-          setTimeout(checkUserTypeAndRedirect, 2000);
+          setTimeout(checkUserTypeAndRedirect, 1500);
         } else {
           // No session found - might be a new signup that needs login
           setStatus('success');
           setMessage('Email verified! Please log in to continue.');
 
-          // Redirect to login after a short delay
+          // Redirect to login after a short delay using window.location for clean state
           setTimeout(() => {
-            router.push('/login?verified=true');
-            router.refresh();
-          }, 2000);
+            window.location.href = '/login?verified=true';
+          }, 1500);
         }
       } catch (error) {
         console.error('Unexpected auth callback error:', error);
@@ -73,7 +84,7 @@ export default function AuthCallbackPage() {
     };
 
     handleAuthCallback();
-  }, [router]);
+  }, [router, searchParams]);
 
   const handleManualLogin = () => {
     router.push('/login');
@@ -136,5 +147,25 @@ export default function AuthCallbackPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="pt-8 pb-8">
+            <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-6">
+              <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Verifying Email...</h2>
+            <p className="text-gray-600">Please wait while we verify your email address.</p>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

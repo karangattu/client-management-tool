@@ -156,17 +156,22 @@ export default function DashboardPage() {
           .single();
 
         if (clientData) {
-          // Fetch tasks related to this client
+          // Fetch tasks related to this client - both by client_id AND assigned_to user
+          // This ensures the intake completion task (assigned to user) is visible
           const { data: tasksData } = await supabase
             .from('tasks')
             .select('id, title, description, status, priority, due_date')
-            .eq('client_id', clientData.id)
+            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user?.id}`)
             .in('status', ['pending', 'in_progress'])
             .order('due_date', { ascending: true })
             .limit(10);
 
           if (tasksData) {
-            setClientTasks(tasksData);
+            // Deduplicate tasks in case a task has both client_id and assigned_to pointing to this user
+            const uniqueTasks = tasksData.filter((task, index, self) =>
+              index === self.findIndex((t) => t.id === task.id)
+            );
+            setClientTasks(uniqueTasks);
           }
 
           // Fetch upcoming calendar events for this client
