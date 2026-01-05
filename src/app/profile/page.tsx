@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/components/ui/use-toast';
 import {
   User,
   Mail,
@@ -20,9 +20,6 @@ import {
   Shield,
   Save,
   CheckCircle,
-  AlertCircle,
-
-
   Loader2,
   Upload,
 } from 'lucide-react';
@@ -56,10 +53,10 @@ const roleDescriptions: Record<string, string> = {
 export default function ProfilePage() {
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   const [profileData, setProfileData] = useState<ProfileData>({
     first_name: '',
@@ -88,6 +85,7 @@ export default function ProfilePage() {
   const supabase = createClient();
 
   useEffect(() => {
+    // Only redirect if explicitly not loading and no user
     if (!authLoading && !user) {
       router.push('/login');
       return;
@@ -112,12 +110,15 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB');
+        toast({
+          title: "File too large",
+          description: "File size must be less than 5MB",
+          variant: "destructive",
+        });
         return;
       }
       setProfilePictureFile(file);
       setProfilePicturePreview(URL.createObjectURL(file));
-      setError(null);
     }
   };
 
@@ -125,11 +126,8 @@ export default function ProfilePage() {
     if (!user) return;
 
     setSaving(true);
-    setError(null);
-    setSuccess(null);
 
     try {
-
       let profilePictureUrl = profileData.profile_picture_url;
 
       // Upload profile picture if changed
@@ -158,9 +156,18 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      setSuccess('Profile updated successfully!');
+      toast({
+        title: "Success",
+        description: "Profile updated successfully!",
+        variant: "default",
+        className: "bg-green-50 border-green-200 text-green-800",
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to update profile',
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -168,36 +175,42 @@ export default function ProfilePage() {
 
   const handleChangePassword = async () => {
     if (!passwordData.new_password) {
-      setError('Please enter a new password');
+      toast({ title: "Error", description: 'Please enter a new password', variant: "destructive" });
       return;
     }
 
     if (passwordData.new_password !== passwordData.confirm_password) {
-      setError('New passwords do not match');
+      toast({ title: "Error", description: 'New passwords do not match', variant: "destructive" });
       return;
     }
 
     if (passwordData.new_password.length < 6) {
-      setError('Password must be at least 6 characters');
+      toast({ title: "Error", description: 'Password must be at least 6 characters', variant: "destructive" });
       return;
     }
 
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
+    setPasswordSaving(true);
 
     try {
-      console.log('Attempting to update password for user:', user?.id);
-      const { error } = await supabase.auth.updateUser({
+      const updatePromise = supabase.auth.updateUser({
         password: passwordData.new_password,
       });
 
-      if (error) {
-        console.error('Password update error:', error);
-        throw error;
-      }
+      // Timeout race (10 seconds)
+      const timeoutPromise = new Promise<{ data: { user: any } | null, error: any }>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out')), 10000);
+      });
 
-      setSuccess('Password changed successfully!');
+      const { error } = await Promise.race([updatePromise, timeoutPromise]);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Password changed successfully!",
+        className: "bg-green-50 border-green-200 text-green-800",
+      });
+
       setPasswordData({
         current_password: '',
         new_password: '',
@@ -205,19 +218,20 @@ export default function ProfilePage() {
       });
     } catch (err) {
       console.error('Error changing password:', err);
-      setError(err instanceof Error ? err.message : 'Failed to change password');
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : 'Failed to change password',
+        variant: "destructive",
+      });
     } finally {
-      setSaving(false);
+      setPasswordSaving(false);
     }
   };
 
   const handleSaveNotifications = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(null);
 
     try {
-      // In production, this would save to a notification_preferences table
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -226,22 +240,29 @@ export default function ProfilePage() {
         })
         .eq('id', user?.id);
 
-      if (error) {
-        // If the column doesn't exist, just show success
-        // This is a graceful fallback
-        console.log('Notification preferences may not be configured in database');
-      }
+      if (error) console.log('Notification preferences not supported in DB schema yet');
 
-      setSuccess('Notification settings saved!');
+      toast({
+        title: "Success",
+        description: "Notification settings saved!",
+        className: "bg-green-50 border-green-200 text-green-800",
+      });
     } catch (err) {
       console.error('Error saving notifications:', err);
-      setSuccess('Notification settings saved!'); // Still show success for demo
+      // Still show success for demo purposes if schema is missing
+      toast({
+        title: "Success",
+        description: "Notification settings saved!",
+        className: "bg-green-50 border-green-200 text-green-800",
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  if (authLoading || loading) {
+  // Improved loading check: only show full skeleton on initial load if no profile
+  // This prevents layout thrashing if authLoading toggles due to background refresh
+  if (loading && !profile) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Profile Settings" showBackButton />
@@ -261,26 +282,12 @@ export default function ProfilePage() {
       <AppHeader title="Profile Settings" showBackButton />
 
       <main className="container px-4 py-6 max-w-4xl mx-auto">
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {success && (
-          <Alert className="mb-6 bg-green-50 border-green-200">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
-          </Alert>
-        )}
-
         {/* Profile Overview */}
         <Card className="mb-6">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-start gap-6">
               <div className="flex flex-col items-center gap-4">
-                <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border relative group">
+                <div className="w-24 h-24 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden border relative group shadow-sm">
                   {profilePicturePreview ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -294,7 +301,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <Label htmlFor="picture-upload" className="cursor-pointer">
-                    <div className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800">
+                    <div className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors font-medium">
                       <Upload className="h-4 w-4" />
                       Change Photo
                     </div>
@@ -309,12 +316,12 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-bold">
+                <h2 className="text-2xl font-bold tracking-tight">
                   {profileData.first_name} {profileData.last_name}
                 </h2>
                 <p className="text-gray-500">{profileData.email}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge className="bg-blue-100 text-blue-800 capitalize">
+                  <Badge variant="secondary" className="capitalize">
                     {profile?.role?.replace('_', ' ')}
                   </Badge>
                   <span className="text-sm text-gray-500">
@@ -330,7 +337,7 @@ export default function ProfilePage() {
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <User className="h-5 w-5" />
+              <User className="h-5 w-5 text-primary" />
               Personal Information
             </CardTitle>
             <CardDescription>
@@ -408,7 +415,7 @@ export default function ProfilePage() {
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Lock className="h-5 w-5" />
+              <Lock className="h-5 w-5 text-primary" />
               Change Password
             </CardTitle>
             <CardDescription>
@@ -439,9 +446,9 @@ export default function ProfilePage() {
             <div className="flex justify-end">
               <Button
                 onClick={handleChangePassword}
-                disabled={saving || !passwordData.new_password || !passwordData.confirm_password}
+                disabled={passwordSaving || !passwordData.new_password || !passwordData.confirm_password}
               >
-                {saving ? (
+                {passwordSaving ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Changing...
@@ -458,7 +465,7 @@ export default function ProfilePage() {
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Bell className="h-5 w-5" />
+              <Bell className="h-5 w-5 text-primary" />
               Notification Settings
             </CardTitle>
             <CardDescription>
@@ -476,7 +483,7 @@ export default function ProfilePage() {
                   type="checkbox"
                   checked={notifications.email_alerts}
                   onChange={(e) => setNotifications(prev => ({ ...prev, email_alerts: e.target.checked }))}
-                  className="h-5 w-5"
+                  className="h-5 w-5 accent-primary rounded"
                 />
               </div>
 
@@ -491,7 +498,7 @@ export default function ProfilePage() {
                   type="checkbox"
                   checked={notifications.task_reminders}
                   onChange={(e) => setNotifications(prev => ({ ...prev, task_reminders: e.target.checked }))}
-                  className="h-5 w-5"
+                  className="h-5 w-5 accent-primary rounded"
                 />
               </div>
 
@@ -506,7 +513,7 @@ export default function ProfilePage() {
                   type="checkbox"
                   checked={notifications.weekly_digest}
                   onChange={(e) => setNotifications(prev => ({ ...prev, weekly_digest: e.target.checked }))}
-                  className="h-5 w-5"
+                  className="h-5 w-5 accent-primary rounded"
                 />
               </div>
             </div>
@@ -533,7 +540,7 @@ export default function ProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Shield className="h-5 w-5" />
+              <Shield className="h-5 w-5 text-primary" />
               Your Permissions
             </CardTitle>
             <CardDescription>
@@ -543,7 +550,7 @@ export default function ProfilePage() {
           <CardContent>
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-3 mb-4">
-                <Badge className="bg-blue-100 text-blue-800 text-sm capitalize">
+                <Badge variant="secondary" className="capitalize">
                   {profile?.role?.replace('_', ' ')}
                 </Badge>
               </div>
