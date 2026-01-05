@@ -64,7 +64,7 @@ function AuthCallbackContent() {
             // (profile may not be immediately accessible due to RLS/session propagation)
             let profile = null;
             let attempts = 0;
-            const maxAttempts = 3;
+            const maxAttempts = 5; // Increased from 3 to 5
 
             while (!profile && attempts < maxAttempts) {
               const { data: fetchedProfile } = await supabase
@@ -80,7 +80,8 @@ function AuthCallbackContent() {
 
               attempts++;
               if (attempts < maxAttempts) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                // Progressive backoff
+                await new Promise(resolve => setTimeout(resolve, 500 * attempts));
               }
             }
 
@@ -96,16 +97,36 @@ function AuthCallbackContent() {
             if (profile?.role === 'client') {
               try {
                 // Fetch client record to get client_id
-                const { data: clientData } = await supabase
-                  .from('clients')
-                  .select('id, signed_engagement_letter_at')
-                  .eq('portal_user_id', userId)
-                  .single();
+                // Retry logic for client record fetch (robustness against replication lag)
+                let clientData = null;
+                let clientAttempts = 0;
+                const maxClientAttempts = 5;
+
+                while (!clientData && clientAttempts < maxClientAttempts) {
+                  const { data: fetchedClient } = await supabase
+                    .from('clients')
+                    .select('id, signed_engagement_letter_at')
+                    .eq('portal_user_id', userId)
+                    .single();
+
+                  if (fetchedClient) {
+                    clientData = fetchedClient;
+                    break;
+                  }
+
+                  clientAttempts++;
+                  if (clientAttempts < maxClientAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 500 * clientAttempts));
+                  }
+                }
 
                 if (clientData) {
                   // Import and call the task creation action
                   const { createClientOnboardingTasks } = await import('@/app/actions/tasks');
                   await createClientOnboardingTasks(clientData.id, userId);
+                } else {
+                  console.error('Client record not found after verification for user:', userId);
+                  // We continue to redirect; the portal UI will handle the missing tasks/client gracefully now
                 }
               } catch (taskError) {
                 console.error('Error creating onboarding tasks:', taskError);

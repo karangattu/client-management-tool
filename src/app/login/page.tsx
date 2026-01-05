@@ -34,10 +34,18 @@ function LoginForm() {
     try {
       const supabase = createClient();
 
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      // Add a safety timeout to the login request itself
+      const loginPromise = supabase.auth.signInWithPassword({
         email,
         password,
       });
+
+      const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+        setTimeout(() => reject(new Error('Login request timed out')), 15000)
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as any;
 
       if (signInError) {
         setError(signInError.message);
@@ -45,7 +53,7 @@ function LoginForm() {
         return;
       }
 
-      if (!data.session) {
+      if (!data?.session) {
         setError('Login succeeded but no session was created. Please try again.');
         setLoading(false);
         return;
@@ -98,8 +106,14 @@ function LoginForm() {
     } catch (err) {
       console.error('Login error:', err);
       // More specific error message if it's an AuthApiError
-      if (err instanceof Error && err.message.includes('Invalid login credentials')) {
-        setError('Invalid email or password.');
+      if (err instanceof Error) {
+        if (err.message.includes('Invalid login credentials')) {
+          setError('Invalid email or password.');
+        } else if (err.message.includes('timed out')) {
+          setError('Login timed out. Please check your connection and try again.');
+        } else {
+          setError(err.message || 'An unexpected error occurred. Please try again.');
+        }
       } else {
         setError('An unexpected error occurred. Please try again.');
       }

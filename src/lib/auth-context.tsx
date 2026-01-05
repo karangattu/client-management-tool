@@ -85,8 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       try {
         // Safety timeout to prevent infinite loading
+        // Increased to 15s to account for potentially slow network/Supabase cold starts
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Auth timeout')), 10000)
+          setTimeout(() => reject(new Error('Auth timeout')), 15000)
         );
 
         const sessionPromise = supabase.auth.getSession();

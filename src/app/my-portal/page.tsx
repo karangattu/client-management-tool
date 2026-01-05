@@ -423,8 +423,8 @@ export default function MyPortalPage() {
                     </div>
                 )}
 
-                {/* Urgent Tasks Section */}
-                {(urgentTasks.length > 0 || needsEngagementLetter) && (
+                {/* Urgent Tasks Section - Decoupled from Task records to ensure visibility */}
+                {(urgentTasks.length > 0 || needsEngagementLetter || !client?.date_of_birth) && (
                     <Card className="border-orange-200 bg-orange-50/50">
                         <CardHeader className="pb-3">
                             <CardTitle className="flex items-center gap-2 text-orange-800">
@@ -436,7 +436,32 @@ export default function MyPortalPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
+                            {/* Explicit Engagement Letter Action */}
+                            {needsEngagementLetter && (
+                                <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-orange-100 rounded-lg">
+                                            <PenLine className="h-5 w-5 text-orange-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium">Sign Engagement Letter</p>
+                                            <p className="text-sm text-gray-500">Please review and sign to proceed with services</p>
+                                        </div>
+                                    </div>
+                                    <Button size="sm" onClick={() => setShowEngagementLetter(true)}>
+                                        Sign Now
+                                        <ArrowRight className="h-4 w-4 ml-1" />
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* Explicit Intake Form Action (if we suspect intake is needed but task missing) */}
+                            {/* We check if tasks already include it to avoid duplicates, or just render tasks below */}
+
                             {urgentTasks.map((task) => {
+                                // unexpected duplication check: if we manually rendered the letter above, skip the task for it
+                                if (task.title === 'Sign Engagement Letter' && needsEngagementLetter) return null;
+
                                 const action = getTaskAction(task);
                                 return (
                                     <div
