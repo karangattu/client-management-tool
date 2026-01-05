@@ -132,8 +132,9 @@ export default function DashboardPage() {
   const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
   const [clientDocuments, setClientDocuments] = useState<any[]>([]);
   const [currentClient, setCurrentClient] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [profileIncomplete, setProfileIncomplete] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [listsLoading, setListsLoading] = useState(true);
+  const [focusLoading, setFocusLoading] = useState(true);
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const { t } = useLanguage();
@@ -149,107 +150,56 @@ export default function DashboardPage() {
     }
 
     if (user) {
-      fetchDashboardData();
+      // Trigger fetches in parallel but they update independent states
+      fetchStats();
+      fetchLists();
+      fetchFocusItems();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
-  const fetchDashboardData = async () => {
+  const fetchStats = async () => {
+    if (!user) return;
+    setStatsLoading(true);
     const supabase = createClient();
-    setLoading(true);
 
     try {
-      // Check if user is a client - fetch client-specific data
       if (profile?.role === 'client') {
-        // First, get the client record linked to this user
-        const { data: clientData } = await supabase
-          .from('clients')
-          .select('id')
-          .eq('portal_user_id', user?.id)
-          .single();
-
+        // Client stats logic can remain here or be split if it was heavy, 
+        // but usually specific client stats are fast. Use existing logic slightly adapted.
+        const { data: clientData } = await supabase.from('clients').select('id').eq('portal_user_id', user.id).single();
         if (clientData) {
-          // Fetch tasks related to this client - both by client_id AND assigned_to user
-          // This ensures the intake completion task (assigned to user) is visible
-          const { data: tasksData } = await supabase
-            .from('tasks')
-            .select('id, title, description, status, priority, due_date')
-            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user?.id}`)
-            .in('status', ['pending', 'in_progress'])
-            .order('due_date', { ascending: true })
-            .limit(10);
+          const { count: pendingTasks } = await supabase.from('tasks')
+            .select('*', { count: 'exact', head: true })
+            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user.id}`)
+            .in('status', ['pending', 'in_progress']);
 
-          if (tasksData) {
-            // Deduplicate tasks in case a task has both client_id and assigned_to pointing to this user
-            const uniqueTasks = tasksData.filter((task, index, self) =>
-              index === self.findIndex((t) => t.id === task.id)
-            );
-            setClientTasks(uniqueTasks);
-          }
-
-          // Fetch upcoming calendar events for this client
-          const { data: eventsData } = await supabase
-            .from('calendar_events')
-            .select('id, title, start_time, location')
+          const { count: upcomingEvents } = await supabase.from('calendar_events')
+            .select('*', { count: 'exact', head: true })
             .eq('client_id', clientData.id)
-            .gte('start_time', new Date().toISOString())
-            .order('start_time', { ascending: true })
-            .limit(5);
+            .gte('start_time', new Date().toISOString());
 
-          if (eventsData) {
-            setClientEvents(eventsData);
-          }
+          const { count: unreadAlerts } = await supabase.from('alerts')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('is_read', false);
 
-          // Client stats
           setStats(prev => ({
             ...prev,
-            pendingTasks: tasksData?.length || 0,
-            upcomingEvents: eventsData?.length || 0,
+            pendingTasks: pendingTasks || 0,
+            upcomingEvents: upcomingEvents || 0,
+            unreadAlerts: unreadAlerts || 0
           }));
-
-          // Fetch client interactions
-          const { data: historyData } = await getClientHistory(clientData.id);
-          if (historyData) {
-            setClientInteractions(historyData as Interaction[]);
-          }
-
-          // Store client data for printing
-          const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientData.id).single();
-          setCurrentClient(fullClient);
-
-          // Fetch documents for this client
-          const { data: docsData } = await supabase
-            .from('documents')
-            .select('id, file_name, document_type, status, created_at, file_path')
-            .eq('client_id', clientData.id)
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-          if (docsData) {
-            setClientDocuments(docsData);
-          }
         }
-
-        // Fetch unread alerts for client
-        const { count: unreadAlerts } = await supabase
-          .from('alerts')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user?.id)
-          .eq('is_read', false);
-
-        setStats(prev => ({ ...prev, unreadAlerts: unreadAlerts || 0 }));
-
       } else {
-        // Staff/admin data fetching - Parallelize for performance
+        // Staff stats
         const [
           { count: totalClients },
           { count: activeClients },
           { count: pendingTasks },
           { count: openTasks },
           { count: upcomingEvents },
-          { count: unreadAlerts },
-          { data: deadlineData },
-          { data: openTasksData }
+          { count: unreadAlerts }
         ] = await Promise.all([
           supabase.from('clients').select('*', { count: 'exact', head: true }),
           supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
@@ -257,12 +207,6 @@ export default function DashboardPage() {
           supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
           supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
           supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
-          supabase.from('tasks').select(`
-            id, title, due_date, priority, clients (first_name, last_name)
-          `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
-          supabase.from('tasks').select(`
-            id, title, description, priority, due_date, clients (first_name, last_name)
-          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10)
         ]);
 
         setStats({
@@ -273,120 +217,199 @@ export default function DashboardPage() {
           upcomingEvents: upcomingEvents || 0,
           unreadAlerts: unreadAlerts || 0,
         });
-
-        if (deadlineData) {
-          interface DeadlineQueryResult {
-            id: string;
-            title: string;
-            due_date: string;
-            priority: string;
-            clients: { first_name: string; last_name: string } | null;
-          }
-          setDeadlines((deadlineData as unknown as DeadlineQueryResult[]).map((d) => ({
-            id: d.id,
-            title: d.title,
-            due_date: d.due_date,
-            priority: d.priority,
-            client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
-          })));
-        }
-
-        if (openTasksData) {
-          setOpenTasksToClaim(openTasksData as unknown as OpenTask[]);
-        }
-
-        // Fetch staff profiles for assignment
-        const usersResult = await getAllUsers();
-        if (usersResult.success && usersResult.data) {
-          const staffList = (usersResult.data as any[])
-            .filter(u => u.role !== 'client')
-            .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
-          setStaff(staffList);
-        }
-
-        // Fetch Today's Focus items (urgent tasks, today's events, unread alerts)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const todayISO = today.toISOString();
-        const tomorrowISO = tomorrow.toISOString();
-
-        const [
-          { data: urgentTasks },
-          { data: todayEvents },
-          { data: activeAlerts }
-        ] = await Promise.all([
-          // My tasks due today or overdue (assigned to me)
-          supabase.from('tasks').select(`
-            id, title, description, priority, due_date, status, clients (first_name, last_name)
-          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
-          // Today's calendar events
-          supabase.from('calendar_events').select(`
-            id, title, start_time, description, clients (first_name, last_name)
-          `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
-          // Unread alerts for this user
-          supabase.from('alerts').select(`
-            id, title, message, priority, created_at, clients (first_name, last_name)
-          `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
-        ]);
-
-        // Build unified focus items
-        const focus: FocusItem[] = [];
-
-        if (urgentTasks) {
-          urgentTasks.forEach((task: any) => {
-            const isOverdue = task.due_date && new Date(task.due_date) < new Date();
-            focus.push({
-              id: task.id,
-              type: 'task',
-              title: task.title,
-              description: task.description,
-              time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
-              priority: isOverdue ? 'urgent' : (task.priority || 'medium'),
-              client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : undefined,
-              status: task.status,
-            });
-          });
-        }
-
-        if (todayEvents) {
-          todayEvents.forEach((event: any) => {
-            focus.push({
-              id: event.id,
-              type: 'event',
-              title: event.title,
-              description: event.description,
-              time: new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              priority: 'medium',
-              client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : undefined,
-            });
-          });
-        }
-
-        if (activeAlerts) {
-          activeAlerts.forEach((alert: any) => {
-            focus.push({
-              id: alert.id,
-              type: 'alert',
-              title: alert.title,
-              description: alert.message,
-              time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              priority: alert.priority || 'high',
-              client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
-            });
-          });
-        }
-
-        // Sort by priority (urgent > high > medium > low) then by time
-        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-        focus.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-        setFocusItems(focus);
       }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('Error fetching stats:', error);
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
+    }
+  };
+
+  const fetchLists = async () => {
+    if (!user || profile?.role === 'client') {
+      setListsLoading(false);
+      return;
+    }
+    setListsLoading(true);
+    const supabase = createClient();
+
+    try {
+      const [
+        { data: deadlineData },
+        { data: openTasksData }
+      ] = await Promise.all([
+        supabase.from('tasks').select(`
+            id, title, due_date, priority, clients (first_name, last_name)
+          `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
+        supabase.from('tasks').select(`
+            id, title, description, priority, due_date, clients (first_name, last_name)
+          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10)
+      ]);
+
+      if (deadlineData) {
+        setDeadlines((deadlineData as any[]).map((d) => ({
+          id: d.id,
+          title: d.title,
+          due_date: d.due_date,
+          priority: d.priority,
+          client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
+        })));
+      }
+
+      if (openTasksData) {
+        setOpenTasksToClaim(openTasksData as any[]);
+      }
+
+      // Fetch staff for assignment
+      const usersResult = await getAllUsers();
+      if (usersResult.success && usersResult.data) {
+        const staffList = (usersResult.data as any[])
+          .filter(u => u.role !== 'client')
+          .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
+        setStaff(staffList);
+      }
+    } catch (error) {
+      console.error('Error fetching lists:', error);
+    } finally {
+      setListsLoading(false);
+    }
+  };
+
+  const fetchFocusItems = async () => {
+    // Logic from original fetchDashboardData regarding FocusItems
+    if (!user) return;
+    if (profile?.role === 'client') {
+      // Client specific fetches that were in the original huge function
+      const supabase = createClient();
+      const { data: clientData } = await supabase.from('clients').select('id').eq('portal_user_id', user.id).single();
+      if (clientData) {
+        setFocusLoading(true); // Using focus loader for client task lists too for now
+        try {
+          const { data: tasksData } = await supabase
+            .from('tasks')
+            .select('id, title, description, status, priority, due_date')
+            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user?.id}`)
+            .in('status', ['pending', 'in_progress'])
+            .order('due_date', { ascending: true })
+            .limit(10);
+
+          if (tasksData) {
+            const uniqueTasks = tasksData.filter((task, index, self) =>
+              index === self.findIndex((t) => t.id === task.id)
+            );
+            setClientTasks(uniqueTasks);
+          }
+
+          const { data: eventsData } = await supabase
+            .from('calendar_events')
+            .select('id, title, start_time, location')
+            .eq('client_id', clientData.id)
+            .gte('start_time', new Date().toISOString())
+            .order('start_time', { ascending: true })
+            .limit(5);
+
+          if (eventsData) setClientEvents(eventsData);
+
+          // Other client fetches...
+          const { data: historyData } = await getClientHistory(clientData.id);
+          if (historyData) setClientInteractions(historyData as Interaction[]);
+
+          const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientData.id).single();
+          setCurrentClient(fullClient);
+
+          const { data: docsData } = await supabase.from('documents')
+            .select('id, file_name, document_type, status, created_at, file_path')
+            .eq('client_id', clientData.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+          if (docsData) setClientDocuments(docsData);
+
+        } catch (e) { console.error(e) }
+        finally { setFocusLoading(false); }
+      }
+      return;
+    }
+
+    // Staff logic for focus items
+    setFocusLoading(true);
+    const supabase = createClient();
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayISO = today.toISOString();
+      const tomorrowISO = tomorrow.toISOString();
+
+      const [
+        { data: urgentTasks },
+        { data: todayEvents },
+        { data: activeAlerts }
+      ] = await Promise.all([
+        supabase.from('tasks').select(`
+            id, title, description, priority, due_date, status, clients (first_name, last_name)
+          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
+        supabase.from('calendar_events').select(`
+            id, title, start_time, description, clients (first_name, last_name)
+          `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
+        supabase.from('alerts').select(`
+            id, title, message, priority, created_at, clients (first_name, last_name)
+          `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
+      ]);
+
+      const focus: FocusItem[] = [];
+
+      if (urgentTasks) {
+        urgentTasks.forEach((task: any) => {
+          const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+          focus.push({
+            id: task.id,
+            type: 'task',
+            title: task.title,
+            description: task.description,
+            time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
+            priority: isOverdue ? 'urgent' : (task.priority || 'medium'),
+            client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : undefined,
+            status: task.status,
+          });
+        });
+      }
+
+      if (todayEvents) {
+        todayEvents.forEach((event: any) => {
+          focus.push({
+            id: event.id,
+            type: 'event',
+            title: event.title,
+            description: event.description,
+            time: new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            priority: 'medium',
+            client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : undefined,
+          });
+        });
+      }
+
+      if (activeAlerts) {
+        activeAlerts.forEach((alert: any) => {
+          focus.push({
+            id: alert.id,
+            type: 'alert',
+            title: alert.title,
+            description: alert.message,
+            time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            priority: alert.priority || 'high',
+            client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
+          });
+        });
+      }
+
+      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+      focus.sort((a, b) => priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder]);
+      setFocusItems(focus);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFocusLoading(false);
     }
   };
 
@@ -394,7 +417,9 @@ export default function DashboardPage() {
     try {
       const result = await completeTask(taskId);
       if (result.success) {
-        fetchDashboardData();
+        // Optimistic update or refetch
+        fetchStats();
+        fetchFocusItems();
       } else {
         alert(result.error || "Failed to complete task");
       }
@@ -407,7 +432,8 @@ export default function DashboardPage() {
     try {
       const result = await claimTask(taskId);
       if (result.success) {
-        fetchDashboardData();
+        fetchStats();
+        fetchLists();
       } else {
         alert(result.error || "Failed to claim task");
       }
@@ -420,7 +446,8 @@ export default function DashboardPage() {
     try {
       const result = await assignTask(taskId, staffId);
       if (result.success) {
-        fetchDashboardData();
+        fetchLists();
+        fetchStats();
       } else {
         alert(result.error || "Failed to assign task");
       }
@@ -434,7 +461,7 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  // Show loading state while auth is loading
+  // Show loading state while auth is loading - THIS IS OKAY TO KEEP BLOCKING
   if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -634,7 +661,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.activeTasks')}</p>
                     <div className="text-2xl font-bold text-orange-600">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
                     </div>
                   </div>
                   <div className="p-2 bg-orange-100 rounded-lg">
@@ -649,7 +676,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.appointments')}</p>
                     <div className="text-2xl font-bold text-purple-600">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.upcomingEvents}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.upcomingEvents}
                     </div>
                   </div>
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -670,7 +697,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.totalClients')}</p>
                     <div className="text-2xl font-bold text-gray-900">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.totalClients}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.totalClients}
                     </div>
                   </div>
                   <div className="p-2 bg-blue-100 rounded-lg">
@@ -685,7 +712,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.activeClients')}</p>
                     <div className="text-2xl font-bold text-green-600">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.activeClients}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.activeClients}
                     </div>
                   </div>
                   <div className="p-2 bg-green-100 rounded-lg">
@@ -700,7 +727,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.myTasks')}</p>
                     <div className="text-2xl font-bold text-orange-600">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.pendingTasks}
                     </div>
                   </div>
                   <div className="p-2 bg-orange-100 rounded-lg">
@@ -715,7 +742,7 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm text-gray-600">{t('dashboard.openTasks')}</p>
                     <div className="text-2xl font-bold text-purple-600">
-                      {loading ? <Skeleton className="h-8 w-12" /> : stats.openTasks}
+                      {statsLoading ? <Skeleton className="h-8 w-12" /> : stats.openTasks}
                     </div>
                   </div>
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -813,7 +840,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {focusLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
                       <Skeleton key={i} className="h-16" />
@@ -869,7 +896,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {focusLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
                       <Skeleton key={i} className="h-16" />
@@ -916,7 +943,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {focusLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
                       <Skeleton key={i} className="h-12" />
@@ -970,7 +997,7 @@ export default function DashboardPage() {
                 </Button>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {focusLoading ? (
                   <div className="space-y-4">
                     {[1, 2].map(i => <Skeleton key={i} className="h-24" />)}
                   </div>
@@ -1005,7 +1032,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {listsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
                       <Skeleton key={i} className="h-16" />
@@ -1047,7 +1074,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {loading ? (
+                {listsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
                       <Skeleton className="h-20 w-full" key={i} />

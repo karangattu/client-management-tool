@@ -82,33 +82,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
+    const initializeAuth = async () => {
+      try {
+        // Safety timeout to prevent infinite loading
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Auth timeout')), 10000)
+        );
 
-      if (session?.user) {
-        const profileData = await fetchProfile(session.user.id);
-        setProfile(profileData);
-      }
+        const sessionPromise = supabase.auth.getSession();
 
-      setLoading(false);
-    };
+        // Race the session fetch against the timeout
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
-    getSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
+        }
+      } catch (error) {
+        console.error('Auth initialization error or timeout:', error);
+        // On error/timeout, we must assume user is signed out so the app can render something
+        // instead of getting stuck on "Loading..."
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // If we are already loading, we don't need to do anything as the initial check handles it
+        // Check if we are past the initial load to update state
+
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        if (session?.user) {
+          // If profile is already loaded for this user, don't re-fetch unnecessarily
+          if (!profile || profile.id !== session.user.id) {
+            const profileData = await fetchProfile(session.user.id);
+            setProfile(profileData);
+          }
         } else {
           setProfile(null);
         }
 
+        // Always ensure loading is false after a state change event
         setLoading(false);
       }
     );
