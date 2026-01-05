@@ -54,6 +54,8 @@ interface ClientInfo {
     last_name: string;
     email: string;
     signed_engagement_letter_at: string | null;
+    date_of_birth: string | null;
+    intake_completed_at: string | null;
 }
 
 interface Task {
@@ -135,7 +137,7 @@ export default function MyPortalPage() {
             // Fetch client record
             const { data: clientData, error: clientError } = await supabase
                 .from('clients')
-                .select('id, first_name, last_name, email, signed_engagement_letter_at')
+                .select('id, first_name, last_name, email, signed_engagement_letter_at, date_of_birth, intake_completed_at')
                 .eq('portal_user_id', user.id)
                 .single();
 
@@ -312,6 +314,9 @@ export default function MyPortalPage() {
             const result = await signEngagementLetter(client.id, pdfData, signature);
 
             if (result.success) {
+                // Update client state immediately
+                setClient(prev => prev ? { ...prev, signed_engagement_letter_at: new Date().toISOString() } : null);
+
                 // Complete the task
                 await completeTaskByTitle(client.id, 'Sign Engagement Letter');
 
@@ -378,6 +383,7 @@ export default function MyPortalPage() {
 
     const urgentTasks = tasks.filter(t => t.priority === 'urgent' || t.priority === 'high');
     const needsEngagementLetter = !client?.signed_engagement_letter_at;
+    const needsIntakeForm = !client?.intake_completed_at;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -424,7 +430,7 @@ export default function MyPortalPage() {
                 )}
 
                 {/* Urgent Tasks Section - Decoupled from Task records to ensure visibility */}
-                {(urgentTasks.length > 0 || needsEngagementLetter || !client?.date_of_birth) && (
+                {(urgentTasks.length > 0 || needsEngagementLetter || needsIntakeForm || !client?.date_of_birth) && (
                     <Card className="border-orange-200 bg-orange-50/50">
                         <CardHeader className="pb-3">
                             <CardTitle className="flex items-center gap-2 text-orange-800">
@@ -436,6 +442,27 @@ export default function MyPortalPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
+                            {/* Explicit Intake Form Action */}
+                            {needsIntakeForm && (
+                                <Link href="/client-intake">
+                                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-orange-100 rounded-lg">
+                                                <ClipboardList className="h-5 w-5 text-orange-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-medium">Complete Intake Form</p>
+                                                <p className="text-sm text-gray-500">Help us understand your needs and eligibility</p>
+                                            </div>
+                                        </div>
+                                        <Button size="sm">
+                                            Complete Form
+                                            <ArrowRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </div>
+                                </Link>
+                            )}
+
                             {/* Explicit Engagement Letter Action */}
                             {needsEngagementLetter && (
                                 <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm">
@@ -459,8 +486,9 @@ export default function MyPortalPage() {
                             {/* We check if tasks already include it to avoid duplicates, or just render tasks below */}
 
                             {urgentTasks.map((task) => {
-                                // unexpected duplication check: if we manually rendered the letter above, skip the task for it
+                                // unexpected duplication check: if we manually rendered above, skip those tasks
                                 if (task.title === 'Sign Engagement Letter' && needsEngagementLetter) return null;
+                                if (task.title === 'Complete Intake Form' && needsIntakeForm) return null;
 
                                 const action = getTaskAction(task);
                                 return (

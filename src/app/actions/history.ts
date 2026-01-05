@@ -10,7 +10,7 @@ interface LogInteractionParams {
     actionType: InteractionType;
     title: string;
     description?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 /**

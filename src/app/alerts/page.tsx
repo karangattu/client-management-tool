@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,12 +46,12 @@ export default function AlertsPage() {
 
   useEffect(() => {
     fetchAlerts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchAlerts = async () => {
     if (!user) return;
-    
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -89,8 +89,8 @@ export default function AlertsPage() {
         .eq('id', id);
 
       if (error) throw error;
-      
-      setAlerts(prev => prev.map(a => 
+
+      setAlerts(prev => prev.map(a =>
         a.id === id ? { ...a, is_read: true } : a
       ));
     } catch (err) {
@@ -109,7 +109,7 @@ export default function AlertsPage() {
         .in('id', unreadIds);
 
       if (error) throw error;
-      
+
       setAlerts(prev => prev.map(a => ({ ...a, is_read: true })));
     } catch (err) {
       console.error('Error marking all as read:', err);
@@ -124,7 +124,7 @@ export default function AlertsPage() {
         .eq('id', id);
 
       if (error) throw error;
-      
+
       setAlerts(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       console.error('Error archiving alert:', err);
@@ -242,9 +242,9 @@ export default function AlertsPage() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Notifications</h2>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={markAllAsRead}
               disabled={unreadCount === 0}
             >
@@ -292,9 +292,8 @@ export default function AlertsPage() {
                       {filteredAlerts.map(alert => (
                         <div
                           key={alert.id}
-                          className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
-                            alert.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'
-                          } hover:bg-gray-50`}
+                          className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${alert.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'
+                            } hover:bg-gray-50`}
                         >
                           <div className="flex-shrink-0 mt-1">
                             {getAlertIcon(alert.type)}

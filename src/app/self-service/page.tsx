@@ -41,7 +41,6 @@ import {
   BadgeCheck
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
-import { useLanguage } from '@/lib/language-context';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';

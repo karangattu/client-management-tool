@@ -17,7 +17,6 @@ import {
   UserPlus,
   Calendar,
   CheckSquare,
-  Home,
   FileText,
   Bell,
   Settings,
@@ -26,7 +25,6 @@ import {
   LogOut,
   Hand,
   AlertCircle,
-  User,
   Check,
   Printer,
   CheckCircle,
@@ -132,8 +130,8 @@ export default function DashboardPage() {
   const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
   const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
   const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
-  const [clientDocuments, setClientDocuments] = useState<any[]>([]);
-  const [currentClient, setCurrentClient] = useState<any>(null);
+  const [clientDocuments, setClientDocuments] = useState<Array<{ id: string; file_name: string; document_type: string; status?: string; created_at: string; file_path: string }>>([]);
+  const [currentClient, setCurrentClient] = useState<{ id: string; first_name: string; last_name: string;[key: string]: unknown } | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [listsLoading, setListsLoading] = useState(true);
   const [focusLoading, setFocusLoading] = useState(true);
@@ -249,7 +247,7 @@ export default function DashboardPage() {
       ]);
 
       if (deadlineData) {
-        setDeadlines((deadlineData as any[]).map((d) => ({
+        setDeadlines((deadlineData as Array<{ id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string } | null }>).map((d) => ({
           id: d.id,
           title: d.title,
           due_date: d.due_date,
@@ -259,13 +257,13 @@ export default function DashboardPage() {
       }
 
       if (openTasksData) {
-        setOpenTasksToClaim(openTasksData as any[]);
+        setOpenTasksToClaim(openTasksData as OpenTask[]);
       }
 
       // Fetch staff for assignment
       const usersResult = await getAllUsers();
       if (usersResult.success && usersResult.data) {
-        const staffList = (usersResult.data as any[])
+        const staffList = (usersResult.data as Array<{ id: string; first_name: string; last_name: string; role: string }>)
           .filter(u => u.role !== 'client')
           .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
         setStaff(staffList);
@@ -362,7 +360,7 @@ export default function DashboardPage() {
       const focus: FocusItem[] = [];
 
       if (urgentTasks) {
-        urgentTasks.forEach((task: any) => {
+        urgentTasks.forEach((task: { id: string; title: string; description?: string; priority?: string; due_date?: string; status?: string; clients?: { first_name: string; last_name: string } | null }) => {
           const isOverdue = task.due_date && new Date(task.due_date) < new Date();
           focus.push({
             id: task.id,
@@ -370,7 +368,7 @@ export default function DashboardPage() {
             title: task.title,
             description: task.description,
             time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
-            priority: isOverdue ? 'urgent' : (task.priority || 'medium'),
+            priority: isOverdue ? 'urgent' : (task.priority || 'medium') as 'urgent' | 'high' | 'medium' | 'low',
             client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : undefined,
             status: task.status,
           });
@@ -378,7 +376,7 @@ export default function DashboardPage() {
       }
 
       if (todayEvents) {
-        todayEvents.forEach((event: any) => {
+        todayEvents.forEach((event: { id: string; title: string; description?: string; start_time: string; clients?: { first_name: string; last_name: string } | null }) => {
           focus.push({
             id: event.id,
             type: 'event',
@@ -392,14 +390,14 @@ export default function DashboardPage() {
       }
 
       if (activeAlerts) {
-        activeAlerts.forEach((alert: any) => {
+        activeAlerts.forEach((alert: { id: string; title: string; message?: string; priority?: string; created_at: string; clients?: { first_name: string; last_name: string } | null }) => {
           focus.push({
             id: alert.id,
             type: 'alert',
             title: alert.title,
             description: alert.message,
             time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-            priority: alert.priority || 'high',
+            priority: (alert.priority || 'high') as 'urgent' | 'high' | 'medium' | 'low',
             client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
           });
         });

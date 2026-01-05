@@ -236,7 +236,7 @@ export async function getClientFullData(clientId: string) {
         county: "", // County not in clients table directly
         zipCode: client.zip_code || "",
       },
-      emergencyContacts: client.emergency_contacts.map((ec: any) => ({
+      emergencyContacts: client.emergency_contacts.map((ec: { name: string; relationship?: string; phone: string; email?: string }) => ({
         name: ec.name,
         relationship: ec.relationship || "",
         phone: ec.phone,
@@ -275,7 +275,7 @@ export async function getClientFullData(clientId: string) {
         disabilityStatus: client.demographics?.disability_status || false,
       },
       household: {
-        members: client.household_members.map((hm: any) => ({
+        members: client.household_members.map((hm: { id: string; first_name: string; last_name: string; relationship?: string; date_of_birth?: string }) => ({
           id: hm.id,
           name: `${hm.first_name} ${hm.last_name}`,
           relationship: hm.relationship,

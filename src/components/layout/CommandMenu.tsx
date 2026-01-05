@@ -3,20 +3,12 @@
 import * as React from "react"
 import {
     Calendar,
-    CreditCard,
-    Settings,
-    Smile,
     User,
-    Calculator,
     Search,
     CheckSquare,
     Users,
     LayoutDashboard,
     PlusCircle,
-    LogOut,
-    Moon,
-    Sun,
-    Laptop
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 

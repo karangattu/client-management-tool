@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import NextLink from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -12,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth, canAccessFeature } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { completeTask, claimTask } from '@/app/actions/tasks';
 import {
@@ -53,7 +52,7 @@ interface ClientGroup {
 }
 
 export default function CommandCenterPage() {
-    const { user, profile, loading: authLoading } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const router = useRouter();
     const [items, setItems] = useState<CommandItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -98,7 +97,7 @@ export default function CommandCenterPage() {
             const allItems: CommandItem[] = [];
 
             if (tasks) {
-                tasks.forEach((task: any) => {
+                tasks.forEach((task: { id: string; title: string; description?: string; due_date?: string; priority?: string; status?: string; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
                     allItems.push({
                         id: task.id,
                         type: 'task',
@@ -115,7 +114,7 @@ export default function CommandCenterPage() {
             }
 
             if (events) {
-                events.forEach((event: any) => {
+                events.forEach((event: { id: string; title: string; description?: string; start_time: string; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
                     allItems.push({
                         id: event.id,
                         type: 'event',
@@ -130,7 +129,7 @@ export default function CommandCenterPage() {
             }
 
             if (alerts) {
-                alerts.forEach((alert: any) => {
+                alerts.forEach((alert: { id: string; title: string; message?: string; priority?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
                     allItems.push({
                         id: alert.id,
                         type: 'alert',

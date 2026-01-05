@@ -64,7 +64,7 @@ export async function getClientEnrollments(clientId: string) {
             .eq('client_id', clientId);
 
         if (error) throw error;
-        return { success: true, data: data as any[] };
+        return { success: true, data: data as Enrollment[] };
     } catch (error) {
         console.error("Error fetching enrollments:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failed to fetch enrollments" };

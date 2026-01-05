@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Users, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,12 +39,12 @@ function LoginForm() {
         password,
       });
 
-      const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+      const timeoutPromise = new Promise<{ data: { session: unknown; user: unknown } | null; error: { message: string } | null }>((_, reject) =>
         setTimeout(() => reject(new Error('Login request timed out')), 15000)
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as any;
+      const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as { data: { session: unknown } | null; error: { message: string } | null };
 
       if (signInError) {
         setError(signInError.message);

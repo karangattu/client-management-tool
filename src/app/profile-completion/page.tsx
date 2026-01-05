@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ClientIntakeForm } from "@/components/forms/ClientIntakeForm";
 import { getCurrentUserProfile } from "@/app/actions/users";
 import { getClientByUserId, getClientFullData } from "@/app/actions/client";
+import { ClientIntakeForm as ClientIntakeFormType } from "@/lib/schemas/validation";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -11,7 +12,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 export default function ProfileCompletionPage() {
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState<string | undefined>();
-  const [initialData, setInitialData] = useState<any>(null);
+  const [initialData, setInitialData] = useState<ClientIntakeFormType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

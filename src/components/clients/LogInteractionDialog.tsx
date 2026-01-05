@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Phone, Mail, Users, MessageSquare, Clock, Plus, Loader2 } from 'lucide-react';
+import { Phone, Mail, Users, MessageSquare, Clock, Plus, Loader2, LucideIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 interface LogInteractionDialogProps {
@@ -31,7 +31,7 @@ interface LogInteractionDialogProps {
     onSuccess?: () => void;
 }
 
-const interactionTypes: { value: InteractionType; label: string; icon: any }[] = [
+const interactionTypes: { value: InteractionType; label: string; icon: LucideIcon }[] = [
     { value: 'note', label: 'Internal Note', icon: MessageSquare },
     { value: 'call', label: 'Phone Call', icon: Phone },
     { value: 'email', label: 'Email', icon: Mail },

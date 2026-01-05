@@ -107,7 +107,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus, clien
     try {
         const supabase = await createClient();
 
-        const updateData: any = { status };
+        const updateData: { status: TaskStatus; completed_at: string | null } = { status, completed_at: null };
         if (status === 'completed') {
             updateData.completed_at = new Date().toISOString();
         } else {

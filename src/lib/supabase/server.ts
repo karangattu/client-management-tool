@@ -1,6 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+// Export type for use in other files
+export type SupabaseServerClient = SupabaseClient;
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -35,7 +38,7 @@ export function createServiceClient() {
   if (!serviceKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
   }
-  
+
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     serviceKey,

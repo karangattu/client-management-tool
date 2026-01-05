@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { ENGAGEMENT_LETTER_TEXT } from "@/lib/constants";
 
 export async function signEngagementLetter(clientId: string, pdfData?: string, signatureDataUrl?: string) {
     try {

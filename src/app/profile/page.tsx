@@ -197,7 +197,7 @@ export default function ProfilePage() {
       });
 
       // Timeout race (10 seconds)
-      const timeoutPromise = new Promise<{ data: { user: any } | null, error: any }>((_, reject) => {
+      const timeoutPromise = new Promise<{ data: { user: unknown } | null, error: Error | null }>((_, reject) => {
         setTimeout(() => reject(new Error('Request timed out')), 10000);
       });
 

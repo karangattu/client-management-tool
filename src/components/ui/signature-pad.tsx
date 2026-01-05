@@ -9,7 +9,6 @@ import {
     DialogTitle,
     DialogDescription,
 } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { RotateCcw, Check, PenLine, BadgeCheck } from 'lucide-react';
 import Image from 'next/image';
 

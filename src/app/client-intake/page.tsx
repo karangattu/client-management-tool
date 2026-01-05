@@ -15,7 +15,7 @@ interface PageProps {
 export default async function ClientIntakePage({ searchParams }: PageProps) {
   const resolvedSearchParams = await searchParams;
   const clientId = typeof resolvedSearchParams.clientId === 'string' ? resolvedSearchParams.clientId : undefined;
-  
+
   // If no clientId provided, try to get the current user's client record
   let resolvedClientId = clientId;
   let initialData: ClientIntakeFormType | undefined = undefined;
@@ -37,7 +37,7 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
         .eq('id', user.id)
         .single();
 
-      const role = (profile as any)?.role as string | undefined;
+      const role = profile?.role as string | undefined;
 
       if (role === 'client') {
         // Client users should go to their portal if they don't have a client record

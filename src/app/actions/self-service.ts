@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient, type SupabaseServerClient } from "@/lib/supabase/server";
 import { getAppUrl } from "@/lib/utils";
 
 interface SelfServiceFormData {
@@ -33,10 +33,10 @@ export async function submitSelfServiceApplication(
     const supabase = await createClient();
 
     // Attempt to use service role for admin operations
-    let db: any;
+    let db: SupabaseServerClient;
     try {
       db = createServiceClient();
-    } catch (e) {
+    } catch (_e) {
       console.error("SUPABASE_SERVICE_ROLE_KEY missing. Cannot proceed with privileged operations.");
       throw new Error("Configuration error: Service access not available.");
     }

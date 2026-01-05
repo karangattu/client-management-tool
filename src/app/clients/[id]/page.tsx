@@ -40,7 +40,6 @@ import {
   Calendar,
   FileText,
   CheckSquare,
-  Home,
   Edit,
   Upload,
   Plus,
@@ -291,8 +290,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setAvailablePrograms((programsData?.success ? programsData.data : []) as Program[]);
         setInteractions((historyData?.success ? historyData.data : []) as Interaction[]);
 
-        const activityData = (activityDataResult as any)?.data || [];
-        setActivities(activityData.map((a: any) => ({
+        const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string }> })?.data || [];
+        setActivities(activityData.map((a) => ({
           id: a.id,
           action: formatAuditAction(a.action),
           created_at: a.created_at,
@@ -357,7 +356,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     ));
 
     try {
-      const result = await updateTaskStatus(taskId, newStatus as any, clientId);
+      const result = await updateTaskStatus(taskId, newStatus as Parameters<typeof updateTaskStatus>[1], clientId);
       if (!result.success) {
         // Revert on error
         setTasks(prev => prev.map(t =>
