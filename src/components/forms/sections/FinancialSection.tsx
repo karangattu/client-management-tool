@@ -13,7 +13,7 @@ export function FinancialSection() {
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm">
-                        3
+                        4
                     </span>
                     Financial Information
                 </CardTitle>

@@ -5,16 +5,67 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/forms/FormField";
 import { RELATIONSHIPS } from "@/lib/constants";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Users } from "lucide-react";
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
 import { defaultEmergencyContact } from "@/lib/schemas/validation";
+import { useToast } from "@/components/ui/use-toast";
 
 export function EmergencyContactSection() {
-  const { control } = useFormContext<ClientIntakeForm>();
+  const { control, watch, getValues } = useFormContext<ClientIntakeForm>();
+  const { toast } = useToast();
   const { fields, append, remove } = useFieldArray({
     control,
     name: "emergencyContacts",
   });
+
+  const { fields: householdFields, append: appendHousehold } = useFieldArray({
+    control,
+    name: "household.members",
+  });
+
+  const addAsHouseholdMember = (index: number) => {
+    const contact = getValues(`emergencyContacts.${index}`);
+
+    if (!contact.name) {
+      toast({
+        title: "Missing information",
+        description: "Please enter the contact's name first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if already added as household member
+    const existingMembers = getValues("household.members") || [];
+    const alreadyExists = existingMembers.some(
+      (member) => member.name.toLowerCase() === contact.name.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      toast({
+        title: "Already added",
+        description: `${contact.name} is already a household member.`,
+        variant: "default",
+      });
+      return;
+    }
+
+    // Add to household members
+    appendHousehold({
+      id: crypto.randomUUID(),
+      name: contact.name,
+      relationship: contact.relationship || "",
+      dateOfBirth: "",
+      gender: "",
+      race: [],
+    });
+
+    toast({
+      title: "Added to household",
+      description: `${contact.name} has been added as a household member. You can edit their details in the Household step.`,
+      variant: "success",
+    });
+  };
 
   return (
     <Card>
@@ -49,7 +100,7 @@ export function EmergencyContactSection() {
 
             <div className="space-y-4">
               <h4 className="font-medium">Emergency Contact {index + 1}</h4>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   name={`emergencyContacts.${index}.name`}
@@ -81,6 +132,23 @@ export function EmergencyContactSection() {
                   type="email"
                   placeholder="contact@example.com"
                 />
+              </div>
+
+              {/* Add as Household Member Button */}
+              <div className="pt-2 border-t mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addAsHouseholdMember(index)}
+                  className="text-primary hover:text-primary"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Add as Household Member
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add this contact to the household roster if they live with the client
+                </p>
               </div>
             </div>
           </div>

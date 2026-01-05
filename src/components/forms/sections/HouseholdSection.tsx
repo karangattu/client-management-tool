@@ -114,7 +114,7 @@ export function HouseholdSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm">
-            5
+            3
           </span>
           Household
         </CardTitle>

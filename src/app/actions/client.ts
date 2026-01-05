@@ -30,6 +30,24 @@ export async function saveClientIntake(
       };
     }
 
+    // Check if client email belongs to a staff member
+    const clientEmail = validatedData.participantDetails.email;
+    if (clientEmail) {
+      const { data: staffProfile } = await supabase
+        .from('profiles')
+        .select('id, role, first_name, last_name')
+        .ilike('email', clientEmail)
+        .in('role', ['admin', 'staff', 'case_manager'])
+        .maybeSingle();
+
+      if (staffProfile) {
+        return {
+          success: false,
+          error: `This email address (${clientEmail}) belongs to staff member "${staffProfile.first_name} ${staffProfile.last_name}". Clients cannot use staff email addresses. Please enter a different email for the client.`,
+        };
+      }
+    }
+
     const id = clientId; // If no ID provided, database will generate UUID
     const now = new Date().toISOString();
 

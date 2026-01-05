@@ -14,7 +14,7 @@ export function BenefitsHealthSection() {
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm">
-                        4
+                        5
                     </span>
                     Benefits & Health
                 </CardTitle>

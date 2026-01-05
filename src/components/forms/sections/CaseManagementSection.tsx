@@ -7,7 +7,6 @@ import {
   HOUSING_STATUSES,
   LANGUAGES,
   MONTHS,
-  RACE_OPTIONS,
 } from "@/lib/constants";
 
 interface CaseManagementSectionProps {
@@ -20,7 +19,7 @@ export function CaseManagementSection({ caseManagers = [] }: CaseManagementSecti
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm">
-            3
+            5
           </span>
           Case Management
         </CardTitle>
@@ -81,14 +80,7 @@ export function CaseManagementSection({ caseManagers = [] }: CaseManagementSecti
           <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
             Identification
           </h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FormField
-              name="caseManagement.ssnLastFour"
-              label="Last 4 Digits of SSN"
-              placeholder="XXXX"
-              maxLength={4}
-              tooltip="For identification purposes when full SSN is not available"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
               name="caseManagement.preferredId"
               label="Preferred ID"
@@ -165,18 +157,7 @@ export function CaseManagementSection({ caseManagers = [] }: CaseManagementSecti
           />
         </div>
 
-        {/* Race & Ethnicity */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-            Race & Ethnicity (Case Management)
-          </h4>
-          <FormField
-            name="caseManagement.race"
-            label="Race (Select all that apply)"
-            type="multi-checkbox"
-            options={RACE_OPTIONS}
-          />
-        </div>
+
       </CardContent>
     </Card>
   );
