@@ -44,7 +44,7 @@ function LoginForm() {
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as { data: { session: unknown } | null; error: { message: string } | null };
+      const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as { data: { session: unknown; user: { id: string } } | null; error: { message: string } | null };
 
       if (signInError) {
         setError(signInError.message);

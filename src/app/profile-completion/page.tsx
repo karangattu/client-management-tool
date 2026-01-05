@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { ClientIntakeForm } from "@/components/forms/ClientIntakeForm";
 import { getCurrentUserProfile } from "@/app/actions/users";
 import { getClientByUserId, getClientFullData } from "@/app/actions/client";
-import { ClientIntakeForm as ClientIntakeFormType } from "@/lib/schemas/validation";
+import {
+  ClientIntakeForm as ClientIntakeFormType,
+  defaultClientIntakeForm
+} from "@/lib/schemas/validation";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -28,14 +31,16 @@ export default function ProfileCompletionPage() {
         if (clientResult.success && clientResult.data) {
           setClientId(clientResult.data.id);
           const fullDataResult = await getClientFullData(clientResult.data.id);
-          if (fullDataResult.success) {
+          if (fullDataResult.success && fullDataResult.data) {
             setInitialData(fullDataResult.data);
           }
         } else {
           // New client record needed? 
           // We set default shared values from profile
           setInitialData({
+            ...defaultClientIntakeForm,
             participantDetails: {
+              ...defaultClientIntakeForm.participantDetails,
               firstName: userResult.data.first_name || "",
               lastName: userResult.data.last_name || "",
               email: userResult.data.email || "",
@@ -86,7 +91,7 @@ export default function ProfileCompletionPage() {
         </div>
 
         <ClientIntakeForm
-          initialData={initialData}
+          initialData={initialData || undefined}
           clientId={clientId}
           showStaffFields={false}
         />

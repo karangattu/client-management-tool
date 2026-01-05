@@ -97,49 +97,55 @@ export default function CommandCenterPage() {
             const allItems: CommandItem[] = [];
 
             if (tasks) {
-                tasks.forEach((task: { id: string; title: string; description?: string; due_date?: string; priority?: string; status?: string; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
+                tasks.forEach((task) => {
+                    const taskTyped = task as { id: string; title: string; description?: string; due_date?: string; priority?: string; status?: string; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
+                    const client = Array.isArray(taskTyped.clients) ? taskTyped.clients[0] : taskTyped.clients;
                     allItems.push({
-                        id: task.id,
+                        id: taskTyped.id,
                         type: 'task',
-                        title: task.title,
-                        description: task.description,
-                        due_date: task.due_date,
-                        priority: task.priority || 'medium',
-                        status: task.status,
-                        is_completed: task.status === 'completed',
-                        client_id: task.client_id,
-                        client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : 'Unassigned',
+                        title: taskTyped.title,
+                        description: taskTyped.description,
+                        due_date: taskTyped.due_date,
+                        priority: taskTyped.priority || 'medium',
+                        status: taskTyped.status,
+                        is_completed: taskTyped.status === 'completed',
+                        client_id: taskTyped.client_id,
+                        client_name: client ? `${client.first_name} ${client.last_name}` : 'Unassigned',
                     });
                 });
             }
 
             if (events) {
-                events.forEach((event: { id: string; title: string; description?: string; start_time: string; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
+                events.forEach((event) => {
+                    const eventTyped = event as { id: string; title: string; description?: string; start_time: string; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
+                    const client = Array.isArray(eventTyped.clients) ? eventTyped.clients[0] : eventTyped.clients;
                     allItems.push({
-                        id: event.id,
+                        id: eventTyped.id,
                         type: 'event',
-                        title: event.title,
-                        description: event.description,
-                        start_time: event.start_time,
+                        title: eventTyped.title,
+                        description: eventTyped.description,
+                        start_time: eventTyped.start_time,
                         priority: 'medium',
-                        client_id: event.client_id,
-                        client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : 'General',
+                        client_id: eventTyped.client_id,
+                        client_name: client ? `${client.first_name} ${client.last_name}` : 'General',
                     });
                 });
             }
 
             if (alerts) {
-                alerts.forEach((alert: { id: string; title: string; message?: string; priority?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | null }) => {
+                alerts.forEach((alert) => {
+                    const alertTyped = alert as { id: string; title: string; message?: string; priority?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
+                    const client = Array.isArray(alertTyped.clients) ? alertTyped.clients[0] : alertTyped.clients;
                     allItems.push({
-                        id: alert.id,
+                        id: alertTyped.id,
                         type: 'alert',
-                        title: alert.title,
-                        description: alert.message,
-                        priority: alert.priority || 'high',
-                        is_read: alert.is_read,
-                        is_completed: alert.is_read,
-                        client_id: alert.client_id,
-                        client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : 'System',
+                        title: alertTyped.title,
+                        description: alertTyped.message,
+                        priority: alertTyped.priority || 'high',
+                        is_read: alertTyped.is_read,
+                        is_completed: alertTyped.is_read,
+                        client_id: alertTyped.client_id,
+                        client_name: client ? `${client.first_name} ${client.last_name}` : 'System',
                     });
                 });
             }

@@ -247,17 +247,24 @@ export default function DashboardPage() {
       ]);
 
       if (deadlineData) {
-        setDeadlines((deadlineData as Array<{ id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string } | null }>).map((d) => ({
-          id: d.id,
-          title: d.title,
-          due_date: d.due_date,
-          priority: d.priority,
-          client_name: d.clients ? `${d.clients.first_name} ${d.clients.last_name}` : undefined,
-        })));
+        type DeadlineRow = { id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
+        setDeadlines((deadlineData as unknown as DeadlineRow[]).map((d) => {
+          const client = Array.isArray(d.clients) ? d.clients[0] : d.clients;
+          return {
+            id: d.id,
+            title: d.title,
+            due_date: d.due_date,
+            priority: d.priority,
+            client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
+          };
+        }));
       }
 
       if (openTasksData) {
-        setOpenTasksToClaim(openTasksData as OpenTask[]);
+        setOpenTasksToClaim((openTasksData as any[]).map(task => ({
+          ...task,
+          clients: Array.isArray(task.clients) ? task.clients[0] : task.clients
+        })) as OpenTask[]);
       }
 
       // Fetch staff for assignment
@@ -360,7 +367,8 @@ export default function DashboardPage() {
       const focus: FocusItem[] = [];
 
       if (urgentTasks) {
-        urgentTasks.forEach((task: { id: string; title: string; description?: string; priority?: string; due_date?: string; status?: string; clients?: { first_name: string; last_name: string } | null }) => {
+        (urgentTasks as any[]).forEach((task) => {
+          const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
           const isOverdue = task.due_date && new Date(task.due_date) < new Date();
           focus.push({
             id: task.id,
@@ -369,14 +377,15 @@ export default function DashboardPage() {
             description: task.description,
             time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
             priority: isOverdue ? 'urgent' : (task.priority || 'medium') as 'urgent' | 'high' | 'medium' | 'low',
-            client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : undefined,
+            client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
             status: task.status,
           });
         });
       }
 
       if (todayEvents) {
-        todayEvents.forEach((event: { id: string; title: string; description?: string; start_time: string; clients?: { first_name: string; last_name: string } | null }) => {
+        (todayEvents as any[]).forEach((event) => {
+          const client = Array.isArray(event.clients) ? event.clients[0] : event.clients;
           focus.push({
             id: event.id,
             type: 'event',
@@ -384,13 +393,14 @@ export default function DashboardPage() {
             description: event.description,
             time: new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
             priority: 'medium',
-            client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : undefined,
+            client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
           });
         });
       }
 
       if (activeAlerts) {
-        activeAlerts.forEach((alert: { id: string; title: string; message?: string; priority?: string; created_at: string; clients?: { first_name: string; last_name: string } | null }) => {
+        (activeAlerts as any[]).forEach((alert) => {
+          const client = Array.isArray(alert.clients) ? alert.clients[0] : alert.clients;
           focus.push({
             id: alert.id,
             type: 'alert',
@@ -398,7 +408,7 @@ export default function DashboardPage() {
             description: alert.message,
             time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
             priority: (alert.priority || 'high') as 'urgent' | 'high' | 'medium' | 'low',
-            client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
+            client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
           });
         });
       }
@@ -1104,7 +1114,7 @@ export default function DashboardPage() {
                 <PrintableCaseHistory
                   client={currentClient}
                   history={clientInteractions}
-                  tasks={clientTasks as any}
+                  tasks={clientTasks as Array<{ id: string; title: string; description?: string; status: string; due_date?: string }>}
                 />
               )}
             </div>
