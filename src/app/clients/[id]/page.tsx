@@ -345,7 +345,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
     fetchClientData();
     fetchManagers();
-  }, [clientId, supabase]);
+  }, [clientId, supabase, profile?.role]);
 
   const handleToggleTask = async (taskId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';

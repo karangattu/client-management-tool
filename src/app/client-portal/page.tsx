@@ -100,7 +100,7 @@ export default function ClientPortalPage() {
           setCurrentUser(null);
           setIsVerified(false);
         }
-      } catch (err) {
+      } catch {
         setCurrentUser(null);
         setIsVerified(false);
       }
@@ -270,7 +270,7 @@ export default function ClientPortalPage() {
               A case manager will review your information and contact you soon.
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              After verifying your email, you'll be able to complete your full profile with additional details (demographics, household, finances, and health).
+              After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).
             </p>
 
             <div className="flex gap-3 justify-center">

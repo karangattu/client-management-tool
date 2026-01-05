@@ -13,7 +13,6 @@ import {
     ChevronDown,
     ChevronUp,
     Info,
-    LayoutGrid,
     Target
 } from "lucide-react";
 import { cn } from "@/lib/utils";

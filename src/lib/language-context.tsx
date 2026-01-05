@@ -846,6 +846,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (savedLang && availableLanguages.some(l => l.code === savedLang)) {
       setLanguageState(savedLang);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setLanguage = (lang: Language) => {

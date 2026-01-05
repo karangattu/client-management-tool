@@ -4,6 +4,8 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth-context";
 import { LanguageProvider } from "@/lib/language-context";
+import { Toaster } from "@/components/ui/toaster";
+import { CommandMenu } from "@/components/layout/CommandMenu";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,6 +32,8 @@ export default function RootLayout({
           <AuthProvider>
             <TooltipProvider>
               {children}
+              <Toaster />
+              <CommandMenu />
             </TooltipProvider>
           </AuthProvider>
         </LanguageProvider>

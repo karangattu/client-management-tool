@@ -15,9 +15,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import { useRef, useEffect } from "react";
 import { jsPDF } from "jspdf";
-import { Input } from "@/components/ui/input";
+import Image from "next/image";
 import { Label } from "@/components/ui/label";
-import { FilePen, CheckCircle2, PenLine, RotateCcw, Download } from "lucide-react";
+import { FilePen, CheckCircle2, PenLine, RotateCcw } from "lucide-react";
 import { ENGAGEMENT_LETTER_TEXT } from "@/lib/constants";
 import { signEngagementLetter } from "@/app/actions/signature";
 
@@ -256,7 +256,13 @@ export function SignEngagementLetterDialog({
                             <Label className="text-sm font-semibold">Client Digital Signature</Label>
                             {signature ? (
                                 <div className="border border-slate-200 rounded-lg p-3 bg-white relative group">
-                                    <img src={signature} alt="Client signature" className="max-h-24 mx-auto" />
+                                    <Image
+                                        src={signature}
+                                        alt="Client signature"
+                                        width={550}
+                                        height={150}
+                                        className="max-h-24 w-auto mx-auto"
+                                    />
                                     <Button
                                         variant="ghost"
                                         size="icon"

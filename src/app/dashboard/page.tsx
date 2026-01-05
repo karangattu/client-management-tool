@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NextLink from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { AnimatePresence, motion } from "framer-motion";
 import { NavigationTile, NavigationTileGrid } from '@/components/layout/NavigationTile';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ import {
   User,
   Check,
   Printer,
+  CheckCircle,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
@@ -751,6 +753,97 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* Today's Focus Section - Staff Only */}
+        {!isClient && (
+          <div className="mb-10">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-blue-600" />
+              Today&apos;s Focus
+            </h2>
+            {focusLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : focusItems.length === 0 ? (
+              <Card className="bg-gray-50 border-dashed">
+                <CardContent className="py-8 flex flex-col items-center justify-center text-center">
+                  <div className="bg-white p-3 rounded-full shadow-sm mb-3">
+                    <CheckCircle className="h-8 w-8 text-green-500" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900">All caught up!</h3>
+                  <p className="text-gray-500 max-w-sm mt-1 mb-4">
+                    You have no urgent tasks, alerts, or events requiring immediate attention.
+                  </p>
+                  <Button variant="outline" onClick={() => router.push('/tasks')}>
+                    View All Tasks
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <AnimatePresence mode="popLayout">
+                <div className="space-y-3">
+                  {focusItems.map((item, index) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-1 p-2 rounded-lg ${item.type === 'task' ? 'bg-blue-100 text-blue-600' :
+                          item.type === 'event' ? 'bg-purple-100 text-purple-600' :
+                            'bg-orange-100 text-orange-600'
+                          }`}>
+                          {item.type === 'task' ? <CheckSquare className="h-4 w-4" /> :
+                            item.type === 'event' ? <Calendar className="h-4 w-4" /> :
+                              <AlertCircle className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{item.title}</p>
+                          {item.description && (
+                            <p className="text-sm text-gray-500 line-clamp-1">{item.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            {item.time && (
+                              <span className="text-xs text-gray-400 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {item.time}
+                              </span>
+                            )}
+                            {item.client_name && (
+                              <span className="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-100 rounded-full">
+                                {item.client_name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {getPriorityBadge(item.priority, item.status)}
+                        {item.type === 'task' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 rounded-full hover:bg-green-50 hover:text-green-600"
+                            onClick={() => handleCompleteTask(item.id)}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </AnimatePresence>
+            )}
           </div>
         )}
 

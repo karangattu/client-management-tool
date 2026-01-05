@@ -45,7 +45,6 @@ import {
   Hand,
   Archive,
   Loader2,
-  ChevronDown,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -111,6 +110,7 @@ function TasksContent() {
   const fetchStaff = async () => {
     const result = await getAllUsers();
     if (result.success && result.data) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const staffList = (result.data as any[])
         .filter(u => u.role !== 'client')
         .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));

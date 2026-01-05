@@ -92,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sessionPromise = supabase.auth.getSession();
 
         // Race the session fetch against the timeout
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
         setSession(session);

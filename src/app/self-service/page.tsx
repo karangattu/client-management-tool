@@ -37,14 +37,6 @@ import {
   AlertTriangle,
   Loader2,
   AlertCircle,
-  User,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar,
-  Lock,
-  ChevronRight,
-  ChevronLeft,
   RotateCcw,
   BadgeCheck
 } from 'lucide-react';
@@ -55,7 +47,6 @@ import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 
 export default function SelfServiceIntakePage() {
-  const { t } = useLanguage();
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [agreed, setAgreed] = useState(false);

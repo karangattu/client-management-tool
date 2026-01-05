@@ -11,14 +11,14 @@ import { defaultEmergencyContact } from "@/lib/schemas/validation";
 import { useToast } from "@/components/ui/use-toast";
 
 export function EmergencyContactSection() {
-  const { control, watch, getValues } = useFormContext<ClientIntakeForm>();
+  const { control, getValues } = useFormContext<ClientIntakeForm>();
   const { toast } = useToast();
   const { fields, append, remove } = useFieldArray({
     control,
     name: "emergencyContacts",
   });
 
-  const { fields: householdFields, append: appendHousehold } = useFieldArray({
+  const { append: appendHousehold } = useFieldArray({
     control,
     name: "household.members",
   });

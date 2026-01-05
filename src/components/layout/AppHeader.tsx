@@ -65,7 +65,7 @@ export function AppHeader({
         } else {
           setClientIntakeIncomplete(true);
         }
-      } catch (err) {
+      } catch {
         setClientIntakeIncomplete(true);
       }
     };

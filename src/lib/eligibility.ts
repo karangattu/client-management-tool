@@ -97,7 +97,7 @@ export function evaluateEligibility(formData: Partial<ClientIntakeForm>): Eligib
     results.push(evaluateGA(formData, income, age));
 
     // 11. HUD-VASH
-    results.push(evaluateHUDVASH(formData, isVeteran, isUnhoused, income));
+    results.push(evaluateHUDVASH(formData, isVeteran, isUnhoused));
 
     // 12. No-fee ID
     results.push(evaluateNoFeeID(formData, isUnhoused, age));
@@ -106,7 +106,7 @@ export function evaluateEligibility(formData: Partial<ClientIntakeForm>): Eligib
     results.push(evaluateReducedFeeID(formData, isHoused, age, benefits));
 
     // 14. IHSS
-    results.push(evaluateIHSS(formData, age, isDisabled, isHoused, healthStatus));
+    results.push(evaluateIHSS(formData, age, isDisabled));
 
     // 15. LifeLine
     results.push(evaluateLifeLine(formData, income, benefits));
@@ -118,7 +118,7 @@ export function evaluateEligibility(formData: Partial<ClientIntakeForm>): Eligib
     results.push(evaluateVTA(formData, isDisabled));
 
     // 18. Section 8 Interest List
-    results.push(evaluateSection8(formData, income, isUnhoused, age));
+    results.push(evaluateSection8(formData, income, isUnhoused));
 
     // 19. SSDI
     results.push(evaluateSSDI(formData, isDisabled));
@@ -211,7 +211,7 @@ function evaluateADSA(formData: Partial<ClientIntakeForm>, isDisabled: boolean, 
     if (hasDisability) {
         met.push("Has qualifying disability");
         reason = "You may be eligible for ADSA because you have a qualifying disability. This program provides $1,000 annually to help cover the costs of your service dog.";
-        
+
         if (receivesCoreBenefits) {
             met.push("Receives qualifying benefits");
             reason += " Additionally, you already receive benefits like SSI, SSDA, IHSS, or CAPI, which confirms your eligibility.";
@@ -249,11 +249,11 @@ function evaluateCalFresh(formData: Partial<ClientIntakeForm>, income: number, a
     const nextSteps: string[] = [];
 
     const incomeLimit = 2500;
-    
+
     if (income < incomeLimit) {
         met.push(`Income below $${incomeLimit}/month`);
         reason = `You may be eligible for CalFresh because your monthly income of $${income} is below the program limit. CalFresh provides monthly benefits for groceries.`;
-        
+
         if (age >= 60) {
             met.push("Age 60 or older");
             reason += " As a senior, you may qualify for additional benefits and simplified application process.";
@@ -294,11 +294,11 @@ function evaluateCalWORKs(formData: Partial<ClientIntakeForm>, income: number): 
     const nextSteps: string[] = [];
 
     const hasChildren = (formData.household?.members?.length || 0) > 0;
-    
+
     if (hasChildren) {
         met.push("Has children in household");
         reason = "You may be eligible for CalWORKs because you have children in your household. CalWORKs provides cash assistance and job training.";
-        
+
         if (income < 3000) {
             met.push("Income within program limits");
             reason += " Your household income appears to be within CalWORKs limits.";
@@ -333,11 +333,11 @@ function evaluateCAPI(formData: Partial<ClientIntakeForm>, income: number, age: 
     const nextSteps: string[] = [];
 
     const isSenior = age >= 65;
-    
+
     if (isSenior || isDisabled) {
         met.push(isSenior ? "Age 65 or older" : "Has qualifying disability");
         reason = `You may be eligible for CAPI because you are ${isSenior ? '65 or older' : 'disabled'} and a California resident. CAPI provides cash assistance for immigrants who are not eligible for federal SSI.`;
-        
+
         if (income < 2000) {
             met.push("Income within limits");
             reason += " Your income appears to be within CAPI limits.";
@@ -372,11 +372,11 @@ function evaluateCARE(formData: Partial<ClientIntakeForm>, income: number, benef
     const nextSteps: string[] = [];
 
     const receivesValidBenefits = benefits.some(b => ['liheap', 'wic', 'calfresh'].includes(b.toLowerCase()));
-    
+
     if (income < 3000 || receivesValidBenefits) {
         if (income < 3000) met.push("Income within limits");
         if (receivesValidBenefits) met.push("Receives qualifying benefits");
-        
+
         reason = "You may be eligible for CARE because it provides discounted electric rates for qualifying low-income households. This can significantly reduce your monthly utility bills.";
         nextSteps.push("Contact your electric utility company");
         nextSteps.push("Provide income verification or benefit documentation");
@@ -408,7 +408,7 @@ function evaluateFERA(formData: Partial<ClientIntakeForm>, income: number): Elig
     if (householdSize >= 3) {
         met.push("Household of 3 or more");
         reason = `You may be eligible for FERA because your household has ${householdSize} members. FERA provides reduced electric rates for families with 3 or more members who don't qualify for CARE.`;
-        
+
         if (income > 3000 && income < 4000) {
             met.push("Income in FERA range");
             nextSteps.push("Contact your electric utility company");
@@ -496,7 +496,7 @@ function evaluateGA(formData: Partial<ClientIntakeForm>, income: number, age: nu
     };
 }
 
-function evaluateHUDVASH(formData: Partial<ClientIntakeForm>, isVeteran: boolean, isUnhoused: boolean, income: number): EligibilityResult {
+function evaluateHUDVASH(formData: Partial<ClientIntakeForm>, isVeteran: boolean, isUnhoused: boolean): EligibilityResult {
     const met: string[] = [];
     const missing: string[] = [];
     let reason = "";
@@ -585,7 +585,7 @@ function evaluateReducedFeeID(formData: Partial<ClientIntakeForm>, isHoused: boo
     };
 }
 
-function evaluateIHSS(formData: Partial<ClientIntakeForm>, age: number, isDisabled: boolean, isHoused: boolean, healthStatus: string | undefined): EligibilityResult {
+function evaluateIHSS(formData: Partial<ClientIntakeForm>, age: number, isDisabled: boolean): EligibilityResult {
     const met: string[] = [];
     const missing: string[] = [];
     let reason = "";
@@ -701,7 +701,7 @@ function evaluateVTA(formData: Partial<ClientIntakeForm>, isDisabled: boolean): 
     };
 }
 
-function evaluateSection8(formData: Partial<ClientIntakeForm>, income: number, isUnhoused: boolean, age: number): EligibilityResult {
+function evaluateSection8(formData: Partial<ClientIntakeForm>, income: number, isUnhoused: boolean): EligibilityResult {
     const met: string[] = [];
     const missing: string[] = [];
     let reason = "";

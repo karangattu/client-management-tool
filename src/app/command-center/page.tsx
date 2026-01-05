@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import NextLink from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -209,35 +210,116 @@ export default function CommandCenterPage() {
         });
     }, [filteredItems]);
 
+    const { toast } = useToast();
+
+    // ... (rest of the component)
+
     const handleCompleteTask = async (taskId: string) => {
+        // Optimistic update
+        setItems(prev => prev.map(item =>
+            item.id === taskId ? { ...item, is_completed: true, status: 'completed' } : item
+        ));
+
+        toast({
+            title: "Task Completed",
+            description: "The task has been marked as complete.",
+            duration: 3000,
+        });
+
         try {
             const result = await completeTask(taskId);
-            if (result.success) {
-                fetchCommandCenterData();
+            if (!result.success) {
+                // Revert on failure
+                setItems(prev => prev.map(item =>
+                    item.id === taskId ? { ...item, is_completed: false, status: 'pending' } : item
+                ));
+                toast({
+                    title: "Error",
+                    description: "Failed to complete task. Please try again.",
+                    variant: "destructive",
+                });
             }
         } catch (error) {
             console.error('Error completing task:', error);
+            // Revert on error
+            setItems(prev => prev.map(item =>
+                item.id === taskId ? { ...item, is_completed: false, status: 'pending' } : item
+            ));
+            toast({
+                title: "Error",
+                description: "An unexpected error occurred.",
+                variant: "destructive",
+            });
         }
     };
 
     const handleDismissAlert = async (alertId: string) => {
+        // Optimistic update - remove from list (or mark read if you want to keep it but hide it based on filter)
+        // Since the current logic relies on `is_read` for filtering, let's mark it read.
+        setItems(prev => prev.map(item =>
+            item.id === alertId ? { ...item, is_read: true, is_completed: true } : item
+        ));
+
+        toast({
+            title: "Alert Dismissed",
+            description: "The alert has been removed.",
+            duration: 2000,
+        });
+
         const supabase = createClient();
         try {
-            await supabase.from('alerts').update({ is_read: true }).eq('id', alertId);
-            fetchCommandCenterData();
+            const { error } = await supabase.from('alerts').update({ is_read: true }).eq('id', alertId);
+            if (error) {
+                // Revert
+                setItems(prev => prev.map(item =>
+                    item.id === alertId ? { ...item, is_read: false, is_completed: false } : item
+                ));
+                toast({
+                    title: "Error",
+                    description: "Failed to dismiss alert.",
+                    variant: "destructive",
+                });
+            }
         } catch (error) {
             console.error('Error dismissing alert:', error);
+            // Revert
+            setItems(prev => prev.map(item =>
+                item.id === alertId ? { ...item, is_read: false, is_completed: false } : item
+            ));
         }
     };
 
     const handleClaimTask = async (taskId: string) => {
+        // Optimistic update
+        setItems(prev => prev.map(item =>
+            item.id === taskId ? { ...item, client_name: 'Assigned to you' } : item
+        ));
+        // Note: Claiming might change "assigned_to" which isn't directly visible in the item list logic 
+        // derived from "assigned_to.eq.${user?.id},assigned_to.is.null", 
+        // but it effectively moves it to "My Tasks".
+        // For visual feedback, just a toast is mostly enough if the list doesn't fundamentally change structure immediately,
+        // but if we want to reflect it, we'd assume it's now assigned.
+
+        toast({
+            title: "Task Claimed",
+            description: "You have successfully claimed this task.",
+            duration: 3000,
+        });
+
         try {
             const result = await claimTask(taskId);
-            if (result.success) {
+            if (!result.success) {
+                toast({
+                    title: "Error",
+                    description: result.error || "Failed to claim task",
+                    variant: "destructive",
+                });
+                // Re-fetch to ensure state is correct since claiming is complex
                 fetchCommandCenterData();
             }
         } catch (error) {
             console.error('Error claiming task:', error);
+            fetchCommandCenterData();
         }
     };
 

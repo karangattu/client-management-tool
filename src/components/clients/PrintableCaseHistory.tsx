@@ -2,7 +2,7 @@
 
 import { InteractionType } from '@/app/actions/history';
 import { format } from 'date-fns';
-import { Printer, CheckSquare, Clock, MapPin, Phone, Mail } from 'lucide-react';
+import { Printer, CheckSquare, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Interaction {

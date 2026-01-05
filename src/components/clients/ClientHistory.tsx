@@ -10,8 +10,7 @@ import {
     MessageSquare,
     RefreshCcw,
     Clock,
-    Calendar,
-    FileText
+    Calendar
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -32,6 +31,7 @@ interface ClientHistoryProps {
     isCompact?: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const interactionConfig: Record<InteractionType, { icon: any; color: string; bgColor: string }> = {
     call: { icon: Phone, color: 'text-blue-600', bgColor: 'bg-blue-100' },
     email: { icon: Mail, color: 'text-purple-600', bgColor: 'bg-purple-100' },
@@ -57,7 +57,7 @@ export function ClientHistory({ history, isCompact = false }: ClientHistoryProps
             {/* Timeline Line */}
             <div className="absolute left-6 top-2 bottom-2 w-0.5 bg-gray-200 hidden sm:block" />
 
-            {history.map((item, index) => {
+            {history.map((item) => {
                 const config = interactionConfig[item.action_type] || interactionConfig.other;
                 const Icon = config.icon;
 

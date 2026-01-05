@@ -40,7 +40,6 @@ import {
   Loader2,
   DollarSign,
   HeartPulse,
-  LayoutDashboard,
   Sparkles,
   Edit,
   Plus,
@@ -72,7 +71,7 @@ interface ClientIntakeFormProps {
   showStaffFields?: boolean;
 }
 
-export function ClientIntakeForm({ initialData, clientId, showStaffFields = true }: ClientIntakeFormProps) {
+export function ClientIntakeForm({ initialData, clientId, showStaffFields: _showStaffFields = true }: ClientIntakeFormProps) {
   const hasSubmittedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -186,7 +185,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
   const validateCurrentStep = async () => {
     const fieldsToValidate = getFieldsForStep(currentStep);
     if (fieldsToValidate.length === 0) return true;
-    
+
     try {
       const isValid = await trigger(fieldsToValidate as (keyof ClientIntakeFormType)[]);
       return isValid;
@@ -220,11 +219,11 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
   const handleNext = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (currentStep >= FORM_STEPS.length - 1) {
       return; // Don't proceed if on last step
     }
-    
+
     const isValid = await validateCurrentStep();
     if (isValid) {
       setCurrentStep(currentStep + 1);
@@ -245,7 +244,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
     if (stepIndex < currentStep) {
       setCurrentStep(stepIndex);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } 
+    }
     // Allow going to next step only if current step is valid
     else if (stepIndex === currentStep + 1) {
       const isValid = await validateCurrentStep();
@@ -330,8 +329,8 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields = true
 
   return (
     <FormProvider {...methods}>
-      <form 
-        onSubmit={handleSubmit(onSubmit)} 
+      <form
+        onSubmit={handleSubmit(onSubmit)}
         onKeyDown={handleKeyDown}
         className="space-y-6"
       >
