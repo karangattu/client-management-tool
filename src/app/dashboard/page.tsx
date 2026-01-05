@@ -102,6 +102,18 @@ interface ClientEvent {
   location?: string;
 }
 
+// Today's Focus unified item type
+interface FocusItem {
+  id: string;
+  type: 'task' | 'event' | 'alert';
+  title: string;
+  description?: string;
+  time?: string;
+  priority: 'urgent' | 'high' | 'medium' | 'low';
+  client_name?: string;
+  status?: string;
+}
+
 export default function DashboardPage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -123,6 +135,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -290,6 +303,85 @@ export default function DashboardPage() {
             .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
           setStaff(staffList);
         }
+
+        // Fetch Today's Focus items (urgent tasks, today's events, unread alerts)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const todayISO = today.toISOString();
+        const tomorrowISO = tomorrow.toISOString();
+
+        const [
+          { data: urgentTasks },
+          { data: todayEvents },
+          { data: activeAlerts }
+        ] = await Promise.all([
+          // My tasks due today or overdue (assigned to me)
+          supabase.from('tasks').select(`
+            id, title, description, priority, due_date, status, clients (first_name, last_name)
+          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
+          // Today's calendar events
+          supabase.from('calendar_events').select(`
+            id, title, start_time, description, clients (first_name, last_name)
+          `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
+          // Unread alerts for this user
+          supabase.from('alerts').select(`
+            id, title, message, priority, created_at, clients (first_name, last_name)
+          `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
+        ]);
+
+        // Build unified focus items
+        const focus: FocusItem[] = [];
+
+        if (urgentTasks) {
+          urgentTasks.forEach((task: any) => {
+            const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+            focus.push({
+              id: task.id,
+              type: 'task',
+              title: task.title,
+              description: task.description,
+              time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
+              priority: isOverdue ? 'urgent' : (task.priority || 'medium'),
+              client_name: task.clients ? `${task.clients.first_name} ${task.clients.last_name}` : undefined,
+              status: task.status,
+            });
+          });
+        }
+
+        if (todayEvents) {
+          todayEvents.forEach((event: any) => {
+            focus.push({
+              id: event.id,
+              type: 'event',
+              title: event.title,
+              description: event.description,
+              time: new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+              priority: 'medium',
+              client_name: event.clients ? `${event.clients.first_name} ${event.clients.last_name}` : undefined,
+            });
+          });
+        }
+
+        if (activeAlerts) {
+          activeAlerts.forEach((alert: any) => {
+            focus.push({
+              id: alert.id,
+              type: 'alert',
+              title: alert.title,
+              description: alert.message,
+              time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+              priority: alert.priority || 'high',
+              client_name: alert.clients ? `${alert.clients.first_name} ${alert.clients.last_name}` : undefined,
+            });
+          });
+        }
+
+        // Sort by priority (urgent > high > medium > low) then by time
+        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+        focus.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+        setFocusItems(focus);
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -502,34 +594,34 @@ export default function DashboardPage() {
             </Card>
 
             {/* Profile Completion Prompt - Show if there are pending profile/intake tasks */}
-            {clientTasks.some(task => 
-              task.title.toLowerCase().includes('profile') || 
+            {clientTasks.some(task =>
+              task.title.toLowerCase().includes('profile') ||
               task.title.toLowerCase().includes('intake')
             ) && (
-              <Card className="border-amber-200 bg-amber-50">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-amber-100 rounded-lg">
-                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                <Card className="border-amber-200 bg-amber-50">
+                  <CardContent className="pt-4 pb-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 rounded-lg">
+                        <AlertCircle className="h-5 w-5 text-amber-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-amber-900">{t('dashboard.completeProfile')}</p>
+                        <p className="text-sm text-amber-700 mt-1">
+                          {t('dashboard.completeProfileDesc')}
+                        </p>
+                        <Button asChild
+                          className="mt-3 w-full bg-amber-600 hover:bg-amber-700"
+                          size="sm"
+                        >
+                          <NextLink href="/profile-completion">
+                            {t('dashboard.profileAction')}
+                          </NextLink>
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-amber-900">{t('dashboard.completeProfile')}</p>
-                      <p className="text-sm text-amber-700 mt-1">
-                        {t('dashboard.completeProfileDesc')}
-                      </p>
-                      <Button asChild
-                        className="mt-3 w-full bg-amber-600 hover:bg-amber-700"
-                        size="sm"
-                      >
-                        <NextLink href="/profile-completion">
-                          {t('dashboard.profileAction')}
-                        </NextLink>
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              )}
           </div>
         )}
 
@@ -638,6 +730,17 @@ export default function DashboardPage() {
         {/* Navigation Tiles */}
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('dashboard.quickActions')}</h2>
         <NavigationTileGrid>
+          {/* Command Center - Primary action for staff */}
+          {!isClient && (
+            <NavigationTile
+              title="Command Center"
+              description="All tasks, events & alerts"
+              icon={Bell}
+              href="/command-center"
+              color="red"
+              badge={stats.pendingTasks + stats.unreadAlerts > 0 ? stats.pendingTasks + stats.unreadAlerts : undefined}
+            />
+          )}
           {canViewClients && (
             <NavigationTile
               title={t('clients.title')}

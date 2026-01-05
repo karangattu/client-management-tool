@@ -88,7 +88,7 @@ export function AppHeader({
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-white/80 backdrop-blur-md shadow-sm transition-all supports-[backdrop-filter]:bg-white/60">
       <div className="container flex h-14 md:h-16 items-center justify-between px-4">
         {/* Left section - Back button or Menu */}
         <div className="flex items-center gap-2">

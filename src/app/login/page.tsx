@@ -55,10 +55,10 @@ function LoginForm() {
       // Retry logic for profile fetch to handle potential race conditions
       let profileData = null;
       let attempts = 0;
-      const maxAttempts = 3;
+      const maxAttempts = 5; // Increased from 3 to 5 for better reliability
 
       while (!profileData && attempts < maxAttempts) {
-        const { data: fetchedProfile } = await supabase
+        const { data: fetchedProfile, error: profileError } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', data.user.id)
@@ -69,27 +69,32 @@ function LoginForm() {
           break;
         }
 
-        // Wait 500ms before retrying
+        // Log the error for debugging
+        if (profileError) {
+          console.log(`Profile fetch attempt ${attempts + 1} failed:`, profileError.message);
+        }
+
+        // Wait longer between retries (progressive backoff)
         attempts++;
         if (attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 500 * attempts));
         }
       }
 
       if (!profileData) {
         console.error("Login succeeded but profile not found for user:", data.user.id);
-        setError("Account setup appears incomplete. Please contact support.");
-        setLoading(false);
+        // Instead of showing an error, try redirecting to my-portal
+        // The profile might exist but RLS timing issues prevented reading it
+        // The destination page will handle auth state properly
+        window.location.href = '/my-portal';
         return;
       }
 
       const redirectPath = profileData?.role === 'client' ? '/my-portal' : '/dashboard';
 
-      // Give a small delay to ensure session is properly stored, then redirect
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Use router.push for client-side navigation to ensure proper state handling
-      router.push(redirectPath);
+      // Use window.location.href for full page navigation to ensure proper session hydration
+      // This is more reliable than router.push for auth state changes
+      window.location.href = redirectPath;
     } catch (err) {
       console.error('Login error:', err);
       // More specific error message if it's an AuthApiError
