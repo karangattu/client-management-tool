@@ -39,16 +39,17 @@ export async function createTask(params: CreateTaskParams) {
 
         if (error) throw error;
 
-        // If task is for a client, create an alert for the client's portal user
+        // If task is for a client, create an alert and send email notification
         if (params.clientId) {
             try {
                 const { data: clientData } = await supabase
                     .from('clients')
-                    .select('portal_user_id, has_portal_access, first_name')
+                    .select('portal_user_id, has_portal_access, first_name, email')
                     .eq('id', params.clientId)
                     .single();
 
                 if (clientData?.portal_user_id && clientData.has_portal_access) {
+                    // Create in-app alert
                     await supabase.from('alerts').insert({
                         user_id: clientData.portal_user_id,
                         client_id: params.clientId,
@@ -58,9 +59,33 @@ export async function createTask(params: CreateTaskParams) {
                         alert_type: 'custom',
                         trigger_at: new Date().toISOString(),
                     });
+
+                    // Send Email Notification via Resend
+                    if (process.env.RESEND_API_KEY && clientData.email) {
+                        try {
+                            const { resend } = await import('@/lib/resend');
+                            await resend.emails.send({
+                                from: 'Client Portal <onboarding@resend.dev>', // Users should configure this later
+                                to: clientData.email,
+                                subject: `New Task Assigned: ${params.title}`,
+                                html: `
+                                    <p>Hi ${clientData.first_name},</p>
+                                    <p>A new task has been assigned to you in your client portal:</p>
+                                    <p><strong>${params.title}</strong></p>
+                                    <p>${params.description || ''}</p>
+                                    <p>Please log in to complete this task.</p>
+                                    <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login">Log in to Portal</a>
+                                `
+                            });
+                            console.log(`Email sent to ${clientData.email}`);
+                        } catch (emailError) {
+                            console.error("Failed to send email notification:", emailError);
+                            // Don't throw, just log. We don't want to break task creation.
+                        }
+                    }
                 }
             } catch (alertError) {
-                console.error("Error creating client alert:", alertError);
+                console.error("Error creating client alert/notification:", alertError);
                 // Continue even if alert creation fails
             }
         }

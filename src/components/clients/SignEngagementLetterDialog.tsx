@@ -53,7 +53,7 @@ export function SignEngagementLetterDialog({
             const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
             const pdfBase64 = generateEngagementLetterPDF(clientName, signature);
 
-            const result = await signEngagementLetter(clientId, pdfBase64, signature);
+            const result = await signEngagementLetter(clientId, pdfBase64, signature, clientName);
             if (result.success) {
                 toast({
                     title: "Success",

@@ -540,18 +540,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       const dueDate = new Date(newTaskData.due_date);
       dueDate.setHours(12, 0, 0, 0);
 
-      const { error } = await supabase.from('tasks').insert({
+      const { createTask } = await import('@/app/actions/tasks');
+      const result = await createTask({
         title: newTaskData.title,
-        description: newTaskData.description || null,
-        client_id: clientId,
-        due_date: dueDate.toISOString(),
-        priority: newTaskData.priority,
-        status: 'pending',
-        assigned_to: profile.id,
-        assigned_by: profile.id,
+        description: newTaskData.description || undefined,
+        clientId: clientId,
+        dueDate: dueDate.toISOString(),
+        priority: newTaskData.priority as 'low' | 'medium' | 'high' | 'urgent',
+        assignedTo: profile.id,
       });
 
-      if (error) throw error;
+      if (!result.success) throw new Error(result.error);
 
       // Reset form and close dialog
       setNewTaskData({ title: '', description: '', due_date: '', priority: 'medium' });

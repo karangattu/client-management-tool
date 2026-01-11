@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function signEngagementLetter(clientId: string, pdfData?: string, signatureDataUrl?: string) {
+export async function signEngagementLetter(clientId: string, pdfData?: string, signatureDataUrl?: string, clientName?: string) {
     try {
         const supabase = await createClient();
 
@@ -22,7 +22,10 @@ export async function signEngagementLetter(clientId: string, pdfData?: string, s
         if (pdfData) {
             const timestamp = Date.now();
             const signatureFileName = `${clientId}/engagement-letter-${timestamp}-sig.png`;
-            const documentFileName = `engagement-letter-${timestamp}.pdf`;
+
+            // Generate readable filename
+            const safeName = (clientName || 'client').replace(/[^a-zA-Z0-9]/g, '_');
+            const documentFileName = `Engagement_Letter_${safeName}_${timestamp}.pdf`;
             const documentFilePath = `${clientId}/consent/${documentFileName}`;
 
             // 2a. Upload signature image (if provided)

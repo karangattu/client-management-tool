@@ -319,9 +319,10 @@ export default function MyPortalPage() {
         try {
             // Generate PDF
             const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
-            const pdfData = generateEngagementLetterPDF(`${client.first_name} ${client.last_name}`, signature);
+            const clientName = `${client.first_name} ${client.last_name}`;
+            const pdfData = generateEngagementLetterPDF(clientName, signature);
 
-            const result = await signEngagementLetter(client.id, pdfData, signature);
+            const result = await signEngagementLetter(client.id, pdfData, signature, clientName);
 
             if (result.success) {
                 // Update client state immediately
