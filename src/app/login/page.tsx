@@ -40,32 +40,27 @@ function LoginForm() {
       });
 
       const timeoutPromise = new Promise<{ data: { session: unknown; user: unknown } | null; error: { message: string } | null }>((_, reject) =>
-        setTimeout(() => reject(new Error('Login request timed out')), 15000)
+        setTimeout(() => reject(new Error('Login request timed out')), 10000)
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as { data: { session: unknown; user: { id: string } } | null; error: { message: string } | null };
 
       if (signInError) {
-        setError(signInError.message);
-        setLoading(false);
-        return;
+        throw new Error(signInError.message);
       }
 
-      if (!data?.session) {
-        setError('Login succeeded but no session was created. Please try again.');
-        setLoading(false);
-        return;
+      if (!data?.session || !data?.user) {
+        throw new Error('Login succeeded but no session was created. Please try again.');
       }
 
       // Check user role to redirect appropriately
       // Retry logic for profile fetch to handle potential race conditions
       let profileData = null;
-      let attempts = 0;
-      const maxAttempts = 5; // Increased from 3 to 5 for better reliability
-
-      while (!profileData && attempts < maxAttempts) {
-        const { data: fetchedProfile, error: profileError } = await supabase
+      
+      // Try up to 5 times with increasing backoff
+      for (let i = 0; i < 5; i++) {
+        const { data: fetchedProfile } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', data.user.id)
@@ -76,32 +71,20 @@ function LoginForm() {
           break;
         }
 
-        // Log the error for debugging
-        if (profileError) {
-          console.log(`Profile fetch attempt ${attempts + 1} failed:`, profileError.message);
-        }
-
-        // Wait longer between retries (progressive backoff)
-        attempts++;
-        if (attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 500 * attempts));
-        }
+        // Wait before retry (200ms, 400ms, 600ms, 800ms, 1000ms)
+        await new Promise(resolve => setTimeout(resolve, 200 * (i + 1)));
       }
 
       if (!profileData) {
         console.error("Login succeeded but profile not found for user:", data.user.id);
-        // Instead of showing an error, try redirecting to my-portal
-        // The profile might exist but RLS timing issues prevented reading it
-        // The destination page will handle auth state properly
+        // Fallback redirect for clients
         window.location.href = '/my-portal';
         return;
       }
 
-      const redirectPath = profileData?.role === 'client' ? '/my-portal' : '/dashboard';
-
-      // Use window.location.href for full page navigation to ensure proper session hydration
-      // This is more reliable than router.push for auth state changes
+      const redirectPath = profileData.role === 'client' ? '/my-portal' : '/dashboard';
       window.location.href = redirectPath;
+
     } catch (err) {
       console.error('Login error:', err);
       // More specific error message if it's an AuthApiError
@@ -110,12 +93,15 @@ function LoginForm() {
           setError('Invalid email or password.');
         } else if (err.message.includes('timed out')) {
           setError('Login timed out. Please check your connection and try again.');
+        } else if (err.message.includes('Email not confirmed')) {
+          setError('Please verify your email address before logging in.');
         } else {
           setError(err.message || 'An unexpected error occurred. Please try again.');
         }
       } else {
         setError('An unexpected error occurred. Please try again.');
       }
+      // Ensure loading is turned off on error
       setLoading(false);
     }
   };

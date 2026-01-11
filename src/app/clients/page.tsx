@@ -17,6 +17,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from '@/components/ui/select';
 import {
   Dialog,
@@ -60,6 +62,7 @@ import {
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
+import { type Program } from '@/lib/types';
 
 interface Client {
   id: string;
@@ -70,6 +73,7 @@ interface Client {
   status: string;
   created_at: string;
   intake_completed_at: string | null;
+  program_enrollments?: { program_id: string; status: string }[];
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -84,8 +88,10 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [filteredClients, setFilteredClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [programFilter, setProgramFilter] = useState('all');
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [clientToArchive, setClientToArchive] = useState<Client | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -101,16 +107,28 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch clients with their program enrollments
+      const { data: clientsData, error: clientsError } = await supabase
         .from('clients')
-        .select('*')
+        .select('*, program_enrollments(program_id, status)')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setClients(data || []);
-      setFilteredClients(data || []);
+      if (clientsError) throw clientsError;
+
+      // Fetch active programs for the filter
+      const { data: programsData, error: programsError } = await supabase
+        .from('programs')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+        
+      if (programsError) throw programsError;
+
+      setClients(clientsData || []);
+      setFilteredClients(clientsData || []);
+      setPrograms(programsData || []);
     } catch (err) {
-      console.error('Error fetching clients:', err);
+      console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
     }
@@ -128,6 +146,16 @@ export default function ClientsPage() {
     });
   }, [clients]);
 
+  const groupedPrograms = useMemo(() => {
+    const groups: Record<string, Program[]> = {};
+    programs.forEach((p) => {
+      const category = p.category || 'Other';
+      if (!groups[category]) groups[category] = [];
+      groups[category].push(p);
+    });
+    return groups;
+  }, [programs]);
+
   useEffect(() => {
     let filtered = clients;
 
@@ -142,8 +170,15 @@ export default function ClientsPage() {
       filtered = filtered.filter((client) => client.status === statusFilter);
     }
 
+    // Apply program filter
+    if (programFilter !== 'all') {
+      filtered = filtered.filter((client) => 
+        client.program_enrollments?.some(enrollment => enrollment.program_id === programFilter)
+      );
+    }
+
     setFilteredClients(filtered);
-  }, [searchQuery, statusFilter, clients, fuse]);
+  }, [searchQuery, statusFilter, programFilter, clients, fuse]);
 
   const handleArchive = async () => {
     if (!clientToArchive) return;
@@ -321,6 +356,25 @@ export default function ClientsPage() {
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={programFilter} onValueChange={setProgramFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Programs</SelectItem>
+                    {Object.entries(groupedPrograms).map(([category, categoryPrograms]) => (
+                      <SelectGroup key={category}>
+                        <SelectLabel>{category}</SelectLabel>
+                        {categoryPrograms.map((program) => (
+                          <SelectItem key={program.id} value={program.id}>
+                            {program.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

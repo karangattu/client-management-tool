@@ -164,9 +164,9 @@ export async function submitSelfServiceApplication(
         const signatureFileName = `${authData.user.id}/engagement-letter-${timestamp}-sig.png`;
 
         // Sanitize names for filename
-        const sanitizedFirst = formData.firstName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const sanitizedLast = formData.lastName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const documentFileName = `engage-letter-${sanitizedFirst}-${sanitizedLast}.pdf`;
+        const sanitizedFirst = formData.firstName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const sanitizedLast = formData.lastName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const documentFileName = `UEO_client_engagement_letter_${sanitizedFirst}_${sanitizedLast}.pdf`;
 
         const documentFilePath = `${clientData.id}/consent/${documentFileName}`;
 
@@ -208,8 +208,17 @@ export async function submitSelfServiceApplication(
 
         if (dbError) console.error("Error creating document record:", dbError);
 
-        // 4. Update client status to record signature time and version
-        await db
+      } catch (sigError) {
+        console.error("Error processing signature and document:", sigError);
+        // Even if PDF generation/upload fails, we should still try to mark the client as having signed
+        // if we received a signature string.
+      }
+
+      // 4. Update client status to record signature time and version
+      // We do this outside the inner try/catch so it runs even if PDF upload had issues,
+      // as long as we have the signature data intent.
+      if (formData.signature) {
+        const { error: updateError } = await db
           .from('clients')
           .update({
             signed_engagement_letter_at: new Date().toISOString(),
@@ -217,8 +226,9 @@ export async function submitSelfServiceApplication(
           })
           .eq('id', clientData.id);
 
-      } catch (sigError) {
-        console.error("Error processing signature and document:", sigError);
+        if (updateError) {
+          console.error("Failed to update client signature status:", updateError);
+        }
       }
     }
 

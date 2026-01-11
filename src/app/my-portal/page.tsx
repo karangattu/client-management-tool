@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
     Select,
@@ -40,6 +41,7 @@ import {
     ArrowRight,
     X,
     AlertTriangle,
+    ShieldCheck,
 } from 'lucide-react';
 import { uploadClientDocument, ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES, MAX_FILE_SIZES } from '@/lib/supabase/storage';
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
@@ -66,6 +68,10 @@ interface Task {
     priority: string;
     due_date: string | null;
     category: string | null;
+    assigner?: {
+        first_name: string;
+        last_name: string;
+    };
 }
 
 interface AlertItem {
@@ -149,16 +155,19 @@ export default function MyPortalPage() {
 
             setClient(clientData);
 
-            // Fetch tasks assigned to this user
+            // Fetch tasks assigned to this user with assigner info
             const { data: tasksData } = await supabase
                 .from('tasks')
-                .select('id, title, description, status, priority, due_date, category')
+                .select(`
+                    id, title, description, status, priority, due_date, category,
+                    assigner:profiles!assigned_by(first_name, last_name)
+                `)
                 .eq('assigned_to', user.id)
                 .in('status', ['pending', 'in_progress'])
                 .order('priority', { ascending: false })
                 .order('due_date', { ascending: true });
 
-            setTasks(tasksData || []);
+            setTasks(tasksData as unknown as Task[] || []);
 
             // Fetch alerts for this user
             const { data: alertsData } = await supabase
@@ -265,51 +274,52 @@ export default function MyPortalPage() {
         }
     };
 
+    const openDocument = async (doc: Document) => {
+        try {
+            // We need to fetch the file path from the documents table to be sure,
+            // but the doc object we have from the fetch in useEffect doesn't definitely have it.
+            // Let's re-fetch the specific document to get the file_path if it's missing from the type definition above
+            // Or we can just include file_path in the initial select.
+            // For now, let's assume we need to get the signed URL.
+
+            // Wait, the doc object defined in interface Document doesn't have file_path.
+            // I should update the interface and the select query first, but to be safe/quick:
+            const { data: docData, error } = await supabase
+                .from('documents')
+                .select('file_path')
+                .eq('id', doc.id)
+                .single();
+
+            if (error || !docData) {
+                console.error('Error fetching document path:', error);
+                alert('Could not open document.');
+                return;
+            }
+
+            const { getDocumentSignedUrl } = await import('@/lib/supabase/storage');
+            const { url: signedUrl, error: urlError } = await getDocumentSignedUrl(docData.file_path);
+
+            if (urlError || !signedUrl) {
+                console.error('Error getting signed URL:', urlError);
+                alert('Could not open document.');
+                return;
+            }
+
+            window.open(signedUrl, '_blank');
+        } catch (err) {
+            console.error('Error opening document:', err);
+            alert('An error occurred while opening the document.');
+        }
+    };
+
     const handleSignEngagementLetter = async () => {
         if (!signature || !client) return;
 
         setSigning(true);
         try {
             // Generate PDF
-            const doc = new jsPDF();
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const margin = 20;
-            const contentWidth = pageWidth - (margin * 2);
-
-            doc.setFontSize(18);
-            doc.setFont("helvetica", "bold");
-            doc.text("ENGAGEMENT LETTER AND CONSENT FOR SERVICES", margin, 30);
-
-            doc.setFontSize(12);
-            doc.setFont("helvetica", "normal");
-            doc.text(`Client: ${client.first_name} ${client.last_name}`, margin, 45);
-            doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 52);
-
-            doc.setFontSize(10);
-            const splitText = doc.splitTextToSize(ENGAGEMENT_LETTER_TEXT, contentWidth);
-            doc.text(splitText, margin, 65);
-
-            const textLines = splitText.length;
-            const textHeight = textLines * 5;
-            let signatureY = 65 + textHeight + 20;
-
-            const pageHeight = doc.internal.pageSize.getHeight();
-            if (signatureY + 60 > pageHeight) {
-                doc.addPage();
-                signatureY = margin;
-            }
-
-            doc.line(margin, signatureY, pageWidth - margin, signatureY);
-            doc.setFontSize(12);
-            doc.setFont("helvetica", "bold");
-            doc.text("CLIENT SIGNATURE", margin, signatureY + 10);
-
-            doc.addImage(signature, 'PNG', margin, signatureY + 15, 60, 25);
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "italic");
-            doc.text(`Digitally signed by ${client.first_name} ${client.last_name} on ${new Date().toLocaleString()}`, margin, signatureY + 45);
-
-            const pdfData = doc.output('datauristring').split(',')[1];
+            const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
+            const pdfData = generateEngagementLetterPDF(`${client.first_name} ${client.last_name}`, signature);
 
             const result = await signEngagementLetter(client.id, pdfData, signature);
 
@@ -345,10 +355,10 @@ export default function MyPortalPage() {
     };
 
     const getTaskAction = (task: Task) => {
-        if (task.title === 'Complete Intake Form') {
+        if (task.title.toLowerCase().includes('intake')) {
             return { href: '/client-intake', label: 'Complete Form' };
         }
-        if (task.title === 'Sign Engagement Letter') {
+        if (task.title.toLowerCase().includes('engagement letter') || task.title.toLowerCase().includes('sign')) {
             return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
         }
         return null;
@@ -385,6 +395,15 @@ export default function MyPortalPage() {
     const needsEngagementLetter = !client?.signed_engagement_letter_at;
     const needsIntakeForm = !client?.intake_completed_at;
 
+    // Calculate onboarding progress
+    const steps = [
+        { label: 'Account Created', completed: true },
+        { label: 'Engagement Letter', completed: !needsEngagementLetter },
+        { label: 'Intake Form', completed: !needsIntakeForm },
+    ];
+    const completedSteps = steps.filter(s => s.completed).length;
+    const progressPercentage = (completedSteps / steps.length) * 100;
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
@@ -399,18 +418,50 @@ export default function MyPortalPage() {
                             <p className="text-sm text-gray-500">Welcome, {client?.first_name}</p>
                         </div>
                     </div>
-                    <Button variant="outline" onClick={handleSignOut}>
+                    <Button variant="outline" onClick={handleSignOut} size="sm">
                         <LogOut className="h-4 w-4 mr-2" /> Sign Out
                     </Button>
                 </div>
             </header>
 
             <main className="container px-4 py-6 max-w-4xl mx-auto space-y-6">
+
+                {/* Onboarding Progress Card */}
+                {progressPercentage < 100 && (
+                    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-lg text-blue-900">Account Setup Progress</CardTitle>
+                            <CardDescription className="text-blue-700">Complete these steps to fully activate your profile.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-sm font-medium text-blue-900 mb-1">
+                                    <span>{completedSteps} of {steps.length} completed</span>
+                                    <span>{Math.round(progressPercentage)}%</span>
+                                </div>
+                                <Progress value={progressPercentage} className="h-2 bg-blue-200" />
+                                <div className="flex justify-between mt-2">
+                                    {steps.map((step, idx) => (
+                                        <div key={idx} className={`flex items-center gap-1.5 text-xs ${step.completed ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
+                                            {step.completed ? (
+                                                <CheckCircle className="h-3.5 w-3.5" />
+                                            ) : (
+                                                <div className="h-3.5 w-3.5 rounded-full border-2 border-gray-300" />
+                                            )}
+                                            {step.label}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Alerts Banner */}
                 {alerts.length > 0 && (
                     <div className="space-y-2">
                         {alerts.map((alert) => (
-                            <Alert key={alert.id} className="bg-blue-50 border-blue-200">
+                            <Alert key={alert.id} className="bg-blue-50 border-blue-200 shadow-sm">
                                 <Bell className="h-4 w-4 text-blue-600" />
                                 <AlertTitle className="text-blue-800">{alert.title}</AlertTitle>
                                 <AlertDescription className="text-blue-700 flex items-center justify-between">
@@ -418,7 +469,7 @@ export default function MyPortalPage() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-6 w-6 p-0 hover:bg-blue-100"
+                                        className="h-6 w-6 p-0 hover:bg-blue-100 rounded-full"
                                         onClick={() => handleDismissAlert(alert.id)}
                                     >
                                         <X className="h-4 w-4" />
@@ -429,50 +480,28 @@ export default function MyPortalPage() {
                     </div>
                 )}
 
-                {/* Urgent Tasks Section - Decoupled from Task records to ensure visibility */}
-                {(urgentTasks.length > 0 || needsEngagementLetter || needsIntakeForm || !client?.date_of_birth) && (
-                    <Card className="border-orange-200 bg-orange-50/50">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="flex items-center gap-2 text-orange-800">
+                {/* Action Required Section */}
+                {(urgentTasks.length > 0 || needsEngagementLetter || needsIntakeForm) && (
+                    <Card className="border-l-4 border-l-orange-500 shadow-md">
+                        <CardHeader className="pb-3 bg-orange-50/30">
+                            <CardTitle className="flex items-center gap-2 text-orange-800 text-lg">
                                 <AlertTriangle className="h-5 w-5" />
                                 Action Required
                             </CardTitle>
                             <CardDescription className="text-orange-700">
-                                Please complete these items to finish setting up your account
+                                Please address these items as soon as possible.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-3">
-                            {/* Explicit Intake Form Action */}
-                            {needsIntakeForm && (
-                                <Link href="/client-intake">
-                                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-orange-100 rounded-lg">
-                                                <ClipboardList className="h-5 w-5 text-orange-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium">Complete Intake Form</p>
-                                                <p className="text-sm text-gray-500">Help us understand your needs and eligibility</p>
-                                            </div>
-                                        </div>
-                                        <Button size="sm">
-                                            Complete Form
-                                            <ArrowRight className="h-4 w-4 ml-1" />
-                                        </Button>
-                                    </div>
-                                </Link>
-                            )}
-
-                            {/* Explicit Engagement Letter Action */}
+                        <CardContent className="space-y-3 pt-4">
                             {needsEngagementLetter && (
-                                <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-orange-100 rounded-lg">
+                                <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm border-orange-100">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2.5 bg-orange-100 rounded-full">
                                             <PenLine className="h-5 w-5 text-orange-600" />
                                         </div>
                                         <div>
-                                            <p className="font-medium">Sign Engagement Letter</p>
-                                            <p className="text-sm text-gray-500">Please review and sign to proceed with services</p>
+                                            <p className="font-semibold text-gray-900">Sign Engagement Letter</p>
+                                            <p className="text-sm text-gray-500">Required to receive services.</p>
                                         </div>
                                     </div>
                                     <Button size="sm" onClick={() => setShowEngagementLetter(true)}>
@@ -482,31 +511,55 @@ export default function MyPortalPage() {
                                 </div>
                             )}
 
-                            {/* Explicit Intake Form Action (if we suspect intake is needed but task missing) */}
-                            {/* We check if tasks already include it to avoid duplicates, or just render tasks below */}
+                            {needsIntakeForm && (
+                                <Link href="/client-intake">
+                                    <div className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm border-orange-100 hover:shadow-md transition-shadow cursor-pointer">
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-2.5 bg-orange-100 rounded-full">
+                                                <ClipboardList className="h-5 w-5 text-orange-600" />
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-gray-900">Complete Intake Form</p>
+                                                <p className="text-sm text-gray-500">Help us understand your needs.</p>
+                                            </div>
+                                        </div>
+                                        <Button size="sm">
+                                            Start Form
+                                            <ArrowRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </div>
+                                </Link>
+                            )}
 
                             {urgentTasks.map((task) => {
-                                // unexpected duplication check: if we manually rendered above, skip those tasks
-                                if (task.title === 'Sign Engagement Letter' && needsEngagementLetter) return null;
-                                if (task.title === 'Complete Intake Form' && needsIntakeForm) return null;
+                                // Skip duplicates if manually rendered above
+                                if (task.title.toLowerCase().includes('sign engagement') && needsEngagementLetter) return null;
+                                if (task.title.toLowerCase().includes('intake') && needsIntakeForm) return null;
 
                                 const action = getTaskAction(task);
                                 return (
                                     <div
                                         key={task.id}
-                                        className="flex items-center justify-between p-4 bg-white rounded-lg border shadow-sm"
+                                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white rounded-lg border shadow-sm"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-orange-100 rounded-lg">
-                                                {task.title.includes('Intake') ? (
-                                                    <ClipboardList className="h-5 w-5 text-orange-600" />
-                                                ) : (
-                                                    <PenLine className="h-5 w-5 text-orange-600" />
-                                                )}
+                                        <div className="flex items-start gap-4 mb-3 sm:mb-0">
+                                            <div className="p-2.5 bg-orange-100 rounded-full mt-1 sm:mt-0">
+                                                <AlertCircle className="h-5 w-5 text-orange-600" />
                                             </div>
                                             <div>
-                                                <p className="font-medium">{task.title}</p>
-                                                <p className="text-sm text-gray-500">{task.description}</p>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="font-semibold text-gray-900">{task.title}</p>
+                                                    <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-none text-[10px] px-1.5 h-5">
+                                                        Urgent
+                                                    </Badge>
+                                                </div>
+                                                <p className="text-sm text-gray-600 mt-0.5">{task.description}</p>
+                                                {task.assigner && (
+                                                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                                                        <User className="h-3 w-3" />
+                                                        Assigned by {task.assigner.first_name} {task.assigner.last_name}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                         {action && (
@@ -531,156 +584,148 @@ export default function MyPortalPage() {
                     </Card>
                 )}
 
-                {/* Status Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-lg ${client?.signed_engagement_letter_at ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                                    {client?.signed_engagement_letter_at ? (
-                                        <CheckCircle className="h-6 w-6 text-green-600" />
-                                    ) : (
-                                        <Clock className="h-6 w-6 text-yellow-600" />
-                                    )}
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Engagement Letter</p>
-                                    <p className="font-semibold">
-                                        {client?.signed_engagement_letter_at ? 'Signed' : 'Pending'}
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-blue-100 rounded-lg">
-                                    <ClipboardList className="h-6 w-6 text-blue-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Open Tasks</p>
-                                    <p className="font-semibold">{tasks.length}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-purple-100 rounded-lg">
-                                    <FileText className="h-6 w-6 text-purple-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Documents</p>
-                                    <p className="font-semibold">{documents.length}</p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* All Tasks Section */}
-                {tasks.length > 0 && (
-                    <Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* All Tasks Section */}
+                    <Card className="h-full">
                         <CardHeader>
-                            <CardTitle>My Tasks</CardTitle>
-                            <CardDescription>Tasks assigned to you by your case manager</CardDescription>
+                            <CardTitle className="flex items-center gap-2">
+                                <ClipboardList className="h-5 w-5 text-blue-600" />
+                                My Tasks
+                            </CardTitle>
+                            <CardDescription>To-do items assigned to you</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {tasks.map((task) => {
+                            {tasks.length > 0 ? tasks.map((task) => {
+                                // Filter out urgent ones already shown above to avoid clutter? 
+                                // Actually, let's keep them but maybe styled differently, or just show non-urgent here.
+                                // For simplicity, we show all, but maybe user wants a unified list.
+                                // Let's filter out the ones already displayed in "Action Required" if they are urgent.
+                                const isUrgent = task.priority === 'urgent' || task.priority === 'high';
+                                if (isUrgent) return null;
+
                                 const action = getTaskAction(task);
                                 return (
                                     <div
                                         key={task.id}
-                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                                        className="p-4 border rounded-lg hover:bg-gray-50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <Badge className={getPriorityColor(task.priority)}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <Badge variant="outline" className={getPriorityColor(task.priority)}>
                                                 {task.priority}
                                             </Badge>
-                                            <div>
-                                                <p className="font-medium">{task.title}</p>
-                                                {task.due_date && (
-                                                    <p className="text-sm text-gray-500">
-                                                        Due: {new Date(task.due_date).toLocaleDateString()}
-                                                    </p>
-                                                )}
-                                            </div>
+                                            {task.due_date && (
+                                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    {new Date(task.due_date).toLocaleDateString()}
+                                                </span>
+                                            )}
                                         </div>
-                                        {action && (
-                                            action.href ? (
-                                                <Link href={action.href}>
-                                                    <Button variant="outline" size="sm">
+                                        <p className="font-medium text-gray-900">{task.title}</p>
+                                        {task.description && (
+                                            <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
+                                        )}
+
+                                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                                            {task.assigner ? (
+                                                <p className="text-xs text-gray-400">
+                                                    From: {task.assigner.first_name} {task.assigner.last_name}
+                                                </p>
+                                            ) : (
+                                                <span />
+                                            )}
+
+                                            {action && (
+                                                action.href ? (
+                                                    <Link href={action.href}>
+                                                        <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700">
+                                                            {action.label}
+                                                        </Button>
+                                                    </Link>
+                                                ) : (
+                                                    <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700" onClick={action.onClick}>
                                                         {action.label}
                                                     </Button>
-                                                </Link>
-                                            ) : (
-                                                <Button variant="outline" size="sm" onClick={action.onClick}>
-                                                    {action.label}
-                                                </Button>
-                                            )
-                                        )}
+                                                )
+                                            )}
+                                        </div>
                                     </div>
                                 );
-                            })}
+                            }) : (
+                                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
+                                    <CheckCircle className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-500">You're all caught up!</p>
+                                    <p className="text-xs text-gray-400 mt-1">No pending tasks.</p>
+                                </div>
+                            )}
+                            {/* If all tasks were urgent and filtered out, show empty state */}
+                            {tasks.length > 0 && tasks.every(t => t.priority === 'urgent' || t.priority === 'high') && (
+                                <div className="text-center py-4">
+                                    <p className="text-sm text-gray-500">See "Action Required" above for urgent items.</p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
-                )}
 
-                {/* Documents Section */}
-                <Card>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle>My Documents</CardTitle>
-                                <CardDescription>Upload and manage your documents</CardDescription>
+                    {/* Documents Section */}
+                    <Card className="h-full">
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <FileText className="h-5 w-5 text-purple-600" />
+                                        My Documents
+                                    </CardTitle>
+                                    <CardDescription>Files you've uploaded</CardDescription>
+                                </div>
+                                <Button size="sm" variant="outline" onClick={() => setShowUploadDialog(true)}>
+                                    <Upload className="h-4 w-4 mr-2" /> Upload
+                                </Button>
                             </div>
-                            <Button onClick={() => setShowUploadDialog(true)}>
-                                <Upload className="h-4 w-4 mr-2" /> Upload
-                            </Button>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {documents.length > 0 ? (
-                            <div className="space-y-3">
-                                {documents.map((doc) => (
-                                    <div
-                                        key={doc.id}
-                                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-2 bg-blue-100 rounded-lg">
-                                                <FileText className="h-5 w-5 text-blue-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium">{doc.file_name}</p>
-                                                <p className="text-sm text-gray-500">
-                                                    {doc.document_type.toUpperCase()} • {new Date(doc.created_at).toLocaleDateString()}
-                                                </p>
-                                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {documents.length > 0 ? documents.map((doc) => (
+                                <div
+                                    key={doc.id}
+                                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors group cursor-pointer"
+                                    onClick={() => openDocument(doc)}
+                                >
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="p-2 bg-purple-50 rounded-lg group-hover:bg-purple-100 transition-colors">
+                                            <FileText className="h-4 w-4 text-purple-600" />
                                         </div>
-                                        {doc.is_verified ? (
-                                            <Badge className="bg-green-100 text-green-800">Verified</Badge>
-                                        ) : (
-                                            <Badge className="bg-yellow-100 text-yellow-800">
-                                                <Clock className="h-3 w-3 mr-1" /> Pending
-                                            </Badge>
-                                        )}
+                                        <div className="min-w-0">
+                                            <p className="font-medium text-gray-900 text-sm truncate group-hover:text-blue-600 underline-offset-4 group-hover:underline">
+                                                {doc.file_name}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {doc.document_type.replace(/_/g, ' ').toUpperCase()} • {new Date(doc.created_at).toLocaleDateString()}
+                                            </p>
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-12">
-                                <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                                <h3 className="text-lg font-semibold">No Documents Yet</h3>
-                                <p className="text-gray-500 mt-1">
-                                    Upload documents to share with your case manager
-                                </p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                                    {doc.is_verified ? (
+                                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-medium">
+                                            <ShieldCheck className="h-3 w-3" />
+                                            Verified
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1 text-yellow-600 bg-yellow-50 px-2 py-1 rounded text-xs font-medium">
+                                            <Clock className="h-3 w-3" />
+                                            Pending
+                                        </div>
+                                    )}
+                                </div>
+                            )) : (
+                                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
+                                    <Upload className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-500">No documents yet</p>
+                                    <Button variant="link" size="sm" onClick={() => setShowUploadDialog(true)} className="mt-1">
+                                        Upload your first document
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </main>
 
             {/* Upload Dialog */}

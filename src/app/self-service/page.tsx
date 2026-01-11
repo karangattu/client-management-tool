@@ -197,49 +197,8 @@ export default function SelfServiceIntakePage() {
       // Generate PDF if signature exists
       let pdfData = undefined;
       if (signature) {
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 20;
-        const contentWidth = pageWidth - (margin * 2);
-
-        doc.setFontSize(18);
-        doc.setFont("helvetica", "bold");
-        doc.text("ENGAGEMENT LETTER AND CONSENT FOR SERVICES", margin, 30);
-
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Client: ${formData.firstName} ${formData.lastName}`, margin, 45);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 52);
-
-        doc.setFontSize(10);
-        const splitText = doc.splitTextToSize(ENGAGEMENT_LETTER_TEXT, contentWidth);
-        doc.text(splitText, margin, 65);
-
-        const textLines = splitText.length;
-        // Estimate text height (approx 5mm per line for 10pt font)
-        const textHeight = textLines * 5;
-
-        // Calculate signature start position with padding
-        let signatureY = 65 + textHeight + 20;
-
-        // Check if signature block fits on page (approx 60mm needed)
-        const pageHeight = doc.internal.pageSize.getHeight();
-        if (signatureY + 60 > pageHeight) {
-          doc.addPage();
-          signatureY = margin; // Reset to top margin on new page
-        }
-
-        doc.line(margin, signatureY, pageWidth - margin, signatureY);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("CLIENT SIGNATURE", margin, signatureY + 10);
-
-        doc.addImage(signature, 'PNG', margin, signatureY + 15, 60, 25);
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "italic");
-        doc.text(`Digitally signed by ${formData.firstName} ${formData.lastName} on ${new Date().toLocaleString()}`, margin, signatureY + 45);
-
-        pdfData = doc.output('datauristring').split(',')[1];
+        const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
+        pdfData = generateEngagementLetterPDF(`${formData.firstName} ${formData.lastName}`, signature);
       }
 
       const result = await submitSelfServiceApplication({
@@ -324,7 +283,7 @@ export default function SelfServiceIntakePage() {
               Documents
             </span>
             <span className={`text-xs ${currentStep >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Agreement
+              Engagement Letter
             </span>
             <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
               Sign
@@ -517,7 +476,7 @@ export default function SelfServiceIntakePage() {
             {currentStep === 3 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">Review & Agree</h2>
+                  <h2 className="text-xl font-semibold">Client Engagement Letter</h2>
                   <p className="text-gray-500 mt-1">Please read the engagement letter carefully</p>
                 </div>
 

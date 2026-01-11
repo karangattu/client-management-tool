@@ -117,6 +117,11 @@ interface Interaction {
     first_name: string;
     last_name: string;
   };
+  metadata?: {
+    program_name?: string;
+    program_id?: string;
+    [key: string]: unknown;
+  };
 }
 
 const statusColors: Record<string, string> = {
@@ -525,16 +530,25 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       return;
     }
 
+    if (!profile?.id) {
+      alert('You must be logged in to create a task');
+      return;
+    }
+
     try {
+      // Ensure date is treated as local date noon to avoid timezone shifts
+      const dueDate = new Date(newTaskData.due_date);
+      dueDate.setHours(12, 0, 0, 0);
+
       const { error } = await supabase.from('tasks').insert({
         title: newTaskData.title,
         description: newTaskData.description || null,
         client_id: clientId,
-        due_date: newTaskData.due_date,
+        due_date: dueDate.toISOString(),
         priority: newTaskData.priority,
         status: 'pending',
-        assigned_to: profile?.id,
-        assigned_by: profile?.id,
+        assigned_to: profile.id,
+        assigned_by: profile.id,
       });
 
       if (error) throw error;

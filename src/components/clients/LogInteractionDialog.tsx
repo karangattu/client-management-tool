@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { logClientInteraction, InteractionType } from '@/app/actions/history';
+import { getPrograms, Program } from '@/app/actions/programs';
 import {
     Dialog,
     DialogContent,
@@ -42,13 +43,25 @@ const interactionTypes: { value: InteractionType; label: string; icon: LucideIco
 export function LogInteractionDialog({ clientId, clientName, onSuccess }: LogInteractionDialogProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [programs, setPrograms] = useState<Program[]>([]);
     const { toast } = useToast();
 
     const [formData, setFormData] = useState({
         type: 'note' as InteractionType,
         title: '',
         description: '',
+        programId: 'none',
     });
+
+    useEffect(() => {
+        if (open) {
+            getPrograms().then(result => {
+                if (result.success && result.data) {
+                    setPrograms(result.data);
+                }
+            });
+        }
+    }, [open]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,11 +69,18 @@ export function LogInteractionDialog({ clientId, clientName, onSuccess }: LogInt
 
         setLoading(true);
         try {
+            const selectedProgram = programs.find(p => p.id === formData.programId);
+            const metadata = selectedProgram ? {
+                program_id: selectedProgram.id,
+                program_name: selectedProgram.name
+            } : {};
+
             const result = await logClientInteraction({
                 clientId,
                 actionType: formData.type,
                 title: formData.title,
                 description: formData.description,
+                metadata,
             });
 
             if (result.success) {
@@ -69,7 +89,7 @@ export function LogInteractionDialog({ clientId, clientName, onSuccess }: LogInt
                     description: `Successfully recorded ${formData.type} for ${clientName}`,
                 });
                 setOpen(false);
-                setFormData({ type: 'note', title: '', description: '' });
+                setFormData({ type: 'note', title: '', description: '', programId: 'none' });
                 if (onSuccess) onSuccess();
             } else {
                 throw new Error(result.error);
@@ -119,6 +139,26 @@ export function LogInteractionDialog({ clientId, clientName, onSuccess }: LogInt
                                                 <type.icon className="w-4 h-4 text-gray-500" />
                                                 {type.label}
                                             </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="program">Related Program (Optional)</Label>
+                            <Select
+                                value={formData.programId}
+                                onValueChange={(value) => setFormData({ ...formData, programId: value })}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select program" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
+                                    {programs.map((program) => (
+                                        <SelectItem key={program.id} value={program.id}>
+                                            {program.name}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

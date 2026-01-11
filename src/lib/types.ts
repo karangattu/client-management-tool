@@ -369,12 +369,63 @@ export interface UpcomingDeadline {
 }
 
 // Navigation tile type for the UI
+
 export interface NavigationTile {
+
   id: string;
+
   title: string;
+
   description: string;
+
   icon: string;
+
   href: string;
+
   color: string;
+
   badge?: number;
+
+}
+
+
+
+export interface Program {
+
+  id: string;
+
+  name: string;
+
+  category: string;
+
+  description: string;
+
+  requirements: string;
+
+  is_active: boolean;
+
+}
+
+
+
+export interface ProgramEnrollment {
+
+  id: string;
+
+  client_id: string;
+
+  program_id: string;
+
+  status: 'interested' | 'applying' | 'enrolled' | 'completed' | 'denied' | 'withdrawn';
+
+  start_date: string | null;
+
+  end_date: string | null;
+
+  assigned_volunteer_id: string | null;
+
+  notes: string | null;
+
+  programs?: Program;
+
 }
