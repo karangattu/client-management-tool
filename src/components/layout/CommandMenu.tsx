@@ -11,6 +11,7 @@ import {
     PlusCircle,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
 import {
     CommandDialog,
@@ -26,6 +27,10 @@ import {
 export function CommandMenu() {
     const [open, setOpen] = React.useState(false)
     const router = useRouter()
+    const { profile, loading } = useAuth()
+
+    // Hide command menu for clients
+    const isClient = profile?.role === 'client'
 
     React.useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -43,6 +48,11 @@ export function CommandMenu() {
         setOpen(false)
         command()
     }, [])
+
+    // Don't render anything for clients or while loading
+    if (loading || isClient) {
+        return null
+    }
 
     return (
         <>

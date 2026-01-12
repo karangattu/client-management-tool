@@ -51,93 +51,163 @@ export async function saveClientIntake(
     const id = clientId; // If no ID provided, database will generate UUID
     const now = new Date().toISOString();
 
-    // Flatten the form data to match the clients table schema
-    const clientRecord: Record<string, unknown> = {
-      first_name: validatedData.participantDetails.firstName,
-      middle_name: validatedData.participantDetails.middleName || null,
-      last_name: validatedData.participantDetails.lastName,
-      preferred_name: null, // Form doesn't have preferred_name field, set to null
-      date_of_birth: validatedData.participantDetails.dateOfBirth || null,
-      email: validatedData.participantDetails.email || null,
-      phone: validatedData.participantDetails.primaryPhone || null,
-      alternate_phone: validatedData.participantDetails.secondaryPhone || null,
-      street_address: validatedData.participantDetails.streetAddress || null,
-      apartment_unit: null,
-      city: validatedData.participantDetails.city || null,
-      state: validatedData.participantDetails.state || null,
-      zip_code: validatedData.participantDetails.zipCode || null,
-      mailing_same_as_physical: true, // Default to true as per schema
-      mailing_street_address: null, // Not collected in current form
-      mailing_city: null,
-      mailing_state: null,
-      mailing_zip_code: null,
-      ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
-      status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus))
-        ? validatedData.caseManagement.clientStatus
-        : 'pending',
-      has_portal_access: false, // Default to false, enable later if needed
-      assigned_case_manager: validatedData.caseManagement.clientManager || null,
+    // 1. Save client record (UPDATE if clientId provided, INSERT if new)
+    let savedClientId: string;
+
+    if (id) {
+      // Update existing client - only update fields that clients are allowed to modify
+      const updateData = {
+        first_name: validatedData.participantDetails.firstName,
+        middle_name: validatedData.participantDetails.middleName || null,
+        last_name: validatedData.participantDetails.lastName,
+        date_of_birth: validatedData.participantDetails.dateOfBirth || null,
+        email: validatedData.participantDetails.email || null,
+        phone: validatedData.participantDetails.primaryPhone || null,
+        alternate_phone: validatedData.participantDetails.secondaryPhone || null,
+        street_address: validatedData.participantDetails.streetAddress || null,
+        city: validatedData.participantDetails.city || null,
+        state: validatedData.participantDetails.state || null,
+        zip_code: validatedData.participantDetails.zipCode || null,
+        ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
+        updated_at: now,
+      };
+
+      console.log(`[saveClientIntake] Updating existing client ${id} for user ${user.id}`);
+
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .update(updateData)
+        .eq('id', id)
+        .select();
+
+      if (clientError) {
+        console.error("[saveClientIntake] Error updating client:", clientError);
+        console.error("[saveClientIntake] Error code:", clientError.code, "| Details:", clientError.details);
+        return { success: false, error: `Failed to update client: ${clientError.message}. Please ensure you have permission to edit this record.` };
+      }
+
+      if (!clientData || clientData.length === 0) {
+        return { success: false, error: "Client not found or access denied" };
+      }
+
+      savedClientId = clientData[0].id;
+    } else {
+      // Insert new client (staff only - RLS enforced)
+      const insertData = {
+        first_name: validatedData.participantDetails.firstName,
+        middle_name: validatedData.participantDetails.middleName || null,
+        last_name: validatedData.participantDetails.lastName,
+        preferred_name: null,
+        date_of_birth: validatedData.participantDetails.dateOfBirth || null,
+        email: validatedData.participantDetails.email || null,
+        phone: validatedData.participantDetails.primaryPhone || null,
+        alternate_phone: validatedData.participantDetails.secondaryPhone || null,
+        street_address: validatedData.participantDetails.streetAddress || null,
+        apartment_unit: null,
+        city: validatedData.participantDetails.city || null,
+        state: validatedData.participantDetails.state || null,
+        zip_code: validatedData.participantDetails.zipCode || null,
+        mailing_same_as_physical: true,
+        mailing_street_address: null,
+        mailing_city: null,
+        mailing_state: null,
+        mailing_zip_code: null,
+        ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
+        status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus))
+          ? validatedData.caseManagement.clientStatus
+          : 'pending',
+        has_portal_access: false,
+        assigned_case_manager: validatedData.caseManagement.clientManager || null,
+        updated_at: now,
+        created_by: user.id,
+      };
+
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .insert(insertData)
+        .select();
+
+      if (clientError) {
+        console.error("Error saving client:", clientError);
+        return { success: false, error: clientError.message };
+      }
+
+      if (!clientData || clientData.length === 0) {
+        return { success: false, error: "Failed to create client" };
+      }
+
+      savedClientId = clientData[0].id;
+    }
+
+    // 2. Save Case Management (check if exists first)
+    const caseManagementData = {
+      client_id: savedClientId,
+      housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'unhoused', 'at_risk', 'transitional', 'unknown'].includes(validatedData.caseManagement.housingStatus))
+        ? validatedData.caseManagement.housingStatus
+        : 'unknown',
+      primary_language: validatedData.caseManagement.primaryLanguage || 'English',
+      secondary_language: validatedData.caseManagement.secondaryLanguage || null,
+      needs_interpreter: false,
+      vi_spdat_score: validatedData.caseManagement.viSpdatScore || null,
+      health_insurance: validatedData.caseManagement.healthInsurance === "yes",
+      health_insurance_type: validatedData.caseManagement.healthInsuranceType || null,
+      non_cash_benefits: validatedData.caseManagement.nonCashBenefits || [],
+      health_status: validatedData.caseManagement.healthStatus || null,
       updated_at: now,
-      created_by: user.id,
     };
 
-    // Add ID if updating existing client
-    if (id) {
-      clientRecord.id = id;
-    }
-
-    // 1. Upsert client record
-    const { data: clientData, error: clientError } = await supabase
-      .from('clients')
-      .upsert(clientRecord, { onConflict: 'id' })
-      .select();
-
-    if (clientError) {
-      console.error("Error saving client:", clientError);
-      return { success: false, error: clientError.message };
-    }
-
-    const savedClientId = clientData[0].id;
-
-    // 2. Upsert Case Management
-    const { error: cmError } = await supabase
+    const { data: existingCM } = await supabase
       .from('case_management')
-      .upsert({
-        client_id: savedClientId,
-        housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'unhoused', 'at_risk', 'transitional', 'unknown'].includes(validatedData.caseManagement.housingStatus))
-          ? validatedData.caseManagement.housingStatus
-          : 'unknown',
-        primary_language: validatedData.caseManagement.primaryLanguage || 'English',
-        secondary_language: validatedData.caseManagement.secondaryLanguage || null,
-        needs_interpreter: false,
-        vi_spdat_score: validatedData.caseManagement.viSpdatScore || null,
-        health_insurance: validatedData.caseManagement.healthInsurance === "yes",
-        health_insurance_type: validatedData.caseManagement.healthInsuranceType || null,
-        non_cash_benefits: validatedData.caseManagement.nonCashBenefits || [],
-        health_status: validatedData.caseManagement.healthStatus || null,
-        updated_at: now,
-      }, { onConflict: 'client_id' });
+      .select('id')
+      .eq('client_id', savedClientId)
+      .maybeSingle();
 
-    if (cmError) console.error("Error saving case management:", cmError);
+    if (existingCM) {
+      const { error: cmError } = await supabase
+        .from('case_management')
+        .update(caseManagementData)
+        .eq('client_id', savedClientId);
+      if (cmError) console.error("Error updating case management:", cmError);
+    } else {
+      const { error: cmError } = await supabase
+        .from('case_management')
+        .insert(caseManagementData);
+      if (cmError) console.error("Error inserting case management:", cmError);
+    }
 
-    // 3. Upsert Demographics
-    const { error: demoError } = await supabase
+    // 3. Save Demographics (check if exists first)
+    const demographicsData = {
+      client_id: savedClientId,
+      gender: validatedData.demographics.genderIdentity || null,
+      ethnicity: validatedData.demographics.ethnicity || null,
+      race: validatedData.demographics.race || [],
+      marital_status: validatedData.demographics.maritalStatus || null,
+      employment_status: validatedData.demographics.employmentStatus || null,
+      monthly_income: validatedData.demographics.monthlyIncome || 0,
+      income_source: validatedData.demographics.incomeSource || null,
+      veteran_status: validatedData.demographics.veteranStatus || false,
+      disability_status: validatedData.demographics.disabilityStatus || false,
+      updated_at: now,
+    };
+
+    const { data: existingDemo } = await supabase
       .from('demographics')
-      .upsert({
-        client_id: savedClientId,
-        gender: validatedData.demographics.genderIdentity || null,
-        ethnicity: validatedData.demographics.ethnicity || null,
-        race: validatedData.demographics.race || [],
-        marital_status: validatedData.demographics.maritalStatus || null,
-        employment_status: validatedData.demographics.employmentStatus || null,
-        monthly_income: validatedData.demographics.monthlyIncome || 0,
-        income_source: validatedData.demographics.incomeSource || null,
-        veteran_status: validatedData.demographics.veteranStatus || false,
-        disability_status: validatedData.demographics.disabilityStatus || false,
-        updated_at: now,
-      }, { onConflict: 'client_id' });
+      .select('id')
+      .eq('client_id', savedClientId)
+      .maybeSingle();
 
-    if (demoError) console.error("Error saving demographics:", demoError);
+    if (existingDemo) {
+      const { error: demoError } = await supabase
+        .from('demographics')
+        .update(demographicsData)
+        .eq('client_id', savedClientId);
+      if (demoError) console.error("Error updating demographics:", demoError);
+    } else {
+      const { error: demoError } = await supabase
+        .from('demographics')
+        .insert(demographicsData);
+      if (demoError) console.error("Error inserting demographics:", demoError);
+    }
 
     // 4. Update Emergency Contacts (Sync)
     // Delete existing and re-insert

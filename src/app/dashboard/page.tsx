@@ -119,7 +119,7 @@ interface FocusItem {
 }
 
 export default function DashboardPage() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, error: authError, signOut, retryAuth } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
     totalClients: 0,
@@ -451,8 +451,43 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  // Show loading state while auth is loading - THIS IS OKAY TO KEEP BLOCKING
-  if (authLoading || !user) {
+  // Show auth error state with retry option
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Dashboard" showBackButton={false} />
+        <main className="container px-4 py-6 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-amber-600">
+                <AlertCircle className="h-5 w-5" />
+                Connection Issue
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-gray-600">
+                We had trouble connecting to the authentication service. This is usually temporary.
+              </p>
+              <p className="text-sm text-gray-500">
+                Error: {authError}
+              </p>
+              <div className="flex flex-col gap-2">
+                <Button onClick={retryAuth} className="w-full">
+                  Try Again
+                </Button>
+                <Button onClick={() => router.push('/login')} variant="outline" className="w-full">
+                  Go to Login
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  // Show loading state while auth is loading
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Dashboard" showBackButton={false} />
@@ -475,6 +510,12 @@ export default function DashboardPage() {
     );
   }
 
+  // Redirect to login if no user (not loading, no error, just no user)
+  if (!user) {
+    router.push('/login');
+    return null;
+  }
+
   if (!profile) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -492,7 +533,7 @@ export default function DashboardPage() {
                 We could not find a profile associated with your account. This may happen if your account creation did not complete successfully.
               </p>
               <div className="flex flex-col gap-2">
-                <Button onClick={() => window.location.reload()} variant="outline">
+                <Button onClick={retryAuth} variant="outline">
                   Retry
                 </Button>
                 <Button onClick={handleSignOut} variant="destructive">

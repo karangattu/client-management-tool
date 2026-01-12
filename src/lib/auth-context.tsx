@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
@@ -24,8 +24,10 @@ interface AuthContextType {
   profile: UserProfile | null;
   session: Session | null;
   loading: boolean;
+  error: string | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  retryAuth: () => Promise<void>;
   hasPermission: (requiredRoles: UserRole[]) => boolean;
 }
 
@@ -36,9 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const initAttemptRef = useRef(0);
+  const profileIdRef = useRef<string | null>(null);
   const supabase = createClient();
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -46,96 +51,120 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .limit(1);
 
-      // Handle PGRST116 error (0 rows returned) and other errors
       if (error) {
         if (error.code === 'PGRST116') {
-          console.warn('Profile not found for user:', userId);
-          console.warn('This may happen if the user just signed up. The profile may be created asynchronously.');
+          console.warn('[Auth] Profile not found for user:', userId);
           return null;
         }
-        console.error('Error fetching profile for user', userId);
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        console.error('Full error:', JSON.stringify(error, null, 2));
+        console.error('[Auth] Error fetching profile:', error.code, error.message);
         return null;
       }
 
       if (!data || data.length === 0) {
-        console.warn('No profile data returned for user:', userId);
-        console.warn('User ID:', userId);
+        console.warn('[Auth] No profile data for user:', userId);
         return null;
       }
 
-      console.log('Profile fetched successfully:', data[0]);
       return data[0] as UserProfile;
     } catch (err) {
-      console.error('Exception in fetchProfile:', err);
+      console.error('[Auth] Exception in fetchProfile:', err);
       return null;
     }
-  };
+  }, [supabase]);
 
-  const refreshProfile = async () => {
-    if (user) {
-      const profileData = await fetchProfile(user.id);
-      setProfile(profileData);
-    }
-  };
+  const initializeAuth = useCallback(async () => {
+    initAttemptRef.current += 1;
+    const attemptNum = initAttemptRef.current;
+    console.log(`[Auth] Initializing auth (attempt ${attemptNum})...`);
+    
+    setLoading(true);
+    setError(null);
 
-  useEffect(() => {
-    const initializeAuth = async () => {
+    try {
+      // Create an AbortController for the timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       try {
-        // Safety timeout to prevent infinite loading
-        // Increased to 15s to account for potentially slow network/Supabase cold starts
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Auth timeout')), 15000)
-        );
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        clearTimeout(timeoutId);
 
-        const sessionPromise = supabase.auth.getSession();
+        if (sessionError) {
+          console.error('[Auth] Session error:', sessionError);
+          throw sessionError;
+        }
 
-        // Race the session fetch against the timeout
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
-
+        console.log(`[Auth] Session retrieved:`, session ? 'logged in' : 'no session');
+        
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
-        }
-      } catch (error) {
-        console.error('Auth initialization error or timeout:', error);
-        // On error/timeout, we must assume user is signed out so the app can render something
-        // instead of getting stuck on "Loading..."
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // If we are already loading, we don't need to do anything as the initial check handles it
-        // Check if we are past the initial load to update state
-
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          // If profile is already loaded for this user, don't re-fetch unnecessarily
-          if (!profile || profile.id !== session.user.id) {
-            const profileData = await fetchProfile(session.user.id);
-            setProfile(profileData);
-          }
+          console.log('[Auth] Profile loaded:', profileData?.role || 'none');
         } else {
           setProfile(null);
         }
+        
+        setError(null);
+      } catch (e) {
+        clearTimeout(timeoutId);
+        throw e;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown auth error';
+      console.error('[Auth] Initialization failed:', errorMessage);
+      
+      // Clear auth state on error
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, fetchProfile]);
 
-        // Always ensure loading is false after a state change event
+  const retryAuth = useCallback(async () => {
+    console.log('[Auth] Retrying authentication...');
+    await initializeAuth();
+  }, [initializeAuth]);
+
+  const refreshProfile = useCallback(async () => {
+    if (user) {
+      const profileData = await fetchProfile(user.id);
+      setProfile(profileData);
+    }
+  }, [user, fetchProfile]);
+
+  useEffect(() => {
+    // Initial auth check
+    initializeAuth();
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, newSession) => {
+        console.log('[Auth] Auth state changed:', event);
+        
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+
+        if (newSession?.user) {
+          // Only fetch profile if it's a different user or we don't have one
+          // Use ref to avoid dependency on profile state
+          if (profileIdRef.current !== newSession.user.id) {
+            const profileData = await fetchProfile(newSession.user.id);
+            setProfile(profileData);
+            profileIdRef.current = profileData?.id || null;
+          }
+        } else {
+          setProfile(null);
+          profileIdRef.current = null;
+        }
+
+        // Clear any previous errors on successful auth change
+        setError(null);
         setLoading(false);
       }
     );
@@ -146,17 +175,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    console.log('[Auth] Signing out...');
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     setSession(null);
-  };
+    setError(null);
+  }, [supabase.auth]);
 
-  const hasPermission = (requiredRoles: UserRole[]) => {
+  const hasPermission = useCallback((requiredRoles: UserRole[]) => {
     if (!profile) return false;
     return requiredRoles.includes(profile.role);
-  };
+  }, [profile]);
 
   return (
     <AuthContext.Provider
@@ -165,8 +196,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         session,
         loading,
+        error,
         signOut,
         refreshProfile,
+        retryAuth,
         hasPermission,
       }}
     >

@@ -17,9 +17,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from '@/components/ui/select';
+import { SearchableSelect, SearchableSelectOption } from '@/components/ui/searchable-select';
 import {
   Dialog,
   DialogContent,
@@ -148,14 +147,18 @@ export default function ClientsPage() {
     });
   }, [clients]);
 
-  const groupedPrograms = useMemo(() => {
-    const groups: Record<string, Program[]> = {};
+  const programOptions: SearchableSelectOption[] = useMemo(() => {
+    const options: SearchableSelectOption[] = [
+      { value: 'all', label: 'All Programs' }
+    ];
     programs.forEach((p) => {
-      const category = p.category || 'Other';
-      if (!groups[category]) groups[category] = [];
-      groups[category].push(p);
+      options.push({
+        value: p.id,
+        label: p.name,
+        group: p.category || 'Other'
+      });
     });
-    return groups;
+    return options;
   }, [programs]);
 
   useEffect(() => {
@@ -361,25 +364,15 @@ export default function ClientsPage() {
                       <SelectItem value="inactive">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={programFilter} onValueChange={setProgramFilter}>
-                    <SelectTrigger className="w-full sm:w-[180px]">
-                      <Filter className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Program" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Programs</SelectItem>
-                      {Object.entries(groupedPrograms).map(([category, categoryPrograms]) => (
-                        <SelectGroup key={category}>
-                          <SelectLabel>{category}</SelectLabel>
-                          {categoryPrograms.map((program) => (
-                            <SelectItem key={program.id} value={program.id}>
-                              {program.name}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    options={programOptions}
+                    value={programFilter}
+                    onValueChange={setProgramFilter}
+                    placeholder="All Programs"
+                    searchPlaceholder="Search programs..."
+                    className="w-full sm:w-[200px]"
+                    grouped
+                  />
                 </div>
               </div>
             </CardContent>

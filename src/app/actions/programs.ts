@@ -140,14 +140,20 @@ export async function upsertEnrollment(params: {
             notes: 'Initial enrollment'
         });
 
-        // AUTO-CREATE TASKS
-        // Fetch templates for this program
-        const { data: templates } = await supabase
+        // AUTO-CREATE TASKS FROM PROGRAM TEMPLATES
+        const { data: templates, error: templateError } = await supabase
             .from('program_tasks')
             .select('*')
             .eq('program_id', params.programId);
 
+        if (templateError) {
+            console.error("Error fetching program task templates:", templateError);
+        }
+
+        let tasksCreated = 0;
         if (templates && templates.length > 0) {
+            console.log(`[upsertEnrollment] Creating ${templates.length} tasks from templates for program ${params.programId}`);
+            
             const tasksToCreate = templates.map(t => {
                 const dueDate = new Date();
                 dueDate.setDate(dueDate.getDate() + (t.days_due_offset || 7));
@@ -156,22 +162,31 @@ export async function upsertEnrollment(params: {
                     title: t.title,
                     description: t.description,
                     client_id: params.clientId,
-                    program_id: params.programId, // Optional: if tasks table has this reference
-                    priority: t.priority,
+                    program_id: params.programId,
+                    priority: t.priority || 'medium',
                     status: 'pending',
-                    assigned_to: params.volunteerId || user?.id, // Assign to enrolled staff or current user
+                    assigned_to: params.volunteerId || user?.id,
                     assigned_by: user?.id,
                     due_date: dueDate.toISOString(),
-                    category: 'general', // Default category
+                    category: 'program',
                     created_at: new Date().toISOString()
                 };
             });
 
-            const { error: taskError } = await supabase.from('tasks').insert(tasksToCreate);
+            const { data: createdTasks, error: taskError } = await supabase
+                .from('tasks')
+                .insert(tasksToCreate)
+                .select('id');
+            
             if (taskError) {
                 console.error("Failed to auto-create program tasks:", taskError);
-                // We don't fail the enrollment, just log error
+                console.error("Task creation error details:", taskError.code, taskError.message, taskError.details);
+            } else {
+                tasksCreated = createdTasks?.length || 0;
+                console.log(`[upsertEnrollment] Successfully created ${tasksCreated} tasks`);
             }
+        } else {
+            console.log(`[upsertEnrollment] No task templates found for program ${params.programId}`);
         }
 
         revalidatePath(`/clients/${params.clientId}`);

@@ -84,12 +84,33 @@ interface ClientDetail {
   signed_engagement_letter_at?: string | null;
 }
 
+/**
+ * Task interface representing a client task.
+ * 
+ * Design Decision: Single Program Association
+ * - Currently, each task can only be associated with ONE program (via program_id FK)
+ * - Supabase returns FK relations as arrays by default, so we normalize to single object
+ * - If multi-program support is needed in future, change to:
+ *   - DB: Create task_programs junction table
+ *   - Type: programs?: Array<{ id, name, category }> | null
+ */
 interface Task {
   id: string;
   title: string;
   due_date: string;
   status: string;
   priority: string;
+  /** Foreign key to programs table (single program per task) */
+  program_id?: string;
+  /** 
+   * Program data from JOIN. Normalized from Supabase array to single object.
+   * null if task is not associated with any program.
+   */
+  programs?: {
+    id: string;
+    name: string;
+    category: string;
+  } | null;
 }
 
 interface Document {
@@ -288,7 +309,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           programsData
         ] = await Promise.all([
           supabase.from('clients').select('*').eq('id', clientId).single(),
-          supabase.from('tasks').select('id, title, due_date, status, priority').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
+          supabase.from('tasks').select('id, title, due_date, status, priority, program_id, programs(id, name, category)').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
           supabase.from('documents').select('id, file_name, file_path, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
           profile?.role === 'admin'
             ? supabase.from('audit_log').select('id, action, created_at').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
@@ -300,7 +321,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
         if (clientError) throw clientError;
         setClient(clientData);
-        setTasks(tasksData || []);
+        // Normalize tasks: Supabase returns related rows as arrays (programs: [{...}])
+        // while our `Task` type expects a single `programs` object or null.
+        if (tasksData) {
+          const normalizedTasks = (tasksData as any[]).map((t) => ({
+            ...t,
+            programs: t.programs && Array.isArray(t.programs) && t.programs.length > 0 ? t.programs[0] : null,
+          })) as Task[];
+          setTasks(normalizedTasks);
+        } else {
+          setTasks([]);
+        }
         setDocuments(docsData || []);
         setEnrollments((enrollmentsData?.success ? enrollmentsData.data : []) as Enrollment[]);
         setAvailablePrograms((programsData?.success ? programsData.data : []) as Program[]);
@@ -1013,7 +1044,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             <div className="flex items-center gap-3">
                               <div className={`w-2 h-2 rounded-full ${getPriorityDotColor(task.priority)}`} />
                               <div>
-                                <p className="font-medium text-sm">{task.title}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm">{task.title}</p>
+                                  {task.programs && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-50 text-purple-700 border-purple-200">
+                                      {task.programs.name}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500 flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
                                   Due: {new Date(task.due_date).toLocaleDateString()}
@@ -1198,7 +1236,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                               disabled={taskUpdating === task.id}
                             />
                             <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
-                              <p className="font-medium">{task.title}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{task.title}</p>
+                                {task.programs && (
+                                  <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                    {task.programs.name}
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>
                             </div>
                           </div>
