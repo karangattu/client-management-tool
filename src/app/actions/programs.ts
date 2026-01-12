@@ -86,6 +86,31 @@ export async function upsertEnrollment(params: {
     try {
         const supabase = await createClient();
 
+        // Check if client intake is complete and status is active
+        const { data: client, error: clientError } = await supabase
+            .from('clients')
+            .select('status, intake_completed_at')
+            .eq('id', params.clientId)
+            .single();
+
+        if (clientError) {
+            throw new Error("Failed to verify client eligibility");
+        }
+
+        if (!client.intake_completed_at) {
+            return {
+                success: false,
+                error: "Cannot add program: Client intake form must be completed first"
+            };
+        }
+
+        if (client.status !== 'active') {
+            return {
+                success: false,
+                error: `Cannot add program: Client status must be "active" (current status: ${client.status})`
+            };
+        }
+
         const { data, error } = await supabase
             .from('program_enrollments')
             .upsert({
@@ -114,6 +139,40 @@ export async function upsertEnrollment(params: {
             changed_by: user?.id,
             notes: 'Initial enrollment'
         });
+
+        // AUTO-CREATE TASKS
+        // Fetch templates for this program
+        const { data: templates } = await supabase
+            .from('program_tasks')
+            .select('*')
+            .eq('program_id', params.programId);
+
+        if (templates && templates.length > 0) {
+            const tasksToCreate = templates.map(t => {
+                const dueDate = new Date();
+                dueDate.setDate(dueDate.getDate() + (t.days_due_offset || 7));
+
+                return {
+                    title: t.title,
+                    description: t.description,
+                    client_id: params.clientId,
+                    program_id: params.programId, // Optional: if tasks table has this reference
+                    priority: t.priority,
+                    status: 'pending',
+                    assigned_to: params.volunteerId || user?.id, // Assign to enrolled staff or current user
+                    assigned_by: user?.id,
+                    due_date: dueDate.toISOString(),
+                    category: 'general', // Default category
+                    created_at: new Date().toISOString()
+                };
+            });
+
+            const { error: taskError } = await supabase.from('tasks').insert(tasksToCreate);
+            if (taskError) {
+                console.error("Failed to auto-create program tasks:", taskError);
+                // We don't fail the enrollment, just log error
+            }
+        }
 
         revalidatePath(`/clients/${params.clientId}`);
 
@@ -207,5 +266,119 @@ export async function removeEnrollment(enrollmentId: string, clientId: string) {
     } catch (error) {
         console.error("Error deleting enrollment:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failed to remove enrollment" };
+    }
+}
+
+/**
+ * Program Task Management
+ */
+
+export interface ProgramTask {
+    id: string;
+    program_id: string;
+    title: string;
+    description: string | null;
+    priority: 'urgent' | 'high' | 'medium' | 'low';
+    days_due_offset: number;
+    is_required: boolean;
+}
+
+export async function getProgramTasks(programId: string) {
+    try {
+        const supabase = await createClient();
+        const { data, error } = await supabase
+            .from('program_tasks')
+            .select('*')
+            .eq('program_id', programId)
+            .order('days_due_offset', { ascending: true });
+
+        if (error) throw error;
+        return { success: true, data: data as ProgramTask[] };
+    } catch (error) {
+        console.error("Error fetching program tasks:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to fetch tasks" };
+    }
+}
+
+export async function addProgramTask(params: {
+    programId: string;
+    title: string;
+    description?: string;
+    priority: string;
+    daysDueOffset: number;
+    isRequired: boolean;
+}) {
+    try {
+        const supabase = await createClient();
+        const { data, error } = await supabase
+            .from('program_tasks')
+            .insert({
+                program_id: params.programId,
+                title: params.title,
+                description: params.description || null,
+                priority: params.priority,
+                days_due_offset: params.daysDueOffset,
+                is_required: params.isRequired
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        revalidatePath('/admin/programs');
+        return { success: true, data };
+    } catch (error) {
+        console.error("Error adding program task:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to add task" };
+    }
+}
+
+export async function deleteProgramTask(taskId: string) {
+    try {
+        const supabase = await createClient();
+        const { error } = await supabase
+            .from('program_tasks')
+            .delete()
+            .eq('id', taskId);
+
+        if (error) throw error;
+        revalidatePath('/admin/programs');
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting program task:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to delete task" };
+    }
+}
+
+export async function updateProgramTask(params: {
+    taskId: string;
+    title?: string;
+    description?: string;
+    priority?: string;
+    daysDueOffset?: number;
+    isRequired?: boolean;
+}) {
+    try {
+        const supabase = await createClient();
+
+        const updates: any = {};
+        if (params.title !== undefined) updates.title = params.title;
+        if (params.description !== undefined) updates.description = params.description || null;
+        if (params.priority !== undefined) updates.priority = params.priority;
+        if (params.daysDueOffset !== undefined) updates.days_due_offset = params.daysDueOffset;
+        if (params.isRequired !== undefined) updates.is_required = params.isRequired;
+
+        const { data, error } = await supabase
+            .from('program_tasks')
+            .update(updates)
+            .eq('id', params.taskId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        revalidatePath('/admin/programs');
+        return { success: true, data };
+    } catch (error) {
+        console.error("Error updating program task:", error);
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update task" };
     }
 }

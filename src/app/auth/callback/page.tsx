@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
@@ -13,6 +13,8 @@ function AuthCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
 
+  const processedCodeRef = useRef<string | null>(null);
+
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
@@ -22,10 +24,9 @@ function AuthCallbackContent() {
         const code = searchParams.get('code');
 
         if (!code) {
-          // No code provided, check if already authenticated
+          // No code provided, just redirect if session exists (handled below)
           const { data } = await supabase.auth.getSession();
           if (data.session) {
-            // Already authenticated, redirect based on role
             const { data: profile } = await supabase
               .from('profiles')
               .select('role')
@@ -34,18 +35,43 @@ function AuthCallbackContent() {
 
             const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
             window.location.href = redirectPath;
+            return;
+          }
+          // If no code and no session, we stay here or could redirect to login
+          // (Current logic returns, leaving loading state, maybe should redirect to login?)
+          if (!data.session) {
+            // If we loaded this page without code and without session, go to login
+            router.push('/login');
           }
           return;
         }
+
+        // Prevent double-processing of the same code (React Strict Mode fix)
+        if (processedCodeRef.current === code) {
+          console.log('Code already processing or processed:', code);
+          return;
+        }
+        processedCodeRef.current = code;
 
         // Exchange the code for a session
         const { error: exchangeError, data: authData } = await supabase.auth.exchangeCodeForSession(code);
 
         if (exchangeError) {
           console.error('Code exchange error:', exchangeError);
-          setStatus('error');
-          setMessage('Failed to verify email. Please try again or contact support.');
-          return;
+          // If the error is 'AuthApiError: Auth session missing!' it might be because of a race condition
+          // We can try to check if we actually HAVE a session now despite the error
+          const { data: checkSession } = await supabase.auth.getSession();
+          if (checkSession.session) {
+            console.log('Session found despite exchange error, proceeding...');
+            // Proceed as if success (fall through to success logic)
+            // We need to set authData to have this session for the logic below to work
+            // But we can't easily unnecessary modify const. 
+            // Instead, we will flow control.
+          } else {
+            setStatus('error');
+            setMessage(`Failed to verify email: ${exchangeError.message}`);
+            return;
+          }
         }
 
         // Clear the code from URL immediately after successful exchange
@@ -53,18 +79,25 @@ function AuthCallbackContent() {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        if (authData?.session) {
+        // Get user from authData OR fetch fresh session
+        let user = authData?.session?.user;
+        if (!user) {
+          const { data: freshSession } = await supabase.auth.getSession();
+          user = freshSession.session?.user;
+        }
+
+        if (user) {
           setStatus('success');
           setMessage('Email verified successfully!');
 
-          const userId = authData.session.user.id;
+          const userId = user.id;
 
           try {
             // Retry logic for profile fetch to handle potential race conditions
             // (profile may not be immediately accessible due to RLS/session propagation)
             let profile = null;
             let attempts = 0;
-            const maxAttempts = 5; // Increased from 3 to 5
+            const maxAttempts = 5;
 
             while (!profile && attempts < maxAttempts) {
               const { data: fetchedProfile } = await supabase
@@ -134,6 +167,7 @@ function AuthCallbackContent() {
               }
             }
 
+            console.log("Auth callback handling redirect. Profile role:", profile?.role);
             const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
             window.location.href = redirectPath;
           } catch (error) {
@@ -141,30 +175,6 @@ function AuthCallbackContent() {
             // Default to my-portal for verified users coming from email
             window.location.href = '/my-portal';
           }
-        } else {
-          // Session exchange succeeded but no session in response
-          setStatus('success');
-          setMessage('Email verified! Logging you in...');
-
-          // Try to get session after a brief moment
-          setTimeout(async () => {
-            const { data: sessionData } = await supabase.auth.getSession();
-            if (sessionData?.session) {
-              try {
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('role')
-                  .eq('id', sessionData.session.user.id)
-                  .single();
-
-                const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
-                window.location.href = redirectPath;
-              } catch (error) {
-                console.error('Error checking user role:', error);
-                window.location.href = '/dashboard';
-              }
-            }
-          }, 500);
         }
       } catch (error) {
         console.error('Unexpected auth callback error:', error);

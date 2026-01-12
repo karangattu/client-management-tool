@@ -28,7 +28,11 @@ import {
   Check,
   Printer,
   CheckCircle,
+  Plus,
+  ArrowRight,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { useToast } from "@/components/ui/use-toast";
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
 import { completeTask, claimTask, assignTask } from '@/app/actions/tasks';
@@ -138,113 +142,119 @@ export default function DashboardPage() {
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const { t } = useLanguage();
+  const { toast } = useToast();
 
   useEffect(() => {
-    if (authLoading) {
-      return;
-    }
+    if (authLoading) return;
 
     if (!user) {
       router.push('/login');
       return;
     }
 
-    if (user) {
-      // Trigger fetches in parallel but they update independent states
-      fetchStats();
-      fetchLists();
-      fetchFocusItems();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]);
-
-  const fetchStats = async () => {
-    if (!user) return;
-    setStatsLoading(true);
-    const supabase = createClient();
-
-    try {
-      if (profile?.role === 'client') {
-        // Client stats logic can remain here or be split if it was heavy, 
-        // but usually specific client stats are fast. Use existing logic slightly adapted.
-        const { data: clientData } = await supabase.from('clients').select('id').eq('portal_user_id', user.id).single();
-        if (clientData) {
-          const { count: pendingTasks } = await supabase.from('tasks')
-            .select('*', { count: 'exact', head: true })
-            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user.id}`)
-            .in('status', ['pending', 'in_progress']);
-
-          const { count: upcomingEvents } = await supabase.from('calendar_events')
-            .select('*', { count: 'exact', head: true })
-            .eq('client_id', clientData.id)
-            .gte('start_time', new Date().toISOString());
-
-          const { count: unreadAlerts } = await supabase.from('alerts')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .eq('is_read', false);
-
-          setStats(prev => ({
-            ...prev,
-            pendingTasks: pendingTasks || 0,
-            upcomingEvents: upcomingEvents || 0,
-            unreadAlerts: unreadAlerts || 0
-          }));
-        }
-      } else {
-        // Staff stats
-        const [
-          { count: totalClients },
-          { count: activeClients },
-          { count: pendingTasks },
-          { count: openTasks },
-          { count: upcomingEvents },
-          { count: unreadAlerts }
-        ] = await Promise.all([
-          supabase.from('clients').select('*', { count: 'exact', head: true }),
-          supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-          supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']),
-          supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
-          supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
-          supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
-        ]);
-
-        setStats({
-          totalClients: totalClients || 0,
-          activeClients: activeClients || 0,
-          pendingTasks: pendingTasks || 0,
-          openTasks: openTasks || 0,
-          upcomingEvents: upcomingEvents || 0,
-          unreadAlerts: unreadAlerts || 0,
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  const fetchLists = async () => {
-    if (!user || profile?.role === 'client') {
-      setListsLoading(false);
+    if (profile?.role === 'client') {
+      router.push('/my-portal');
       return;
     }
+
+    // Only start fetching if we have user AND profile (since logic depends on role)
+    if (user && profile) {
+      fetchDashboardData();
+    } else if (user && !profile) {
+      // If profile is missing but user exists, we wait or specific error UI handles it
+      // We can ensure loaders are off if we aren't going to fetch
+      setStatsLoading(false);
+      setListsLoading(false);
+      setFocusLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, profile, authLoading]);
+
+  const fetchDashboardData = async () => {
+    if (!user) return;
+
+    // Set all loading states at start
+    setStatsLoading(true);
     setListsLoading(true);
+    setFocusLoading(true);
+
     const supabase = createClient();
 
     try {
-      const [
-        { data: deadlineData },
-        { data: openTasksData }
-      ] = await Promise.all([
+      // 1. Fetch Stats (Parallel)
+      const statsPromise = Promise.all([
+        supabase.from('clients').select('*', { count: 'exact', head: true }),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']),
+        supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
+        supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
+        supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
+      ]);
+
+      // 2. Fetch Lists (Parallel)
+      const listsPromise = Promise.all([
         supabase.from('tasks').select(`
-            id, title, due_date, priority, clients (first_name, last_name)
+            id, title, due_date, priority, clients (*)
           `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
         supabase.from('tasks').select(`
-            id, title, description, priority, due_date, clients (first_name, last_name)
-          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10)
+            id, title, description, priority, due_date, clients (*)
+          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+        // Fetch staff
+        supabase.from('profiles').select('id, first_name, last_name').neq('role', 'client').order('first_name')
       ]);
+
+      // 3. Fetch Focus Items (Parallel)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayISO = today.toISOString();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowISO = tomorrow.toISOString();
+
+      const focusPromise = Promise.all([
+        supabase.from('tasks').select(`
+            id, title, description, priority, due_date, status, clients (*)
+          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
+        supabase.from('calendar_events').select(`
+            id, title, start_time, description, clients (*)
+          `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
+        supabase.from('alerts').select(`
+            id, title, message, priority, created_at, clients (*)
+          `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
+      ]);
+
+      // Execute all major groups in parallel
+      const [statsResults, listsResults, focusResults] = await Promise.all([
+        statsPromise,
+        listsPromise,
+        focusPromise
+      ]);
+
+      // --- Process Stats ---
+      const [
+        { count: totalClients },
+        { count: activeClients },
+        { count: pendingTasks },
+        { count: openTasks },
+        { count: upcomingEvents },
+        { count: unreadAlerts }
+      ] = statsResults;
+
+      setStats({
+        totalClients: totalClients || 0,
+        activeClients: activeClients || 0,
+        pendingTasks: pendingTasks || 0,
+        openTasks: openTasks || 0,
+        upcomingEvents: upcomingEvents || 0,
+        unreadAlerts: unreadAlerts || 0,
+      });
+
+      // --- Process Lists ---
+      const [
+        { data: deadlineData },
+        { data: openTasksData },
+        { data: staffData }
+      ] = listsResults;
 
       if (deadlineData) {
         type DeadlineRow = { id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
@@ -267,102 +277,19 @@ export default function DashboardPage() {
         })) as OpenTask[]);
       }
 
-      // Fetch staff for assignment
-      const usersResult = await getAllUsers();
-      if (usersResult.success && usersResult.data) {
-        const staffList = (usersResult.data as Array<{ id: string; first_name: string; last_name: string; role: string }>)
-          .filter(u => u.role !== 'client')
-          .map(u => ({ id: u.id, name: `${u.first_name} ${u.last_name}` }));
-        setStaff(staffList);
+      if (staffData) {
+        setStaff(staffData.map(u => ({
+          id: u.id,
+          name: `${u.first_name} ${u.last_name}`
+        })));
       }
-    } catch (error) {
-      console.error('Error fetching lists:', error);
-    } finally {
-      setListsLoading(false);
-    }
-  };
 
-  const fetchFocusItems = async () => {
-    // Logic from original fetchDashboardData regarding FocusItems
-    if (!user) return;
-    if (profile?.role === 'client') {
-      // Client specific fetches that were in the original huge function
-      const supabase = createClient();
-      const { data: clientData } = await supabase.from('clients').select('id').eq('portal_user_id', user.id).single();
-      if (clientData) {
-        setFocusLoading(true); // Using focus loader for client task lists too for now
-        try {
-          const { data: tasksData } = await supabase
-            .from('tasks')
-            .select('id, title, description, status, priority, due_date')
-            .or(`client_id.eq.${clientData.id},assigned_to.eq.${user?.id}`)
-            .in('status', ['pending', 'in_progress'])
-            .order('due_date', { ascending: true })
-            .limit(10);
-
-          if (tasksData) {
-            const uniqueTasks = tasksData.filter((task, index, self) =>
-              index === self.findIndex((t) => t.id === task.id)
-            );
-            setClientTasks(uniqueTasks);
-          }
-
-          const { data: eventsData } = await supabase
-            .from('calendar_events')
-            .select('id, title, start_time, location')
-            .eq('client_id', clientData.id)
-            .gte('start_time', new Date().toISOString())
-            .order('start_time', { ascending: true })
-            .limit(5);
-
-          if (eventsData) setClientEvents(eventsData);
-
-          // Other client fetches...
-          const { data: historyData } = await getClientHistory(clientData.id);
-          if (historyData) setClientInteractions(historyData as Interaction[]);
-
-          const { data: fullClient } = await supabase.from('clients').select('*').eq('id', clientData.id).single();
-          setCurrentClient(fullClient);
-
-          const { data: docsData } = await supabase.from('documents')
-            .select('id, file_name, document_type, status, created_at, file_path')
-            .eq('client_id', clientData.id)
-            .order('created_at', { ascending: false })
-            .limit(5);
-          if (docsData) setClientDocuments(docsData);
-
-        } catch (e) { console.error(e) }
-        finally { setFocusLoading(false); }
-      }
-      return;
-    }
-
-    // Staff logic for focus items
-    setFocusLoading(true);
-    const supabase = createClient();
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const todayISO = today.toISOString();
-      const tomorrowISO = tomorrow.toISOString();
-
+      // --- Process Focus Items ---
       const [
         { data: urgentTasks },
         { data: todayEvents },
         { data: activeAlerts }
-      ] = await Promise.all([
-        supabase.from('tasks').select(`
-            id, title, description, priority, due_date, status, clients (first_name, last_name)
-          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
-        supabase.from('calendar_events').select(`
-            id, title, start_time, description, clients (first_name, last_name)
-          `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
-        supabase.from('alerts').select(`
-            id, title, message, priority, created_at, clients (first_name, last_name)
-          `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
-      ]);
+      ] = focusResults;
 
       const focus: FocusItem[] = [];
 
@@ -416,9 +343,18 @@ export default function DashboardPage() {
       const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
       focus.sort((a, b) => priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder]);
       setFocusItems(focus);
-    } catch (e) {
-      console.error(e);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      toast({
+        title: "Error loading dashboard",
+        description: "Some data may be missing. Please refresh.",
+        variant: "destructive"
+      });
     } finally {
+      // Ensure ALL loading states are cleared guarantees
+      setStatsLoading(false);
+      setListsLoading(false);
       setFocusLoading(false);
     }
   };
@@ -427,14 +363,34 @@ export default function DashboardPage() {
     try {
       const result = await completeTask(taskId);
       if (result.success) {
+        // Trigger confetti
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+
+        toast({
+          title: "Task Completed",
+          description: "Good job! Task marked as done.",
+        });
+
         // Optimistic update or refetch
-        fetchStats();
-        fetchFocusItems();
+        fetchDashboardData();
       } else {
-        alert(result.error || "Failed to complete task");
+        toast({
+          title: "Error",
+          description: result.error || "Failed to complete task",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error("Error completing task:", error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
+      });
     }
   };
 
@@ -442,13 +398,25 @@ export default function DashboardPage() {
     try {
       const result = await claimTask(taskId);
       if (result.success) {
-        fetchStats();
-        fetchLists();
+        toast({
+          title: "Success",
+          description: "Task claimed successfully",
+        });
+        fetchDashboardData();
       } else {
-        alert(result.error || "Failed to claim task");
+        toast({
+          title: "Error",
+          description: result.error || "Failed to claim task",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error("Error claiming task:", error);
+      toast({
+        title: "Error",
+        description: "Failed to claim task",
+        variant: "destructive"
+      });
     }
   };
 
@@ -456,13 +424,25 @@ export default function DashboardPage() {
     try {
       const result = await assignTask(taskId, staffId);
       if (result.success) {
-        fetchLists();
-        fetchStats();
+        toast({
+          title: "Success",
+          description: "Task assigned successfully",
+        });
+        fetchDashboardData();
       } else {
-        alert(result.error || "Failed to assign task");
+        toast({
+          title: "Error",
+          description: result.error || "Failed to assign task",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error("Error assigning task:", error);
+      toast({
+        title: "Error",
+        description: "Failed to assign task",
+        variant: "destructive"
+      });
     }
   };
 
@@ -613,6 +593,48 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
+
+        {/* Get Started State for New Accounts (0 Clients) */}
+        {!isClient && !authLoading && !statsLoading && stats.totalClients === 0 && (
+          <div className="mb-10">
+            <Card className="border-blue-100 bg-gradient-to-br from-blue-50 to-white overflow-hidden relative">
+              {/* Background pattern */}
+              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                <Users className="h-64 w-64 text-blue-600" />
+              </div>
+
+              <CardContent className="p-8 relative z-10">
+                <div className="max-w-xl">
+                  <div className="bg-blue-600 text-white p-3 rounded-lg inline-block mb-4 shadow-lg shadow-blue-200">
+                    <Plus className="h-6 w-6" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Let&apos;s get you started!</h2>
+                  <p className="text-gray-600 text-lg mb-6 leading-relaxed">
+                    Your dashboard is looking a little empty. The first step to managing your practice is adding your first client. It only takes a minute.
+                  </p>
+
+                  <div className="flex gap-4">
+                    <Button
+                      size="lg"
+                      onClick={() => router.push('/client-intake')}
+                      className="shadow-lg shadow-blue-200 hover:shadow-xl transition-all"
+                    >
+                      <Plus className="mr-2 h-5 w-5" />
+                      Add Your First Client
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => router.push('/clients')}
+                    >
+                      Explore Clients
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Client-specific: Language Selector and Profile Completion Prompt */}
         {isClient && (
@@ -1186,55 +1208,61 @@ export default function DashboardPage() {
                     {openTasksToClaim.map((task) => (
                       <div
                         key={task.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg group"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-gray-100 rounded-lg hover:border-blue-200 hover:shadow-sm transition-all"
                       >
-                        <div className="flex-1 min-w-0 mr-4">
-                          <p className="font-medium text-gray-900 text-sm truncate">
+                        <div className="flex-1 min-w-0 mb-3 sm:mb-0 mr-4">
+                          <div className="flex items-center gap-2 mb-1">
+                            {getPriorityBadge(task.priority)}
+                            {task.due_date && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${new Date(task.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+                                Due {new Date(task.due_date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-medium text-gray-900 truncate">
                             {task.title}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {task.clients && (
-                              <span className="text-xs text-gray-400">
-                                {task.clients.first_name} {task.clients.last_name}
-                              </span>
-                            )}
-                            {task.due_date && (
-                              <span className="text-xs text-gray-400">
-                                • {new Date(task.due_date).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
+                          {task.description && (
+                            <p className="text-sm text-gray-500 line-clamp-1 mt-0.5">{task.description}</p>
+                          )}
+                          {task.clients && (
+                            <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
+                              <Users className="h-3 w-3" />
+                              <span>{task.clients.first_name} {task.clients.last_name}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          {getPriorityBadge(task.priority)}
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="h-8 text-xs"
-                              onClick={() => handleClaimTask(task.id)}
-                            >
-                              Claim
-                            </Button>
-                            <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
-                              <SelectTrigger className="h-8 w-[100px] text-xs">
-                                <SelectValue placeholder="Assign" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {staff.map((s) => (
-                                  <SelectItem key={s.id} value={s.id} className="text-xs">
-                                    {s.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+
+                        <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 mt-2 sm:mt-0">
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white h-9 px-4 shadow-sm"
+                            onClick={() => handleClaimTask(task.id)}
+                          >
+                            Claim Task
+                          </Button>
+                          <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
+                            <SelectTrigger className="h-9 w-[110px] text-xs bg-gray-50 border-gray-200">
+                              <SelectValue placeholder="Assign To..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {staff.map((s) => (
+                                <SelectItem key={s.id} value={s.id} className="text-xs">
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm text-center py-4">No open tasks available</p>
+                  <div className="text-center py-8 bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
+                    <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-3 opacity-50" />
+                    <p className="text-gray-900 font-medium">All caught up!</p>
+                    <p className="text-sm text-gray-500 mt-1">There are no open tasks to claim right now.</p>
+                  </div>
                 )}
               </CardContent>
             </Card>

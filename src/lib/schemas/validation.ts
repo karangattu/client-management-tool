@@ -57,7 +57,7 @@ export const demographicsSchema = z.object({
   language: z.string().optional(),
   // Financials
   employmentStatus: z.string().optional(),
-  monthlyIncome: z.string().optional(), // Text input for currency
+  monthlyIncome: z.number().nullable().optional(),
   incomeSource: z.string().optional(),
   veteranStatus: z.boolean().optional(),
   disabilityStatus: z.boolean().optional(),
@@ -108,7 +108,7 @@ export const defaultParticipantDetails: ParticipantDetails = {
   secondaryPhone: "",
   streetAddress: "",
   city: "",
-  state: "",
+  state: "CA",
   county: "",
   zipCode: "",
 };
@@ -148,7 +148,7 @@ export const defaultDemographics: Demographics = {
   maritalStatus: "",
   language: "",
   employmentStatus: "",
-  monthlyIncome: "",
+  monthlyIncome: null,
   incomeSource: "",
   veteranStatus: false,
   disabilityStatus: false,

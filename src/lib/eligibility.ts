@@ -36,9 +36,10 @@ export const PROGRAM_NAMES: Record<number, string> = {
     22: "WIC (Women, Infants & Children)",
 };
 
-const getIncome = (incomeStr: string | undefined): number => {
-    if (!incomeStr) return 0;
-    return parseFloat(incomeStr.replace(/[^0-9.]/g, '')) || 0;
+const getIncome = (income: number | string | null | undefined): number => {
+    if (income === null || income === undefined || income === "") return 0;
+    if (typeof income === 'number') return income;
+    return parseFloat(income.replace(/[^0-9.]/g, '')) || 0;
 };
 
 const getAge = (dob: string | undefined): number => {

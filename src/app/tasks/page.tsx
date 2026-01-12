@@ -642,7 +642,7 @@ function TasksContent() {
                     </div>
 
                     <p className="text-sm text-gray-500">
-                      Leave unassigned to allow volunteers and case managers to claim this task.
+                      Leave unassigned to allow case managers to claim this task.
                     </p>
 
                     <div className="flex justify-end gap-2 pt-4">

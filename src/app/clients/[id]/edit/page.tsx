@@ -53,7 +53,7 @@ interface CaseManager {
 
 export default function EditClientPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params);
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -231,6 +231,17 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
   };
 
   const canEdit = canAccessFeature(profile?.role || 'client', 'staff');
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Loading..." showBackButton />
+        <main className="container px-4 py-6 max-w-3xl mx-auto">
+          <Skeleton className="h-96" />
+        </main>
+      </div>
+    );
+  }
 
   if (!canEdit) {
     return (

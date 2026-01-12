@@ -63,6 +63,7 @@ import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
 import { type Program } from '@/lib/types';
+import { BENEFITS_OPTIONS } from '@/lib/constants';
 
 interface Client {
   id: string;
@@ -74,6 +75,7 @@ interface Client {
   created_at: string;
   intake_completed_at: string | null;
   program_enrollments?: { program_id: string; status: string }[];
+  case_management?: { non_cash_benefits: string[] }[];
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -107,10 +109,10 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch clients with their program enrollments
+      // Fetch clients with their program enrollments and case management info
       const { data: clientsData, error: clientsError } = await supabase
         .from('clients')
-        .select('*, program_enrollments(program_id, status)')
+        .select('*, program_enrollments(*), case_management(*)')
         .order('created_at', { ascending: false });
 
       if (clientsError) throw clientsError;
@@ -121,7 +123,7 @@ export default function ClientsPage() {
         .select('*')
         .eq('is_active', true)
         .order('name', { ascending: true });
-        
+
       if (programsError) throw programsError;
 
       setClients(clientsData || []);
@@ -172,7 +174,7 @@ export default function ClientsPage() {
 
     // Apply program filter
     if (programFilter !== 'all') {
-      filtered = filtered.filter((client) => 
+      filtered = filtered.filter((client) =>
         client.program_enrollments?.some(enrollment => enrollment.program_id === programFilter)
       );
     }
@@ -336,7 +338,7 @@ export default function ClientsPage() {
           {/* Filters */}
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col xl:flex-row gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
@@ -346,37 +348,39 @@ export default function ClientsPage() {
                     className="pl-10"
                   />
                 </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[160px]">
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={programFilter} onValueChange={setProgramFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Program" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Programs</SelectItem>
-                    {Object.entries(groupedPrograms).map(([category, categoryPrograms]) => (
-                      <SelectGroup key={category}>
-                        <SelectLabel>{category}</SelectLabel>
-                        {categoryPrograms.map((program) => (
-                          <SelectItem key={program.id} value={program.id}>
-                            {program.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-[160px]">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={programFilter} onValueChange={setProgramFilter}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      {Object.entries(groupedPrograms).map(([category, categoryPrograms]) => (
+                        <SelectGroup key={category}>
+                          <SelectLabel>{category}</SelectLabel>
+                          {categoryPrograms.map((program) => (
+                            <SelectItem key={program.id} value={program.id}>
+                              {program.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>

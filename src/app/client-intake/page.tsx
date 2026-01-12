@@ -25,7 +25,7 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // If not authenticated, send to login so staff/volunteers can sign in and create an intake
+    // If not authenticated, send to login so staff can sign in and create an intake
     if (!user) {
       // Preserve intended destination so user can come back after sign in
       redirect('/login?redirect=/client-intake');

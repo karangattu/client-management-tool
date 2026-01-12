@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import confetti from 'canvas-confetti';
+import { useToast } from "@/components/ui/use-toast";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,6 +104,7 @@ const DOCUMENT_TYPES = [
 
 export default function MyPortalPage() {
     const router = useRouter();
+    const { toast } = useToast();
     const supabase = createClient();
 
     const [loading, setLoading] = useState(true);
@@ -325,18 +328,34 @@ export default function MyPortalPage() {
             const result = await signEngagementLetter(client.id, pdfData, signature, clientName);
 
             if (result.success) {
+                // Trigger confetti
+                confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+
                 // Update client state immediately
                 setClient(prev => prev ? { ...prev, signed_engagement_letter_at: new Date().toISOString() } : null);
 
                 // Complete the task
                 await completeTaskByTitle(client.id, 'Sign Engagement Letter');
 
+                toast({
+                    title: "Success",
+                    description: "Engagement letter signed successfully! Thank you.",
+                });
+
                 // Refresh data
                 await fetchData();
                 setShowEngagementLetter(false);
                 setSignature(null);
             } else {
-                alert('Failed to sign engagement letter. Please try again.');
+                toast({
+                    title: "Error",
+                    description: "Failed to sign engagement letter. Please try again.",
+                    variant: "destructive"
+                });
             }
         } catch (err) {
             console.error('Error signing engagement letter:', err);

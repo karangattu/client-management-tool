@@ -40,7 +40,7 @@ function LoginForm() {
       });
 
       const timeoutPromise = new Promise<{ data: { session: unknown; user: unknown } | null; error: { message: string } | null }>((_, reject) =>
-        setTimeout(() => reject(new Error('Login request timed out')), 10000)
+        setTimeout(() => reject(new Error('Login request timed out')), 30000)
       );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,7 +57,7 @@ function LoginForm() {
       // Check user role to redirect appropriately
       // Retry logic for profile fetch to handle potential race conditions
       let profileData = null;
-      
+
       // Try up to 5 times with increasing backoff
       for (let i = 0; i < 5; i++) {
         const { data: fetchedProfile } = await supabase
@@ -67,6 +67,7 @@ function LoginForm() {
           .single();
 
         if (fetchedProfile) {
+          console.log("Login profile fetched:", fetchedProfile);
           profileData = fetchedProfile;
           break;
         }

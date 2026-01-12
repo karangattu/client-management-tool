@@ -15,7 +15,7 @@ import type { ClientIntakeForm as ClientIntakeFormType } from '@/lib/schemas/val
 
 export default function EditClientIntakePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params);
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +45,17 @@ export default function EditClientIntakePage({ params }: { params: Promise<{ id:
 
     fetchClientData();
   }, [clientId]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Loading..." showBackButton />
+        <main className="container px-4 py-6 max-w-7xl mx-auto">
+          <Skeleton className="h-96" />
+        </main>
+      </div>
+    );
+  }
 
   if (!canEdit) {
     return (
@@ -99,14 +110,14 @@ export default function EditClientIntakePage({ params }: { params: Promise<{ id:
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader 
-        title={`Edit Intake: ${clientName}`} 
-        showBackButton 
+      <AppHeader
+        title={`Edit Intake: ${clientName}`}
+        showBackButton
       />
 
       <main className="container px-4 py-6 max-w-7xl mx-auto">
-        <ClientIntakeForm 
-          initialData={clientData} 
+        <ClientIntakeForm
+          initialData={clientData}
           clientId={clientId}
           showStaffFields={true}
         />

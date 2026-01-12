@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth-context';
+import { SearchCommand } from './SearchCommand';
 
 interface AppHeaderProps {
   title?: string;
@@ -139,6 +140,11 @@ export function AppHeader({
               {title || 'Client Manager'}
             </span>
           </div>
+        </div>
+
+        {/* Center section - Search */}
+        <div className="hidden md:flex flex-1 max-w-xl mx-4">
+          {showBackButton && !isHomePage ? null : <SearchCommand />}
         </div>
 
         {/* Right section - Notifications and Profile */}

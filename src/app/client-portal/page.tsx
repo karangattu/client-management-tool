@@ -219,6 +219,14 @@ export default function ClientPortalPage() {
     setError(null);
 
     try {
+      let pdfData: string | undefined;
+      // Generate PDF if signature is provided
+      if (signature) {
+        const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
+        const clientName = `${formData.firstName} ${formData.lastName}`;
+        pdfData = generateEngagementLetterPDF(clientName, signature);
+      }
+
       const result = await submitSelfServiceApplication({
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -232,6 +240,7 @@ export default function ClientPortalPage() {
         zipCode: formData.zipCode,
         preferredLanguage: formData.preferredLanguage,
         signature: signature || undefined,
+        pdfData: pdfData,
       });
 
       if (!result.success) {

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -226,6 +227,7 @@ function EnrollmentActivityLog({ enrollmentId }: { enrollmentId: string }) {
 export default function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = use(params);
   const { profile } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -264,6 +266,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const supabase = createClient();
 
   useEffect(() => {
+    // Log view on mount
+    const logView = async () => {
+      // Dynamic import to avoid server-action-in-client-component issues during build if direct import fails?
+      // Actually 'use server' actions can be imported securely.
+      const { logClientView } = await import('@/app/actions/audit');
+      await logClientView(clientId);
+    };
+    logView();
+
     const fetchClientData = async () => {
       setLoading(true);
       try {
@@ -505,10 +516,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       });
 
       setShowAssignDialog(false);
-      alert('Case manager assigned successfully');
+      toast({
+        title: "Success",
+        description: "Case manager assigned successfully",
+      });
     } catch (err) {
       console.error('Error assigning manager:', err);
-      alert('Failed to assign case manager');
+      toast({
+        title: "Error",
+        description: "Failed to assign case manager",
+        variant: "destructive",
+      });
     } finally {
       setAssigningLoading(false);
     }
@@ -526,12 +544,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
   const handleCreateTask = async () => {
     if (!newTaskData.title || !newTaskData.due_date) {
-      alert('Please fill in all required fields');
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
       return;
     }
 
     if (!profile?.id) {
-      alert('You must be logged in to create a task');
+      toast({
+        title: "Error",
+        description: "You must be logged in to create a task",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -555,6 +581,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       // Reset form and close dialog
       setNewTaskData({ title: '', description: '', due_date: '', priority: 'medium' });
       setShowTaskDialog(false);
+      toast({
+        title: "Success",
+        description: "Task created successfully",
+      });
 
       // Refresh tasks
       const { data: tasksData } = await supabase
@@ -566,13 +596,21 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setTasks(tasksData || []);
     } catch (err) {
       console.error('Error creating task:', err);
-      alert('Failed to create task');
+      toast({
+        title: "Error",
+        description: "Failed to create task",
+        variant: "destructive",
+      });
     }
   };
 
   const handleUploadDocument = async () => {
     if (!uploadFile) {
-      alert('Please select a file');
+      toast({
+        title: "Error",
+        description: "Please select a file",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -595,14 +633,22 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        alert(`Upload failed: ${uploadError}`);
+        toast({
+          title: "Error",
+          description: `Upload failed: ${uploadError}`,
+          variant: "destructive",
+        });
         setUploading(false);
         return;
       }
 
       if (!documentRecord) {
         console.error('No document record returned');
-        alert('Upload failed');
+        toast({
+          title: "Error",
+          description: "Upload failed: No record returned",
+          variant: "destructive",
+        });
         setUploading(false);
         return;
       }
@@ -626,7 +672,11 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       if (dbError) {
         console.error('Error saving document metadata:', dbError);
-        alert('File uploaded but failed to save record. Error: ' + dbError.message);
+        toast({
+          title: "Error",
+          description: `File uploaded but failed to save record. Error: ${dbError.message}`,
+          variant: "destructive",
+        });
         setUploading(false);
         return;
       }
@@ -650,10 +700,17 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       setShowUploadDialog(false);
       setUploading(false);
       console.log('Upload complete!');
-      alert('Document uploaded successfully!');
+      toast({
+        title: "Success",
+        description: "Document uploaded successfully",
+      });
     } catch (err) {
       console.error('Error uploading document:', err);
-      alert('An error occurred while uploading: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast({
+        title: "Error",
+        description: `An error occurred while uploading: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        variant: "destructive",
+      });
       setUploading(false);
     }
   };
@@ -1296,7 +1353,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                 <span className="ml-2">{enrollment.start_date ? new Date(enrollment.start_date).toLocaleDateString() : 'Not set'}</span>
                               </div>
                               <div>
-                                <span className="text-gray-400">Volunteer:</span>
+                                <span className="text-gray-400">Staff:</span>
                                 <span className="ml-2 text-blue-600">
                                   {enrollment.volunteer ? `${enrollment.volunteer.first_name} ${enrollment.volunteer.last_name}` : 'Unassigned'}
                                 </span>
@@ -1602,10 +1659,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Assigned Volunteer</Label>
+                    <Label>Assigned Staff</Label>
                     <Select value={newEnrollment.volunteerId} onValueChange={(val) => setNewEnrollment({ ...newEnrollment, volunteerId: val })}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select volunteer" />
+                        <SelectValue placeholder="Select staff" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>

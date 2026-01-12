@@ -61,7 +61,7 @@ interface UserProfile {
   last_sign_in?: string;
 }
 
-const roleDescriptions: Record<UserRole, { title: string; description: string; color: string }> = {
+const roleDescriptions: Partial<Record<UserRole, { title: string; description: string; color: string }>> = {
   admin: {
     title: 'Administrator',
     description: 'Full access to all features, user management, and system settings',
@@ -69,18 +69,8 @@ const roleDescriptions: Record<UserRole, { title: string; description: string; c
   },
   case_manager: {
     title: 'Case Manager',
-    description: 'Manage clients, create/claim tasks, access housing and documents',
+    description: 'Manage clients, tasks, housing, and documents. Includes all Staff permissions.',
     color: 'bg-blue-100 text-blue-800',
-  },
-  staff: {
-    title: 'Staff',
-    description: 'Create intakes, manage assigned clients, basic document access',
-    color: 'bg-green-100 text-green-800',
-  },
-  volunteer: {
-    title: 'Volunteer',
-    description: 'View clients, claim open tasks, limited document access',
-    color: 'bg-yellow-100 text-yellow-800',
   },
   client: {
     title: 'Client',
@@ -108,7 +98,7 @@ export default function AdminPage() {
     password: '',
     first_name: '',
     last_name: '',
-    role: 'staff' as UserRole,
+    role: 'case_manager' as UserRole,
   });
 
   useEffect(() => {
@@ -173,7 +163,7 @@ export default function AdminPage() {
         password: '',
         first_name: '',
         last_name: '',
-        role: 'staff',
+        role: 'case_manager',
       });
       fetchUsers();
     } catch (err) {
@@ -237,7 +227,7 @@ export default function AdminPage() {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
       setDeleteConfirmText('');
-      
+
       // Refresh users list
       setTimeout(() => {
         fetchUsers();
@@ -352,6 +342,28 @@ export default function AdminPage() {
           </Card>
         </div>
 
+        {/* System Management */}
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold mb-4">System Configuration</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="hover:border-blue-200 hover:shadow-sm transition-all cursor-pointer" onClick={() => router.push('/admin/programs')}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
+                    <CheckCircle className="h-4 w-4" />
+                  </div>
+                  Programs & Standard Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-500">
+                  Manage program definitions and their default tasks. These tasks are automatically created when a client enrolls.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
         {/* Role Descriptions */}
         <Card className="mb-6">
           <CardHeader>
@@ -393,7 +405,7 @@ export default function AdminPage() {
                 <DialogHeader>
                   <DialogTitle>Create New User</DialogTitle>
                   <DialogDescription>
-                    Add a new staff member, volunteer, or case manager to the system.
+                    Add a new staff member or case manager to the system.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
@@ -456,8 +468,6 @@ export default function AdminPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="volunteer">Volunteer</SelectItem>
-                        <SelectItem value="staff">Staff</SelectItem>
                         <SelectItem value="case_manager">Case Manager</SelectItem>
                         <SelectItem value="admin">Administrator</SelectItem>
                       </SelectContent>
@@ -529,8 +539,6 @@ export default function AdminPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="volunteer">Volunteer</SelectItem>
-                          <SelectItem value="staff">Staff</SelectItem>
                           <SelectItem value="case_manager">Case Manager</SelectItem>
                           <SelectItem value="admin">Administrator</SelectItem>
                         </SelectContent>

@@ -6,10 +6,12 @@ import { AuthProvider } from "@/lib/auth-context";
 import { LanguageProvider } from "@/lib/language-context";
 import { Toaster } from "@/components/ui/toaster";
 import { CommandMenu } from "@/components/layout/CommandMenu";
+import { AutoLogout } from "@/components/layout/AutoLogout";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -35,6 +37,7 @@ export default function RootLayout({
               {children}
               <Toaster />
               <CommandMenu />
+              <AutoLogout />
             </TooltipProvider>
           </AuthProvider>
         </LanguageProvider>

@@ -40,10 +40,33 @@ export async function submitSelfServiceApplication(
       console.error("SUPABASE_SERVICE_ROLE_KEY missing. Cannot proceed with privileged operations.");
       throw new Error("Configuration error: Service access not available.");
     }
+    // Check if email already exists with a restricted role
+    const { data: existingProfile } = await db
+      .from('profiles')
+      .select('role')
+      .eq('email', formData.email)
+      .single();
 
+    if (existingProfile) {
+      if (['admin', 'case_manager', 'staff', 'volunteer'].includes(existingProfile.role)) {
+        return {
+          success: false,
+          error: "This email address is associated with a staff account. Please use the staff login.",
+        };
+      }
+      // If it's a client, Supabase auth.signUp will handle the "already registered" error or merge logic
+      // But we can also be explicit:
+      if (existingProfile.role === 'client') {
+        return {
+          success: false,
+          error: "An account with this email already exists. Please log in.",
+        };
+      }
+    }
     // Create the user account using the standard client to handle auth flow (emails, etc.)
     // We pass role and names in metadata so the trigger can pick them up if needed,
     // though we will also try to create the profile explicitly for robustness.
+    console.log("Creating user:", formData.email, "Is signature present?", !!formData.signature);
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
       password: formData.password,
@@ -81,6 +104,8 @@ export async function submitSelfServiceApplication(
     if (profileError) {
       console.error("Profile creation error:", profileError);
       throw new Error(`Failed to create user profile: ${profileError.message} (Code: ${profileError.code})`);
+    } else {
+      console.log("Profile upserted successfully. Attempted role: client");
     }
 
     // Create client record
@@ -214,21 +239,26 @@ export async function submitSelfServiceApplication(
         // if we received a signature string.
       }
 
-      // 4. Update client status to record signature time and version
-      // We do this outside the inner try/catch so it runs even if PDF upload had issues,
-      // as long as we have the signature data intent.
-      if (formData.signature) {
-        const { error: updateError } = await db
-          .from('clients')
-          .update({
-            signed_engagement_letter_at: new Date().toISOString(),
-            engagement_letter_version: 'March 2024'
-          })
-          .eq('id', clientData.id);
+      console.log("Signature processing complete. Signature provided:", !!formData.signature);
+    }
 
-        if (updateError) {
-          console.error("Failed to update client signature status:", updateError);
-        }
+    // 4. Update client status to record signature time and version
+    // We do this independently of the PDF upload to ensure the status is recorded
+    // as long as the user provided a signature intent.
+    if (formData.signature) {
+      console.log("Updating client signature status...");
+      const { error: updateError } = await db
+        .from('clients')
+        .update({
+          signed_engagement_letter_at: new Date().toISOString(),
+          engagement_letter_version: 'March 2024'
+        })
+        .eq('id', clientData.id);
+
+      if (updateError) {
+        console.error("Failed to update client signature status:", updateError);
+      } else {
+        console.log("Client signature status updated successfully.");
       }
     }
 

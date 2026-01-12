@@ -34,9 +34,10 @@ export function FinancialSection() {
                     <FormField
                         name="demographics.monthlyIncome"
                         label="Total Monthly Household Income"
-                        type="text"
-                        placeholder="$0.00"
+                        type="number"
+                        placeholder="0.00"
                         tooltip="Total gross income from all sources before taxes"
+                        min={0}
                     />
                 </div>
 

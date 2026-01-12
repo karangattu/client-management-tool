@@ -130,7 +130,7 @@ export async function saveClientIntake(
         race: validatedData.demographics.race || [],
         marital_status: validatedData.demographics.maritalStatus || null,
         employment_status: validatedData.demographics.employmentStatus || null,
-        monthly_income: validatedData.demographics.monthlyIncome ? parseFloat(validatedData.demographics.monthlyIncome.replace(/[^0-9.]/g, '')) || 0 : 0,
+        monthly_income: validatedData.demographics.monthlyIncome || 0,
         income_source: validatedData.demographics.incomeSource || null,
         veteran_status: validatedData.demographics.veteranStatus || false,
         disability_status: validatedData.demographics.disabilityStatus || false,
@@ -176,8 +176,18 @@ export async function saveClientIntake(
         .eq('id', savedClientId)
         .single();
 
-      // If it's a client saving their own profile and hasn't finished intake yet
-      if (clientData && clientData.portal_user_id === user.id && !clientData.intake_completed_at) {
+      // Check if the current user is staff
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      const isStaff = userProfile?.role && ['admin', 'case_manager', 'staff'].includes(userProfile.role);
+      const isOwnProfile = clientData?.portal_user_id === user.id;
+
+      // Mark intake complete if: (client submitting own OR staff submitting) AND not already completed
+      if (clientData && (isOwnProfile || isStaff) && !clientData.intake_completed_at) {
         await supabase
           .from('clients')
           .update({ intake_completed_at: now })
@@ -269,7 +279,7 @@ export async function getClientFullData(clientId: string) {
         maritalStatus: client.demographics?.marital_status || "",
         language: client.case_management?.primary_language || "",
         employmentStatus: client.demographics?.employment_status || "",
-        monthlyIncome: client.demographics?.monthly_income?.toString() || "",
+        monthlyIncome: client.demographics?.monthly_income ?? null,
         incomeSource: client.demographics?.income_source || "",
         veteranStatus: client.demographics?.veteran_status || false,
         disabilityStatus: client.demographics?.disability_status || false,

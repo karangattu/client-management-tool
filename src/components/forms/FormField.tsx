@@ -237,20 +237,47 @@ export function FormField({
     );
   }
 
+  // Handler to block non-numeric input for number fields
+  const handleNumberKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Allow: backspace, delete, tab, escape, enter
+    if ([8, 46, 9, 27, 13].includes(e.keyCode)) {
+      return;
+    }
+    // Allow: Ctrl/Cmd + A, C, V, X
+    if ((e.ctrlKey || e.metaKey) && [65, 67, 86, 88].includes(e.keyCode)) {
+      return;
+    }
+    // Allow: home, end, left, right, down, up
+    if (e.keyCode >= 35 && e.keyCode <= 40) {
+      return;
+    }
+    // Allow: decimal point (period and numpad decimal)
+    if (e.keyCode === 190 || e.keyCode === 110) {
+      return;
+    }
+    // Block if not a number (top row 0-9 or numpad 0-9)
+    if ((e.shiftKey || e.keyCode < 48 || e.keyCode > 57) &&
+        (e.keyCode < 96 || e.keyCode > 105)) {
+      e.preventDefault();
+    }
+  };
+
   return (
     <div className={cn("space-y-2", className)}>
       {renderLabel()}
       <Input
         id={name}
         type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
         placeholder={placeholder}
         disabled={disabled}
         maxLength={maxLength}
         min={min}
         max={max}
+        onKeyDown={type === "number" ? handleNumberKeyDown : undefined}
         className={cn(error && "border-destructive", inputClassName)}
         {...register(name, {
-          setValueAs: type === "number" 
+          setValueAs: type === "number"
             ? (v: string | number | null | undefined) => {
                 if (v === "" || v === undefined || v === null) return null;
                 const num = Number(v);
