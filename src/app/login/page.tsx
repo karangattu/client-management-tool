@@ -33,6 +33,14 @@ function LoginForm() {
     try {
       const supabase = createClient();
 
+      // Clear any existing stale session before attempting login
+      // This prevents "Invalid Refresh Token" errors from stale cookies
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // Ignore errors during signout - we're just clearing stale state
+      }
+
       // Add a safety timeout to the login request itself
       const loginPromise = supabase.auth.signInWithPassword({
         email,
@@ -96,6 +104,9 @@ function LoginForm() {
           setError('Login timed out. Please check your connection and try again.');
         } else if (err.message.includes('Email not confirmed')) {
           setError('Please verify your email address before logging in.');
+        } else if (err.message.includes('Refresh Token') || err.message.includes('refresh_token')) {
+          // This shouldn't happen often now with the signOut before login, but just in case
+          setError('Session expired. Please try again.');
         } else {
           setError(err.message || 'An unexpected error occurred. Please try again.');
         }

@@ -58,18 +58,22 @@ function AuthCallbackContent() {
 
         if (exchangeError) {
           console.error('Code exchange error:', exchangeError);
-          // If the error is 'AuthApiError: Auth session missing!' it might be because of a race condition
-          // We can try to check if we actually HAVE a session now despite the error
+
+          // Check if we already have a valid session (code may have been used already)
           const { data: checkSession } = await supabase.auth.getSession();
           if (checkSession.session) {
             console.log('Session found despite exchange error, proceeding...');
             // Proceed as if success (fall through to success logic)
-            // We need to set authData to have this session for the logic below to work
-            // But we can't easily unnecessary modify const. 
-            // Instead, we will flow control.
           } else {
-            setStatus('error');
-            setMessage(`Failed to verify email: ${exchangeError.message}`);
+            // If the error is about an already used code or invalid code, provide a helpful message
+            const errorMsg = exchangeError.message?.toLowerCase() || '';
+            if (errorMsg.includes('invalid') || errorMsg.includes('expired') || errorMsg.includes('already')) {
+              setStatus('error');
+              setMessage('This verification link has already been used or has expired. Please try logging in with your email and password.');
+            } else {
+              setStatus('error');
+              setMessage(`Failed to verify email: ${exchangeError.message}`);
+            }
             return;
           }
         }

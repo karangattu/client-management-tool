@@ -29,10 +29,33 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // Refresh session if expired
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Refresh session if expired - handles invalid tokens gracefully
+  let user = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+
+    // If there's a refresh token error, clear the invalid session cookies
+    if (error?.message?.includes('Refresh Token') || error?.code === 'refresh_token_not_found') {
+      const response = NextResponse.next({ request });
+
+      // Clear all Supabase auth cookies to force a fresh login
+      request.cookies.getAll().forEach((cookie) => {
+        if (cookie.name.includes('supabase') || cookie.name.includes('sb-')) {
+          response.cookies.delete(cookie.name);
+        }
+      });
+
+      // Redirect to login
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+
+    user = data.user;
+  } catch {
+    // If getUser fails catastrophically, treat as unauthenticated
+    user = null;
+  }
 
   const publicPaths = ['/login', '/client-portal', '/api'];
   const isPublicPath = publicPaths.some((path) =>
