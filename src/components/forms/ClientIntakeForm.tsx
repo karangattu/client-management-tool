@@ -16,12 +16,14 @@ import {
   FinancialSection,
   BenefitsHealthSection,
 } from "@/components/forms/sections";
+import { useAuth } from "@/lib/auth-context";
 import {
   clientIntakeSchema,
   defaultClientIntakeForm,
   type ClientIntakeForm as ClientIntakeFormType,
 } from "@/lib/schemas/validation";
 import { saveClientIntake } from "@/app/actions/client";
+import { completeTaskByTitle } from "@/app/actions/tasks";
 import { getAllUsers } from "@/app/actions/users";
 import { calculateBenefits } from "@/lib/benefitsEngine";
 import { EligibilityPanel } from "@/components/forms/EligibilityPanel";
@@ -72,6 +74,7 @@ interface ClientIntakeFormProps {
 }
 
 export function ClientIntakeForm({ initialData, clientId, showStaffFields: _showStaffFields = true }: ClientIntakeFormProps) {
+  const { profile } = useAuth();
   const hasSubmittedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -262,41 +265,87 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   };
 
   const onSubmit = async (data: ClientIntakeFormType) => {
-    setIsSubmitting(true);
-    try {
-      const result = await saveClientIntake(data, clientId);
-      if (result.success) {
-        // Mark as submitted to prevent draft saving
-        hasSubmittedRef.current = true;
-
-        // Clear draft on successful save
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(DRAFT_KEY);
-        }
-        toast({
-          title: "Success!",
-          description: clientId
-            ? "Client information has been updated."
-            : "New client has been created successfully.",
-          variant: "success",
-        });
-        // Redirect to client list or detail page
-        window.location.href = "/clients";
-      } else {
-        throw new Error(result.error || "Failed to save client");
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
+    // Prevent double submission
+    if (isSubmitting || hasSubmittedRef.current) {
+      console.log('Submission already in progress or completed');
+      return;
     }
+    
+    setIsSubmitting(true);
+    
+    // Save draft before submission as backup
+    saveDraft();
+    
+    // Retry logic for robustness
+    let lastError: Error | null = null;
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Submission attempt ${attempt}/${maxRetries}`);
+        
+        const result = await saveClientIntake(data, clientId);
+        
+        if (result.success) {
+          // Mark as submitted to prevent draft saving
+          hasSubmittedRef.current = true;
+
+          // Clear draft on successful save
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(DRAFT_KEY);
+          }
+          
+          // Create/Complete task on successful submission (non-blocking)
+          if (profile?.role === 'client' || (clientId)) {
+            try {
+              await completeTaskByTitle(clientId || result.clientId!, "Complete Full Intake Form");
+            } catch (taskError) {
+              console.error("Failed to complete task:", taskError);
+              // Don't block redirect if task completion fails
+            }
+          }
+
+          toast({
+            title: "Success!",
+            description: clientId
+              ? "Client information has been updated."
+              : "New client has been created successfully.",
+            variant: "success",
+          });
+          
+          // Redirect based on user role with small delay to ensure toast shows
+          setTimeout(() => {
+            if (profile?.role === 'client') {
+              window.location.href = "/my-portal";
+            } else {
+              window.location.href = "/clients";
+            }
+          }, 500);
+          
+          return; // Success - exit retry loop
+        } else {
+          throw new Error(result.error || "Failed to save client");
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        console.error(`Attempt ${attempt} failed:`, lastError.message);
+        
+        // If not the last attempt, wait before retrying
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Progressive backoff
+        }
+      }
+    }
+    
+    // All retries failed
+    setIsSubmitting(false);
+    toast({
+      title: "Error",
+      description: lastError
+        ? `${lastError.message}. Your progress has been saved as a draft.`
+        : "Something went wrong. Your progress has been saved as a draft. Please try again.",
+      variant: "destructive",
+    });
   };
 
   const hasStepErrors = (stepIndex: number) => {

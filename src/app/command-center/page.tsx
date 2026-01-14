@@ -97,7 +97,7 @@ export default function CommandCenterPage() {
             const allItems: CommandItem[] = [];
 
             if (tasks) {
-                tasks.forEach((task) => {
+                tasks.forEach((task: unknown) => {
                     const taskTyped = task as { id: string; title: string; description?: string; due_date?: string; priority?: string; status?: string; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
                     const client = Array.isArray(taskTyped.clients) ? taskTyped.clients[0] : taskTyped.clients;
                     allItems.push({
@@ -116,7 +116,7 @@ export default function CommandCenterPage() {
             }
 
             if (events) {
-                events.forEach((event) => {
+                events.forEach((event: unknown) => {
                     const eventTyped = event as { id: string; title: string; description?: string; start_time: string; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
                     const client = Array.isArray(eventTyped.clients) ? eventTyped.clients[0] : eventTyped.clients;
                     allItems.push({
@@ -133,7 +133,7 @@ export default function CommandCenterPage() {
             }
 
             if (alerts) {
-                alerts.forEach((alert) => {
+                alerts.forEach((alert: unknown) => {
                     const alertTyped = alert as { id: string; title: string; message?: string; priority?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
                     const client = Array.isArray(alertTyped.clients) ? alertTyped.clients[0] : alertTyped.clients;
                     allItems.push({

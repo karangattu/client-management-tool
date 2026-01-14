@@ -15,6 +15,9 @@ export const participantDetailsSchema = z.object({
   state: z.string().min(1, "State is required"),
   county: z.string().optional(),
   zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, "Please enter a valid ZIP code"),
+  // How did you hear about us?
+  referralSource: z.string().optional(),
+  referralSourceDetails: z.string().max(500).optional(),
 });
 
 // Emergency Contact Schema
@@ -55,6 +58,7 @@ export const demographicsSchema = z.object({
   ethnicity: z.string().optional(),
   maritalStatus: z.string().optional(),
   language: z.string().optional(),
+  educationLevel: z.string().optional(),
   // Financials
   employmentStatus: z.string().optional(),
   monthlyIncome: z.number().nullable().optional(),
@@ -111,6 +115,8 @@ export const defaultParticipantDetails: ParticipantDetails = {
   state: "CA",
   county: "",
   zipCode: "",
+  referralSource: "",
+  referralSourceDetails: "",
 };
 
 export const defaultEmergencyContact: EmergencyContact = {
@@ -147,6 +153,7 @@ export const defaultDemographics: Demographics = {
   ethnicity: "",
   maritalStatus: "",
   language: "",
+  educationLevel: "",
   employmentStatus: "",
   monthlyIncome: null,
   incomeSource: "",

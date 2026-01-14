@@ -47,6 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface Interaction {
   id: string;
@@ -84,6 +85,8 @@ interface OpenTask {
   priority: string;
   due_date: string;
   client_id?: string;
+  assigned_to?: string;
+  status?: string;
   clients?: {
     first_name: string;
     last_name: string;
@@ -169,6 +172,102 @@ export default function DashboardPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profile, authLoading]);
+
+  // Real-time subscription for tasks - syncs changes across devices
+  useEffect(() => {
+    if (!user || authLoading) return;
+
+    const supabase = createClient();
+    let channel: RealtimeChannel | null = null;
+
+    const setupRealtimeSubscription = () => {
+      channel = supabase
+        .channel('dashboard-tasks-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tasks',
+          },
+          (payload: any) => {
+            console.log('[Realtime] Task change detected:', payload.eventType);
+
+            if (payload.eventType === 'INSERT') {
+              const newTask = payload.new as OpenTask;
+              // Add to open tasks if unassigned
+              if (!newTask.assigned_to) {
+                setOpenTasksToClaim(prev => [newTask, ...prev]);
+                setStats(prev => ({ ...prev, openTasks: prev.openTasks + 1 }));
+              }
+              // Add to deadlines if assigned to current user and has due date
+              if (newTask.assigned_to === user.id && newTask.due_date) {
+                setDeadlines(prev => [{
+                  id: newTask.id,
+                  title: newTask.title,
+                  due_date: newTask.due_date,
+                  priority: newTask.priority,
+                }, ...prev].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()));
+              }
+              // Show toast for new tasks
+              toast({
+                title: "New Task",
+                description: `Task "${newTask.title}" was created`,
+              });
+            } else if (payload.eventType === 'UPDATE') {
+              const updatedTask = payload.new as OpenTask;
+              const oldTask = payload.old as { id: string; status?: string; assigned_to?: string };
+
+              // If task was completed, remove from lists
+              if (updatedTask.status === 'completed') {
+                setDeadlines(prev => prev.filter(d => d.id !== updatedTask.id));
+                setOpenTasksToClaim(prev => prev.filter(t => t.id !== updatedTask.id));
+                setFocusItems(prev => prev.filter(f => f.id !== updatedTask.id));
+              }
+              // If task was claimed by someone else, remove from open tasks
+              if (updatedTask.assigned_to && !oldTask.assigned_to) {
+                setOpenTasksToClaim(prev => prev.filter(t => t.id !== updatedTask.id));
+                setStats(prev => ({ ...prev, openTasks: Math.max(0, prev.openTasks - 1) }));
+              }
+              // If task was assigned to current user, add to deadlines
+              if (updatedTask.assigned_to === user.id && oldTask.assigned_to !== user.id && updatedTask.due_date) {
+                setDeadlines(prev => {
+                  if (prev.some(d => d.id === updatedTask.id)) return prev;
+                  return [{
+                    id: updatedTask.id,
+                    title: updatedTask.title,
+                    due_date: updatedTask.due_date,
+                    priority: updatedTask.priority,
+                  }, ...prev].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+                });
+                toast({
+                  title: "Task Assigned",
+                  description: `"${updatedTask.title}" was assigned to you`,
+                });
+              }
+            } else if (payload.eventType === 'DELETE') {
+              const deletedId = (payload.old as { id: string }).id;
+              setDeadlines(prev => prev.filter(d => d.id !== deletedId));
+              setOpenTasksToClaim(prev => prev.filter(t => t.id !== deletedId));
+              setFocusItems(prev => prev.filter(f => f.id !== deletedId));
+            }
+          }
+        )
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[Realtime] Subscribed to tasks channel');
+          }
+        });
+    };
+
+    setupRealtimeSubscription();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [user, authLoading, toast]);
 
   const fetchDashboardData = async () => {
     if (!user) return;
@@ -271,14 +370,14 @@ export default function DashboardPage() {
       }
 
       if (openTasksData) {
-        setOpenTasksToClaim((openTasksData as any[]).map(task => ({
+        setOpenTasksToClaim((openTasksData as any[]).map((task: any) => ({
           ...task,
           clients: Array.isArray(task.clients) ? task.clients[0] : task.clients
         })) as OpenTask[]);
       }
 
       if (staffData) {
-        setStaff(staffData.map(u => ({
+        setStaff(staffData.map((u: any) => ({
           id: u.id,
           name: `${u.first_name} ${u.last_name}`
         })));
@@ -360,6 +459,14 @@ export default function DashboardPage() {
   };
 
   const handleCompleteTask = async (taskId: string) => {
+    // Optimistic update - immediately remove from UI
+    const previousDeadlines = [...deadlines];
+    const previousFocusItems = [...focusItems];
+
+    setDeadlines(prev => prev.filter(d => d.id !== taskId));
+    setFocusItems(prev => prev.filter(f => f.id !== taskId));
+    setStats(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
+
     try {
       const result = await completeTask(taskId);
       if (result.success) {
@@ -374,10 +481,12 @@ export default function DashboardPage() {
           title: "Task Completed",
           description: "Good job! Task marked as done.",
         });
-
-        // Optimistic update or refetch
-        fetchDashboardData();
       } else {
+        // Rollback on failure
+        setDeadlines(previousDeadlines);
+        setFocusItems(previousFocusItems);
+        setStats(prev => ({ ...prev, pendingTasks: prev.pendingTasks + 1 }));
+
         toast({
           title: "Error",
           description: result.error || "Failed to complete task",
@@ -385,6 +494,11 @@ export default function DashboardPage() {
         });
       }
     } catch (error) {
+      // Rollback on error
+      setDeadlines(previousDeadlines);
+      setFocusItems(previousFocusItems);
+      setStats(prev => ({ ...prev, pendingTasks: prev.pendingTasks + 1 }));
+
       console.error("Error completing task:", error);
       toast({
         title: "Error",
@@ -395,6 +509,13 @@ export default function DashboardPage() {
   };
 
   const handleClaimTask = async (taskId: string) => {
+    // Optimistic update - move from open tasks to claimed
+    const previousOpenTasks = [...openTasksToClaim];
+    const claimedTask = openTasksToClaim.find(t => t.id === taskId);
+
+    setOpenTasksToClaim(prev => prev.filter(t => t.id !== taskId));
+    setStats(prev => ({ ...prev, openTasks: Math.max(0, prev.openTasks - 1) }));
+
     try {
       const result = await claimTask(taskId);
       if (result.success) {
@@ -402,8 +523,25 @@ export default function DashboardPage() {
           title: "Success",
           description: "Task claimed successfully",
         });
-        fetchDashboardData();
+
+        // Add to deadlines if it has a due date
+        if (claimedTask?.due_date) {
+          const clientName = claimedTask.clients
+            ? `${claimedTask.clients.first_name} ${claimedTask.clients.last_name}`
+            : undefined;
+          setDeadlines(prev => [{
+            id: claimedTask.id,
+            title: claimedTask.title,
+            due_date: claimedTask.due_date,
+            priority: claimedTask.priority,
+            client_name: clientName,
+          }, ...prev].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()));
+        }
       } else {
+        // Rollback on failure
+        setOpenTasksToClaim(previousOpenTasks);
+        setStats(prev => ({ ...prev, openTasks: prev.openTasks + 1 }));
+
         toast({
           title: "Error",
           description: result.error || "Failed to claim task",
@@ -411,6 +549,10 @@ export default function DashboardPage() {
         });
       }
     } catch (error) {
+      // Rollback on error
+      setOpenTasksToClaim(previousOpenTasks);
+      setStats(prev => ({ ...prev, openTasks: prev.openTasks + 1 }));
+
       console.error("Error claiming task:", error);
       toast({
         title: "Error",

@@ -844,9 +844,20 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                           onSuccess={() => {
                             refreshDocuments();
                             // Also refresh client data for the badge
-                            supabase.from('clients').select('signed_engagement_letter_at').eq('id', clientId).single().then(({ data }) => {
+                            supabase
+                              .from('clients')
+                              .select('signed_engagement_letter_at')
+                              .eq('id', clientId)
+                              .single()
+                              .then(
+                                ({
+                                  data,
+                                }: {
+                                  data: { signed_engagement_letter_at: string | null } | null;
+                                }) => {
                               if (data) setClient(prev => prev ? { ...prev, signed_engagement_letter_at: data.signed_engagement_letter_at } : null);
-                            });
+                                }
+                              );
                           }}
                         />
                       </div>

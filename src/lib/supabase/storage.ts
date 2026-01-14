@@ -211,7 +211,7 @@ export async function listFiles(
   }
 
   return {
-    files: data.map((file) => ({
+    files: data.map((file: any) => ({
       name: file.name,
       id: file.id,
       created_at: file.created_at,

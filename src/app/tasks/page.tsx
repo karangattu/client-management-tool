@@ -146,7 +146,7 @@ function TasksContent() {
 
       if (error) throw error;
       // Flatten the nested relationship structure
-      const tasks = (data || []).map(task => ({
+      const tasks = (data || []).map((task: any) => ({
         ...task,
         client: Array.isArray(task.client) ? task.client[0] : task.client,
         assignee: Array.isArray(task.assignee) ? task.assignee[0] : task.assignee,

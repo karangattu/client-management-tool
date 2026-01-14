@@ -3,7 +3,7 @@
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
 import { clientIntakeSchema } from "@/lib/schemas/validation";
 import { createClient } from "@/lib/supabase/server";
-import { completeTaskByTitle } from "@/app/actions/tasks";
+
 
 interface SaveResult {
   success: boolean;
@@ -69,10 +69,11 @@ export async function saveClientIntake(
         state: validatedData.participantDetails.state || null,
         zip_code: validatedData.participantDetails.zipCode || null,
         ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
+        referral_source: validatedData.participantDetails.referralSource || null,
+        referral_source_details: validatedData.participantDetails.referralSourceDetails || null,
         updated_at: now,
       };
 
-      console.log(`[saveClientIntake] Updating existing client ${id} for user ${user.id}`);
 
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
@@ -81,8 +82,7 @@ export async function saveClientIntake(
         .select();
 
       if (clientError) {
-        console.error("[saveClientIntake] Error updating client:", clientError);
-        console.error("[saveClientIntake] Error code:", clientError.code, "| Details:", clientError.details);
+        console.error("Error updating client:", clientError);
         return { success: false, error: `Failed to update client: ${clientError.message}. Please ensure you have permission to edit this record.` };
       }
 
@@ -113,6 +113,8 @@ export async function saveClientIntake(
         mailing_state: null,
         mailing_zip_code: null,
         ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
+        referral_source: validatedData.participantDetails.referralSource || null,
+        referral_source_details: validatedData.participantDetails.referralSourceDetails || null,
         status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus))
           ? validatedData.caseManagement.clientStatus
           : 'pending',
@@ -182,11 +184,10 @@ export async function saveClientIntake(
       ethnicity: validatedData.demographics.ethnicity || null,
       race: validatedData.demographics.race || [],
       marital_status: validatedData.demographics.maritalStatus || null,
+      education_level: validatedData.demographics.educationLevel || null,
       employment_status: validatedData.demographics.employmentStatus || null,
       monthly_income: validatedData.demographics.monthlyIncome || 0,
       income_source: validatedData.demographics.incomeSource || null,
-      veteran_status: validatedData.demographics.veteranStatus || false,
-      disability_status: validatedData.demographics.disabilityStatus || false,
       updated_at: now,
     };
 
@@ -262,9 +263,6 @@ export async function saveClientIntake(
           .from('clients')
           .update({ intake_completed_at: now })
           .eq('id', savedClientId);
-
-        // Also complete the task
-        await completeTaskByTitle(savedClientId, "Complete Full Intake Form");
       }
     }
 
@@ -315,6 +313,8 @@ export async function getClientFullData(clientId: string) {
         state: client.state || "",
         county: "", // County not in clients table directly
         zipCode: client.zip_code || "",
+        referralSource: client.referral_source || "",
+        referralSourceDetails: client.referral_source_details || "",
       },
       emergencyContacts: client.emergency_contacts.map((ec: { name: string; relationship?: string; phone: string; email?: string }) => ({
         name: ec.name,
@@ -348,6 +348,7 @@ export async function getClientFullData(clientId: string) {
         ethnicity: client.demographics?.ethnicity || "",
         maritalStatus: client.demographics?.marital_status || "",
         language: client.case_management?.primary_language || "",
+        educationLevel: client.demographics?.education_level || "",
         employmentStatus: client.demographics?.employment_status || "",
         monthlyIncome: client.demographics?.monthly_income ?? null,
         incomeSource: client.demographics?.income_source || "",

@@ -3,7 +3,7 @@
 import { useFormContext } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FormField } from "@/components/forms/FormField";
-import { US_STATES } from "@/lib/constants";
+import { US_STATES, REFERRAL_SOURCE_OPTIONS } from "@/lib/constants";
 import { formatPhoneNumber, formatSSN, formatZipCode, calculateAge } from "@/lib/utils";
 import { useCallback } from "react";
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
@@ -11,6 +11,7 @@ import type { ClientIntakeForm } from "@/lib/schemas/validation";
 export function ParticipantDetailsSection() {
   const { watch, setValue } = useFormContext<ClientIntakeForm>();
   const dateOfBirth = watch("participantDetails.dateOfBirth");
+  const referralSource = watch("participantDetails.referralSource");
   const age = dateOfBirth ? calculateAge(new Date(dateOfBirth)) : null;
 
   const handlePhoneChange = useCallback(
@@ -194,7 +195,32 @@ export function ParticipantDetailsSection() {
             </div>
           </div>
         </div>
+
+        {/* How did you hear about us? */}
+        <div className="space-y-4 border-t pt-4">
+          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+            How did you hear about The United Effort Org?
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              name="participantDetails.referralSource"
+              label="Referral Source"
+              type="select"
+              options={REFERRAL_SOURCE_OPTIONS}
+              placeholder="Select how you heard about us"
+            />
+          </div>
+          {referralSource && referralSource !== "" && (
+            <FormField
+              name="participantDetails.referralSourceDetails"
+              label="Please provide additional details"
+              type="textarea"
+              placeholder="E.g., name of the person who referred you, specific event attended, etc."
+            />
+          )}
+        </div>
       </CardContent>
     </Card>
   );
 }
+

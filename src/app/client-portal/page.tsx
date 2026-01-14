@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -30,12 +30,31 @@ import {
   Users,
   Loader2,
   AlertCircle,
+  Save,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
 import { US_STATES, ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 
+const DRAFT_KEY = 'client-portal-draft';
+
+// Fields safe to persist (excludes passwords for security)
+interface DraftData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  street: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  preferredLanguage: string;
+  currentStep: number;
+  agreed: boolean;
+  lastSaved?: string;
+}
 
 export default function ClientPortalPage() {
   const { t } = useLanguage();
@@ -47,7 +66,9 @@ export default function ClientPortalPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const router = useRouter();
 
@@ -71,6 +92,82 @@ export default function ClientPortalPage() {
 
   const totalSteps = 4;
   const progress = (currentStep / totalSteps) * 100;
+
+  // Save draft to localStorage (debounced)
+  const saveDraft = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const draftData: DraftData = {
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      email: formData.email,
+      phone: formData.phone,
+      dateOfBirth: formData.dateOfBirth,
+      street: formData.street,
+      city: formData.city,
+      state: formData.state,
+      zipCode: formData.zipCode,
+      preferredLanguage: formData.preferredLanguage,
+      currentStep,
+      agreed,
+      lastSaved: new Date().toISOString(),
+    };
+
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+    setDraftSaved(true);
+
+    // Hide indicator after 2 seconds
+    setTimeout(() => setDraftSaved(false), 2000);
+  }, [formData, currentStep, agreed]);
+
+  // Debounced save on form changes
+  useEffect(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      // Only save if user has started filling the form
+      if (formData.firstName || formData.lastName || formData.email) {
+        saveDraft();
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [formData, currentStep, agreed, saveDraft]);
+
+  // Restore draft on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const savedDraft = localStorage.getItem(DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const draft: DraftData = JSON.parse(savedDraft);
+        setFormData(prev => ({
+          ...prev,
+          firstName: draft.firstName || '',
+          lastName: draft.lastName || '',
+          email: draft.email || '',
+          phone: draft.phone || '',
+          dateOfBirth: draft.dateOfBirth || '',
+          street: draft.street || '',
+          city: draft.city || '',
+          state: draft.state || '',
+          zipCode: draft.zipCode || '',
+          preferredLanguage: draft.preferredLanguage || 'english',
+        }));
+        setCurrentStep(draft.currentStep || 1);
+        setAgreed(draft.agreed || false);
+      } catch (e) {
+        console.error('Error restoring draft:', e);
+      }
+    }
+  }, []);
 
   // Initialize canvas
   useEffect(() => {
@@ -249,6 +346,11 @@ export default function ClientPortalPage() {
 
       setSuccess(true);
 
+      // Clear draft on successful submission
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(DRAFT_KEY);
+      }
+
       // If the new user is already verified (rare), redirect them to complete profile
       if (result.userId) {
         const supabase = createClient();
@@ -320,6 +422,12 @@ export default function ClientPortalPage() {
             <span className="font-bold text-lg">ClientHub</span>
           </div>
           <div className="flex items-center gap-4">
+            {draftSaved && (
+              <div className="flex items-center gap-1 text-sm text-green-600 animate-pulse">
+                <Save className="h-4 w-4" />
+                <span>Draft saved</span>
+              </div>
+            )}
             <LanguageSelector />
             <Link href="/login" className="text-sm text-blue-600 hover:underline">
               {t('auth.staffLogin')}

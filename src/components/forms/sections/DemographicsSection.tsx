@@ -8,6 +8,7 @@ import {
   ETHNICITY_OPTIONS,
   MARITAL_STATUS_OPTIONS,
   LANGUAGES,
+  EDUCATION_LEVEL_OPTIONS,
 } from "@/lib/constants";
 
 export function DemographicsSection() {
@@ -58,6 +59,17 @@ export function DemographicsSection() {
           />
         </div>
 
+        {/* Education Level */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            name="demographics.educationLevel"
+            label="Education Level"
+            type="select"
+            options={EDUCATION_LEVEL_OPTIONS}
+            placeholder="Select education level"
+          />
+        </div>
+
         {/* Status Checkboxes */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
           <FormField
@@ -87,3 +99,4 @@ export function DemographicsSection() {
     </Card>
   );
 }
+

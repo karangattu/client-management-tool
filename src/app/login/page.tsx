@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -16,8 +16,32 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [verified, setVerified] = useState(false);
+  const redirectWatchdogRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check if user is already authenticated and redirect them
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          // User already has a valid session, redirect to post-login
+          console.log('[Login] User already authenticated, redirecting...');
+          window.location.href = '/auth/post-login?default=dashboard';
+          return;
+        }
+      } catch (e) {
+        console.warn('[Login] Error checking session:', e);
+      }
+      setCheckingSession(false);
+    };
+
+    checkExistingSession();
+  }, []);
 
   useEffect(() => {
     if (searchParams.get('verified') === 'true') {
@@ -29,6 +53,10 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (redirectWatchdogRef.current) {
+      clearTimeout(redirectWatchdogRef.current);
+    }
 
     try {
       const supabase = createClient();
@@ -62,37 +90,23 @@ function LoginForm() {
         throw new Error('Login succeeded but no session was created. Please try again.');
       }
 
-      // Check user role to redirect appropriately
-      // Retry logic for profile fetch to handle potential race conditions
-      let profileData = null;
-
-      // Try up to 5 times with increasing backoff
-      for (let i = 0; i < 5; i++) {
-        const { data: fetchedProfile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
-
-        if (fetchedProfile) {
-          console.log("Login profile fetched:", fetchedProfile);
-          profileData = fetchedProfile;
-          break;
+      // Route through a dedicated post-login handler to avoid first-login races
+      // (session propagation / profile RLS timing / navigation blocking).
+      redirectWatchdogRef.current = setTimeout(async () => {
+        try {
+          const { data: check } = await supabase.auth.getSession();
+          if (check.session) {
+            window.location.href = '/auth/post-login?default=dashboard';
+            return;
+          }
+        } catch {
+          // Ignore and fall through.
         }
+        setLoading(false);
+        setError('Sign-in did not complete. Please try again.');
+      }, 8000);
 
-        // Wait before retry (200ms, 400ms, 600ms, 800ms, 1000ms)
-        await new Promise(resolve => setTimeout(resolve, 200 * (i + 1)));
-      }
-
-      if (!profileData) {
-        console.error("Login succeeded but profile not found for user:", data.user.id);
-        // Fallback redirect for clients
-        window.location.href = '/my-portal';
-        return;
-      }
-
-      const redirectPath = profileData.role === 'client' ? '/my-portal' : '/dashboard';
-      window.location.href = redirectPath;
+      window.location.href = '/auth/post-login?default=dashboard';
 
     } catch (err) {
       console.error('Login error:', err);
@@ -117,6 +131,28 @@ function LoginForm() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (redirectWatchdogRef.current) {
+        clearTimeout(redirectWatchdogRef.current);
+      }
+    };
+  }, []);
+
+  // Show loading while checking for existing session
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-8 pb-8 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p>Checking session...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

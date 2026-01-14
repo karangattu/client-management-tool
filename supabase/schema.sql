@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS clients (
     -- Engagement Letter Tracking
     signed_engagement_letter_at TIMESTAMP WITH TIME ZONE,
     engagement_letter_version TEXT DEFAULT 'March 2024',
+    -- Referral Tracking (How did you hear about us?)
+    referral_source TEXT,
+    referral_source_details TEXT,
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -137,6 +140,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
 CREATE INDEX IF NOT EXISTS idx_clients_case_manager ON clients(assigned_case_manager);
+CREATE INDEX IF NOT EXISTS idx_clients_referral_source ON clients(referral_source);
 
 -- ============================================
 -- EMERGENCY CONTACTS
@@ -257,6 +261,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     completed_by UUID REFERENCES profiles(id),
     category TEXT,
     tags TEXT[],
+    program_id UUID REFERENCES programs(id) ON DELETE SET NULL,
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -265,6 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_program_id ON tasks(program_id);
 
 -- ============================================
 -- CALENDAR EVENTS & ALERTS
@@ -313,6 +320,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_unread ON alerts(user_id, is_read) WHERE NOT is_read;
 CREATE INDEX IF NOT EXISTS idx_alerts_trigger ON alerts(trigger_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_client ON alerts(client_id);
 
 -- ============================================
 -- DOCUMENTS & FILE STORAGE
@@ -554,6 +562,8 @@ LEFT JOIN case_management cm ON c.id = cm.client_id
 LEFT JOIN profiles p ON c.assigned_case_manager = p.id;
 
 -- Tasks Overview View
+-- Drop first to avoid column structure conflicts on existing databases
+DROP VIEW IF EXISTS tasks_overview;
 CREATE OR REPLACE VIEW tasks_overview AS
 SELECT 
     t.*,

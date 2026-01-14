@@ -386,8 +386,16 @@ export default function MyPortalPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                <Card className="w-full max-w-md text-center">
+                    <CardContent className="pt-8 pb-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+                        <p className="text-gray-600 mb-4">Loading your portal...</p>
+                        <Button variant="outline" onClick={() => window.location.reload()} size="sm">
+                            Reload Page
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
@@ -402,9 +410,14 @@ export default function MyPortalPage() {
                         </div>
                         <h2 className="text-xl font-bold mb-2">Access Error</h2>
                         <p className="text-gray-600 mb-6">{error}</p>
-                        <Link href="/login">
-                            <Button>Go to Login</Button>
-                        </Link>
+                        <div className="flex flex-col gap-2">
+                            <Button variant="outline" onClick={() => { setError(null); fetchData(); }}>
+                                Try Again
+                            </Button>
+                            <Link href="/login">
+                                <Button className="w-full">Go to Login</Button>
+                            </Link>
+                        </div>
                     </CardContent>
                 </Card>
             </div>

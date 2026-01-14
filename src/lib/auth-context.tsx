@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
@@ -41,7 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const initAttemptRef = useRef(0);
   const profileIdRef = useRef<string | null>(null);
-  const supabase = createClient();
+  const isInitializedRef = useRef(false);
+
+  // Memoize the Supabase client to prevent recreation on every render
+  const supabase = useMemo(() => createClient(), []);
 
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
@@ -72,11 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase]);
 
-  const initializeAuth = useCallback(async () => {
+  const initializeAuth = useCallback(async (forceRefresh = false) => {
+    // Prevent re-initialization if already completed (unless forced)
+    if (isInitializedRef.current && !forceRefresh) {
+      console.log('[Auth] Already initialized, skipping');
+      return;
+    }
+
     initAttemptRef.current += 1;
     const attemptNum = initAttemptRef.current;
-    console.log(`[Auth] Initializing auth (attempt ${attemptNum})...`);
-    
+    console.log(`[Auth] Initializing auth (attempt ${attemptNum}, forced: ${forceRefresh})...`);
+
     setLoading(true);
     setError(null);
 
@@ -86,28 +95,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
       try {
+        // If forcing refresh, try to refresh the session first
+        if (forceRefresh) {
+          console.log('[Auth] Force refresh requested, attempting session refresh');
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          
+          if (refreshError) {
+            console.warn('[Auth] Refresh failed during force init:', refreshError.message);
+            // Continue with getSession fallback
+          } else if (refreshData?.session) {
+            clearTimeout(timeoutId);
+            console.log('[Auth] Session refreshed successfully during init');
+            
+            setSession(refreshData.session);
+            setUser(refreshData.session.user);
+            
+            const profileData = await fetchProfile(refreshData.session.user.id);
+            setProfile(profileData);
+            profileIdRef.current = profileData?.id || null;
+            console.log('[Auth] Profile loaded after refresh:', profileData?.role || 'none');
+            
+            setError(null);
+            isInitializedRef.current = true;
+            return;
+          }
+        }
+        
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         clearTimeout(timeoutId);
 
         if (sessionError) {
           console.error('[Auth] Session error:', sessionError);
+          
+          // If session retrieval fails, try one refresh attempt
+          const { data: retryData, error: retryError } = await supabase.auth.refreshSession();
+          if (!retryError && retryData?.session) {
+            console.log('[Auth] Session recovered via refresh after error');
+            setSession(retryData.session);
+            setUser(retryData.session.user);
+            
+            const profileData = await fetchProfile(retryData.session.user.id);
+            setProfile(profileData);
+            profileIdRef.current = profileData?.id || null;
+            
+            setError(null);
+            isInitializedRef.current = true;
+            return;
+          }
+          
           throw sessionError;
         }
 
         console.log(`[Auth] Session retrieved:`, session ? 'logged in' : 'no session');
-        
+
         setSession(session);
         setUser(session?.user ?? null);
 
         if (session?.user) {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
+          profileIdRef.current = profileData?.id || null;
           console.log('[Auth] Profile loaded:', profileData?.role || 'none');
         } else {
           setProfile(null);
+          profileIdRef.current = null;
         }
-        
+
         setError(null);
+        // Mark as initialized AFTER setting all state
+        isInitializedRef.current = true;
       } catch (e) {
         clearTimeout(timeoutId);
         throw e;
@@ -115,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown auth error';
       console.error('[Auth] Initialization failed:', errorMessage);
-      
+
       // Clear auth state on error
       setSession(null);
       setUser(null);
@@ -126,10 +182,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, fetchProfile]);
 
+
   const retryAuth = useCallback(async () => {
-    console.log('[Auth] Retrying authentication...');
-    await initializeAuth();
+    console.log('[Auth] Retrying authentication with force refresh...');
+    isInitializedRef.current = false; // Reset to allow re-initialization
+    await initializeAuth(true); // Force refresh on retry
   }, [initializeAuth]);
+
 
   const refreshProfile = useCallback(async () => {
     if (user) {
@@ -138,15 +197,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, fetchProfile]);
 
+  // Refresh session when it may be stale (e.g., after tab regains focus or periodically)
+  const refreshSession = useCallback(async () => {
+    // Don't try to refresh if there's no session
+    const currentSession = await supabase.auth.getSession();
+    if (!currentSession.data.session) {
+      console.log('[Auth] No session to refresh, skipping');
+      return;
+    }
+
+    console.log('[Auth] Refreshing session...');
+    try {
+      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError) {
+        // Handle refresh token errors gracefully
+        if (refreshError.message?.includes('Refresh Token') ||
+          refreshError.message?.includes('refresh_token') ||
+          refreshError.message?.includes('Invalid Refresh Token') ||
+          refreshError.message?.includes('Token expired')) {
+          console.warn('[Auth] Session expired, clearing auth state');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          profileIdRef.current = null;
+          setError('Your session has expired. Please log in again.');
+          return;
+        }
+        console.error('[Auth] Refresh error:', refreshError);
+        return;
+      }
+
+      if (refreshedSession) {
+        console.log('[Auth] Session refreshed successfully');
+        setSession(refreshedSession);
+        setUser(refreshedSession.user);
+        setError(null);
+      } else {
+        // No session after refresh - user needs to log in
+        console.log('[Auth] No session after refresh, user may need to log in');
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        profileIdRef.current = null;
+      }
+    } catch (err) {
+      console.error('[Auth] Exception during session refresh:', err);
+      // On exception, clear state to allow fresh login
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      profileIdRef.current = null;
+      setError('Session error. Please log in again.');
+    }
+  }, [supabase.auth]);
+
   useEffect(() => {
     // Initial auth check
     initializeAuth();
 
     // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      async (event: string, newSession: Session | null) => {
         console.log('[Auth] Auth state changed:', event);
-        
+
+        // Skip INITIAL_SESSION - we handle this in initializeAuth to avoid race conditions
+        if (event === 'INITIAL_SESSION') {
+          console.log('[Auth] Skipping INITIAL_SESSION event (handled by initializeAuth)');
+          return;
+        }
+
+        // Handle token refresh errors
+        if (event === 'TOKEN_REFRESHED' && !newSession) {
+          console.warn('[Auth] Token refresh failed, clearing state');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          profileIdRef.current = null;
+          setError('Session expired. Please log in again.');
+          setLoading(false);
+          return;
+        }
+
+
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
@@ -169,8 +302,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Refresh session when tab becomes visible again (user returns after being away)
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[Auth] Tab became visible, checking session...');
+        
+        // Check if we have a session before trying to refresh
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (currentSession) {
+          refreshSession();
+        } else if (loading) {
+          // If no session and still loading, might be stuck - try recovery
+          console.warn('[Auth] No session found while loading, attempting recovery');
+          isInitializedRef.current = false;
+          initializeAuth(true);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Periodic session refresh every 10 minutes to keep tokens fresh
+    const refreshInterval = setInterval(async () => {
+      // Check if we have a session before trying to refresh
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        console.log('[Auth] Periodic session refresh');
+        refreshSession();
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+
     return () => {
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(refreshInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -182,7 +347,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setSession(null);
     setError(null);
+    // Reset refs so re-login can re-initialize
+    isInitializedRef.current = false;
+    profileIdRef.current = null;
   }, [supabase.auth]);
+
 
   const hasPermission = useCallback((requiredRoles: UserRole[]) => {
     if (!profile) return false;

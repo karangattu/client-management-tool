@@ -52,6 +52,8 @@ export interface Client {
   status: ClientStatus;
   has_portal_access: boolean;
   portal_user_id?: string;
+  referral_source?: string;
+  referral_source_details?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;

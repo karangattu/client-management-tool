@@ -8,9 +8,11 @@ import {
   ClientIntakeForm as ClientIntakeFormType,
   defaultClientIntakeForm
 } from "@/lib/schemas/validation";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/layout/AppHeader";
+import Link from "next/link";
 
 export default function ProfileCompletionPage() {
   const [loading, setLoading] = useState(true);
@@ -58,8 +60,16 @@ export default function ProfileCompletionPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="pt-8 pb-8">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground mb-4">Loading your profile...</p>
+            <Button variant="outline" onClick={() => window.location.reload()} size="sm">
+              Reload Page
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -68,10 +78,22 @@ export default function ProfileCompletionPage() {
     return (
       <div className="min-h-screen bg-muted/30">
         <AppHeader />
-        <main className="container max-w-5xl py-8">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-destructive font-medium">{error}</p>
+        <main className="container max-w-5xl py-8 px-4">
+          <Card className="max-w-md mx-auto text-center">
+            <CardContent className="pt-8 pb-8">
+              <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+              </div>
+              <h2 className="text-xl font-bold mb-2">Unable to Load Profile</h2>
+              <p className="text-muted-foreground mb-6">{error}</p>
+              <div className="flex flex-col gap-2">
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Try Again
+                </Button>
+                <Link href="/login">
+                  <Button className="w-full">Go to Login</Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         </main>

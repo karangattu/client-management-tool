@@ -14,6 +14,7 @@ function AuthCallbackContent() {
   const [message, setMessage] = useState('');
 
   const processedCodeRef = useRef<string | null>(null);
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleAuthCallback = async () => {
@@ -171,13 +172,25 @@ function AuthCallbackContent() {
               }
             }
 
-            console.log("Auth callback handling redirect. Profile role:", profile?.role);
-            const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
-            window.location.href = redirectPath;
+            console.log("Auth callback verified; routing through post-login. Role:", profile?.role);
+
+            // Route through post-login to avoid first-login/session propagation races.
+            // Default to my-portal for verified links (client flow), but post-login will
+            // redirect to dashboard for staff/admin roles.
+            const postLoginUrl = '/auth/post-login?default=my-portal';
+
+            // Redirect immediately - fallback timer only if immediate redirect fails
+            window.location.href = postLoginUrl;
+
+            // Fallback timer in case navigation is blocked (e.g., by browser extensions)
+            redirectTimerRef.current = setTimeout(() => {
+              console.log('Fallback redirect triggered');
+              window.location.replace(postLoginUrl);
+            }, 3000);
           } catch (error) {
             console.error('Error checking user role:', error);
             // Default to my-portal for verified users coming from email
-            window.location.href = '/my-portal';
+            window.location.href = '/auth/post-login?default=my-portal';
           }
         }
       } catch (error) {
@@ -188,6 +201,13 @@ function AuthCallbackContent() {
     };
 
     handleAuthCallback();
+    
+    // Cleanup timer on unmount
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
   }, [router, searchParams]);
 
   const handleManualLogin = () => {
@@ -233,9 +253,14 @@ function AuthCallbackContent() {
           )}
 
           {status === 'success' && (
-            <p className="text-sm text-gray-500 mb-4">
-              Redirecting you now...
-            </p>
+            <div>
+              <p className="text-sm text-gray-500 mb-4">
+                Redirecting you now...
+              </p>
+              <p className="text-xs text-gray-400">
+                If you are not redirected in a few seconds, please <button onClick={() => window.location.reload()} className="underline text-primary">refresh the page</button>.
+              </p>
+            </div>
           )}
 
           {status === 'error' && (

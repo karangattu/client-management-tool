@@ -193,7 +193,7 @@ export const HEALTH_INSURANCE_TYPES = [
 ];
 
 export const BENEFITS_OPTIONS = [
-    { value: "", label: "--Please Select--" },
+
     { value: "adsa", label: "ADSA (Assistance Dog Special Allowance Application)" },
     { value: "adult_education", label: "Adult Education" },
     { value: "bank_accounts", label: "Bank Accounts" },
@@ -282,6 +282,38 @@ export const HEALTH_STATUS_OPTIONS = [
     { value: "good", label: "Good" },
     { value: "fair", label: "Fair" },
     { value: "poor", label: "Poor" },
+];
+
+export const EDUCATION_LEVEL_OPTIONS = [
+
+    { value: "middle_school", label: "Middle School" },
+    { value: "ged", label: "GED" },
+    { value: "high_school", label: "High School" },
+    { value: "some_college", label: "Some College" },
+    { value: "associates_degree", label: "Associates Degree" },
+    { value: "bachelors_degree", label: "Bachelors Degree" },
+    { value: "graduate_degree", label: "Graduate Degree" },
+    { value: "professional_certification", label: "Professional Certification" },
+    { value: "other", label: "Other" },
+    { value: "dont_know_refused", label: "Don't Know / Refused to answer" },
+    { value: "na", label: "N/A" },
+];
+
+export const REFERRAL_SOURCE_OPTIONS = [
+
+    { value: "word_of_mouth", label: "Word of Mouth / Friend or Family" },
+    { value: "other_case_manager", label: "Other Case Manager" },
+    { value: "social_worker", label: "Social Worker Referral" },
+    { value: "healthcare_provider", label: "Healthcare Provider" },
+    { value: "community_event", label: "Community Event" },
+    { value: "online_search", label: "Online Search" },
+    { value: "social_media", label: "Social Media" },
+    { value: "flyer_poster", label: "Flyer / Poster" },
+    { value: "other_nonprofit", label: "Other Non-Profit Organization" },
+    { value: "government_agency", label: "Government Agency" },
+    { value: "shelter_referral", label: "Shelter Referral" },
+    { value: "returning_client", label: "Returning Client" },
+    { value: "other", label: "Other" },
 ];
 
 export const ENGAGEMENT_LETTER_TEXT = `The United Effort Organization, Inc.
