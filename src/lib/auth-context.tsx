@@ -331,38 +331,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // For SIGNED_IN event, mark as initialized to prevent race with initializeAuth
-        if (event === 'SIGNED_IN' && newSession) {
-          console.log('[Auth] SIGNED_IN event received, handling sign in...');
-          isInitializedRef.current = true;
-          retryCountRef.current = 0; // Reset retry count since we have a successful sign in
-          
-          // Clear any pending timeout immediately
-          if (initTimeoutRef.current) {
-            clearTimeout(initTimeoutRef.current);
-            initTimeoutRef.current = null;
-          }
-        }
 
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
         if (newSession?.user) {
-          // Fetch profile - with retry for new accounts where trigger may not have completed
-          let profileData = await fetchProfile(newSession.user.id);
-          
-          // If no profile found and this is a new sign in, wait and retry once
-          // (profile may be created by database trigger)
-          if (!profileData && event === 'SIGNED_IN') {
-            console.log('[Auth] Profile not found on first try, waiting for trigger to complete...');
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            profileData = await fetchProfile(newSession.user.id);
-            console.log('[Auth] Profile retry result:', profileData?.role || 'still not found');
+          // Only fetch profile if it's a different user or we don't have one
+          // Use ref to avoid dependency on profile state
+          if (profileIdRef.current !== newSession.user.id) {
+            const profileData = await fetchProfile(newSession.user.id);
+            setProfile(profileData);
+            profileIdRef.current = profileData?.id || null;
           }
-          
-          setProfile(profileData);
-          profileIdRef.current = profileData?.id || null;
-          console.log('[Auth] Profile set after auth change:', profileData?.role || 'none');
         } else {
           setProfile(null);
           profileIdRef.current = null;
@@ -371,7 +351,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Clear any previous errors on successful auth change
         setError(null);
         setLoading(false);
-        console.log('[Auth] Auth state change complete, loading set to false');
       }
     );
 
