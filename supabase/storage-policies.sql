@@ -16,61 +16,32 @@
 -- ============================================
 
 -- Allow public read access to profile pictures
-DROP POLICY IF EXISTS "Public read access for profile pictures" ON storage.objects;
 CREATE POLICY "Public read access for profile pictures"
 ON storage.objects FOR SELECT
 USING (bucket_id = 'profile-pictures');
 
 -- Allow authenticated users to upload their own profile picture
-DROP POLICY IF EXISTS "Users can upload own profile picture" ON storage.objects;
 CREATE POLICY "Users can upload own profile picture"
 ON storage.objects FOR INSERT
 WITH CHECK (
-    bucket_id = 'profile-pictures'
-    AND auth.role() = 'authenticated'
-    AND (
-        -- user/<user_id>/... or client/<client_id>/...
-        (storage.foldername(name))[1] IN ('user', 'client')
-        AND (storage.foldername(name))[2] = auth.uid()::text
-        OR EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff')
-        )
-    )
+    bucket_id = 'profile-pictures' AND
+    auth.role() = 'authenticated'
 );
 
 -- Allow users to update their own profile picture
-DROP POLICY IF EXISTS "Users can update own profile picture" ON storage.objects;
 CREATE POLICY "Users can update own profile picture"
 ON storage.objects FOR UPDATE
 USING (
-    bucket_id = 'profile-pictures'
-    AND auth.role() = 'authenticated'
-    AND (
-        (storage.foldername(name))[1] IN ('user', 'client')
-        AND (storage.foldername(name))[2] = auth.uid()::text
-        OR EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff')
-        )
-    )
+    bucket_id = 'profile-pictures' AND
+    auth.role() = 'authenticated'
 );
 
 -- Allow users to delete their own profile picture
-DROP POLICY IF EXISTS "Users can delete own profile picture" ON storage.objects;
 CREATE POLICY "Users can delete own profile picture"
 ON storage.objects FOR DELETE
 USING (
-    bucket_id = 'profile-pictures'
-    AND auth.role() = 'authenticated'
-    AND (
-        (storage.foldername(name))[1] IN ('user', 'client')
-        AND (storage.foldername(name))[2] = auth.uid()::text
-        OR EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff')
-        )
-    )
+    bucket_id = 'profile-pictures' AND
+    auth.role() = 'authenticated'
 );
 
 -- ============================================

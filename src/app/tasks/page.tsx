@@ -45,8 +45,6 @@ import {
   Hand,
   Archive,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -90,8 +88,6 @@ function TasksContent() {
   const [error, setError] = useState<string | null>(null);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
 
   const [newTask, setNewTask] = useState({
     title: '',
@@ -342,17 +338,6 @@ function TasksContent() {
 
     return matchesSearch && matchesStatus && matchesPriority;
   });
-
-  // Pagination
-  const totalPages = Math.ceil(filteredTasks.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedTasks = filteredTasks.slice(startIndex, endIndex);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, statusFilter, priorityFilter]);
 
   const stats = {
     total: tasks.length,
@@ -714,164 +699,130 @@ function TasksContent() {
                 ))}
               </div>
             ) : filteredTasks.length > 0 ? (
-              <>
-                <div className="space-y-3">
-                  {paginatedTasks.map(task => (
-                    <div
-                      key={task.id}
-                      className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${task.assigned_to === null && task.status === 'pending'
-                        ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
-                        : 'hover:bg-gray-50'
-                        }`}
-                    >
-                      <div className="mt-1">
-                        {getStatusIcon(task.status)}
-                      </div>
+              <div className="space-y-3">
+                {filteredTasks.map(task => (
+                  <div
+                    key={task.id}
+                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${task.assigned_to === null && task.status === 'pending'
+                      ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
+                      : 'hover:bg-gray-50'
+                      }`}
+                  >
+                    <div className="mt-1">
+                      {getStatusIcon(task.status)}
+                    </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-gray-900">{task.title}</p>
-                            {task.description && (
-                              <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                                {task.description}
-                              </p>
-                            )}
-                          </div>
-                          {getPriorityBadge(task.priority)}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-gray-500">
-                          {task.client && (
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {task.client.first_name} {task.client.last_name}
-                            </span>
-                          )}
-                          {task.due_date && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Due: {new Date(task.due_date).toLocaleDateString()}
-                            </span>
-                          )}
-                          {task.assignee ? (
-                            <Badge variant="outline" className="text-xs">
-                              Assigned to: {task.assignee.first_name} {task.assignee.last_name}
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-purple-100 text-purple-800 text-xs">
-                              <Hand className="h-3 w-3 mr-1" />
-                              Open to claim
-                            </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-gray-900">{task.title}</p>
+                          {task.description && (
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                              {task.description}
+                            </p>
                           )}
                         </div>
+                        {getPriorityBadge(task.priority)}
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {/* Claim and Assign buttons for open tasks */}
-                        {canClaimTasks && !task.assigned_to && task.status === 'pending' && (
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="sm"
-                              className="bg-purple-600 hover:bg-purple-700"
-                              onClick={() => handleClaimTask(task.id)}
-                            >
-                              <Hand className="h-4 w-4 mr-1" />
-                              Claim
-                            </Button>
-                            <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
-                              <SelectTrigger className="h-9 w-[110px] text-xs">
-                                <SelectValue placeholder="Assign" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {staff.map((s) => (
-                                  <SelectItem key={s.id} value={s.id} className="text-xs">
-                                    {s.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                      <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-gray-500">
+                        {task.client && (
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            {task.client.first_name} {task.client.last_name}
+                          </span>
                         )}
+                        {task.due_date && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Due: {new Date(task.due_date).toLocaleDateString()}
+                          </span>
+                        )}
+                        {task.assignee ? (
+                          <Badge variant="outline" className="text-xs">
+                            Assigned to: {task.assignee.first_name} {task.assignee.last_name}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-purple-100 text-purple-800 text-xs">
+                            <Hand className="h-3 w-3 mr-1" />
+                            Open to claim
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
 
-                        {/* Complete button for assigned tasks */}
-                        {task.assigned_to === user?.id && task.status !== 'completed' && (
+                    <div className="flex items-center gap-2">
+                      {/* Claim and Assign buttons for open tasks */}
+                      {canClaimTasks && !task.assigned_to && task.status === 'pending' && (
+                        <div className="flex items-center gap-1">
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="text-green-600 border-green-600 hover:bg-green-50"
-                            onClick={() => handleCompleteTask(task.id)}
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={() => handleClaimTask(task.id)}
                           >
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            Complete
+                            <Hand className="h-4 w-4 mr-1" />
+                            Claim
                           </Button>
-                        )}
+                          <Select onValueChange={(val) => handleAssignTask(task.id, val)}>
+                            <SelectTrigger className="h-9 w-[110px] text-xs">
+                              <SelectValue placeholder="Assign" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {staff.map((s) => (
+                                <SelectItem key={s.id} value={s.id} className="text-xs">
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="Task actions">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canClaimTasks && !task.assigned_to && (
-                              <DropdownMenuItem onClick={() => handleClaimTask(task.id)}>
-                                <Hand className="h-4 w-4 mr-2" />
-                                Claim Task
-                              </DropdownMenuItem>
-                            )}
-                            {task.assigned_to === user?.id && task.status !== 'completed' && (
-                              <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Mark Complete
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => handleArchiveTask(task.id)}
-                              className="text-orange-600"
-                            >
-                              <Archive className="h-4 w-4 mr-2" />
-                              Archive
+                      {/* Complete button for assigned tasks */}
+                      {task.assigned_to === user?.id && task.status !== 'completed' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-green-600 border-green-600 hover:bg-green-50"
+                          onClick={() => handleCompleteTask(task.id)}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Complete
+                        </Button>
+                      )}
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {canClaimTasks && !task.assigned_to && (
+                            <DropdownMenuItem onClick={() => handleClaimTask(task.id)}>
+                              <Hand className="h-4 w-4 mr-2" />
+                              Claim Task
                             </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Pagination Controls */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-4 border-t">
-                    <p className="text-sm text-gray-500">
-                      Showing {startIndex + 1}-{Math.min(endIndex, filteredTasks.length)} of {filteredTasks.length} tasks
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        <ChevronLeft className="h-4 w-4 mr-1" />
-                        Previous
-                      </Button>
-                      <span className="text-sm px-3">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                      >
-                        Next
-                        <ChevronRight className="h-4 w-4 ml-1" />
-                      </Button>
+                          )}
+                          {task.assigned_to === user?.id && task.status !== 'completed' && (
+                            <DropdownMenuItem onClick={() => handleCompleteTask(task.id)}>
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Mark Complete
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => handleArchiveTask(task.id)}
+                            className="text-orange-600"
+                          >
+                            <Archive className="h-4 w-4 mr-2" />
+                            Archive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                )}
-              </>
+                ))}
+              </div>
             ) : (
               <div className="text-center py-12">
                 <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />

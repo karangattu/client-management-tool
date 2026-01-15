@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import confetti from 'canvas-confetti';
 import { useToast } from "@/components/ui/use-toast";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,6 +50,7 @@ import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-
 import { signEngagementLetter } from '@/app/actions/signature';
 import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
+import { jsPDF } from 'jspdf';
 
 interface ClientInfo {
     id: string;
@@ -326,8 +328,7 @@ export default function MyPortalPage() {
             const result = await signEngagementLetter(client.id, pdfData, signature, clientName);
 
             if (result.success) {
-                // Trigger confetti (dynamically imported)
-                const confetti = (await import('canvas-confetti')).default;
+                // Trigger confetti
                 confetti({
                     particleCount: 150,
                     spread: 80,

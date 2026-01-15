@@ -31,6 +31,7 @@ import {
   Plus,
   ArrowRight,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { useToast } from "@/components/ui/use-toast";
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
@@ -469,8 +470,7 @@ export default function DashboardPage() {
     try {
       const result = await completeTask(taskId);
       if (result.success) {
-        // Trigger confetti (dynamically imported)
-        const confetti = (await import('canvas-confetti')).default;
+        // Trigger confetti
         confetti({
           particleCount: 100,
           spread: 70,
