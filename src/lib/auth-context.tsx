@@ -256,6 +256,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Initial auth check
     initializeAuth();
 
+    // Safety timeout - ensure loading clears even if something goes wrong
+    // This prevents infinite loading states
+    const safetyTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn('[Auth] Safety timeout reached - clearing loading state');
+        setLoading(false);
+      }
+    }, 15000); // 15 seconds max for auth
+
     // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, newSession: Session | null) => {
@@ -333,6 +342,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 10 * 60 * 1000); // 10 minutes
 
     return () => {
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(refreshInterval);

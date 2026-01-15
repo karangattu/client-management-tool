@@ -162,7 +162,22 @@ export default function DashboardPage() {
 
     // Only start fetching if we have user AND profile (since logic depends on role)
     if (user && profile) {
-      fetchDashboardData();
+      // Check if user has a valid staff/admin role to view dashboard
+      const validRoles = ['admin', 'case_manager', 'staff', 'volunteer'];
+      if (validRoles.includes(profile.role)) {
+        fetchDashboardData();
+      } else {
+        // Unknown role - clear loading states and show error
+        console.error('[Dashboard] Unknown role:', profile.role);
+        setStatsLoading(false);
+        setListsLoading(false);
+        setFocusLoading(false);
+        toast({
+          title: "Access Error",
+          description: `Role "${profile.role}" is not recognized. Please contact an administrator.`,
+          variant: "destructive"
+        });
+      }
     } else if (user && !profile) {
       // If profile is missing but user exists, we wait or specific error UI handles it
       // We can ensure loaders are off if we aren't going to fetch
@@ -278,6 +293,7 @@ export default function DashboardPage() {
     setFocusLoading(true);
 
     const supabase = createClient();
+    console.log('[Dashboard] Fetching dashboard data for user:', user.id, 'role:', profile?.role);
 
     try {
       // 1. Fetch Stats (Parallel)
@@ -313,7 +329,7 @@ export default function DashboardPage() {
       const focusPromise = Promise.all([
         supabase.from('tasks').select(`
             id, title, description, priority, due_date, status, clients (*)
-          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).or(`due_date.lte.${tomorrowISO}`).order('due_date', { ascending: true }).limit(10),
+          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).order('due_date', { ascending: true }).limit(10),
         supabase.from('calendar_events').select(`
             id, title, start_time, description, clients (*)
           `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
@@ -328,6 +344,27 @@ export default function DashboardPage() {
         listsPromise,
         focusPromise
       ]);
+
+      // Log any errors from stats queries
+      statsResults.forEach((result, index) => {
+        if (result.error) {
+          console.error(`[Dashboard] Stats query ${index} error:`, result.error);
+        }
+      });
+
+      // Log any errors from lists queries
+      listsResults.forEach((result, index) => {
+        if (result.error) {
+          console.error(`[Dashboard] Lists query ${index} error:`, result.error);
+        }
+      });
+
+      // Log any errors from focus queries
+      focusResults.forEach((result, index) => {
+        if (result.error) {
+          console.error(`[Dashboard] Focus query ${index} error:`, result.error);
+        }
+      });
 
       // --- Process Stats ---
       const [
