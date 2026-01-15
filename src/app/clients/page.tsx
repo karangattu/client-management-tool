@@ -57,6 +57,8 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -102,6 +104,8 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
 
   const supabase = createClient();
 
@@ -183,7 +187,14 @@ export default function ClientsPage() {
     }
 
     setFilteredClients(filtered);
+    setCurrentPage(1); // Reset to page 1 when filters change
   }, [searchQuery, statusFilter, programFilter, clients, fuse]);
+
+  // Pagination calculation
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedClients = filteredClients.slice(startIndex, endIndex);
 
   const handleArchive = async () => {
     if (!clientToArchive) return;
@@ -408,137 +419,171 @@ export default function ClientsPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {filteredClients.map((client) => (
-                <Card key={client.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-start gap-4">
-                        <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
-                          {client.first_name[0]}{client.last_name[0]}
-                        </div>
-                        <div className="space-y-1 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold">
-                              {client.first_name} {client.last_name}
-                            </h3>
-                            {getStatusBadge(client.status)}
-                            {client.intake_completed_at ? (
-                              <Badge className="bg-blue-50 text-blue-700 border-blue-200">
-                                <Check className="h-3 w-3 mr-1" />
-                                Intake Complete
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-gray-500">
-                                Intake In Progress
-                              </Badge>
-                            )}
+            <>
+              <div className="space-y-4">
+                {paginatedClients.map((client) => (
+                  <Card key={client.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
+                            {client.first_name[0]}{client.last_name[0]}
                           </div>
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-semibold">
+                                {client.first_name} {client.last_name}
+                              </h3>
+                              {getStatusBadge(client.status)}
+                              {client.intake_completed_at ? (
+                                <Badge className="bg-blue-50 text-blue-700 border-blue-200">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Intake Complete
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-gray-500">
+                                  Intake In Progress
+                                </Badge>
+                              )}
+                            </div>
 
-                          {/* Contact info with copy buttons */}
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => copyToClipboard(client.email, `email-${client.id}`)}
-                                  className="flex items-center gap-1 hover:text-blue-600 transition-colors"
-                                >
-                                  <Mail className="h-3 w-3" />
-                                  <span>{client.email}</span>
-                                  {copiedField === `email-${client.id}` ? (
-                                    <Check className="h-3 w-3 text-green-600" />
-                                  ) : (
-                                    <Copy className="h-3 w-3 opacity-50" />
-                                  )}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {copiedField === `email-${client.id}` ? 'Copied!' : 'Click to copy email'}
-                              </TooltipContent>
-                            </Tooltip>
+                            {/* Contact info with copy buttons */}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => copyToClipboard(client.email, `email-${client.id}`)}
+                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Mail className="h-3 w-3" />
+                                    <span>{client.email}</span>
+                                    {copiedField === `email-${client.id}` ? (
+                                      <Check className="h-3 w-3 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 opacity-50" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {copiedField === `email-${client.id}` ? 'Copied!' : 'Click to copy email'}
+                                </TooltipContent>
+                              </Tooltip>
 
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => copyToClipboard(client.phone, `phone-${client.id}`)}
-                                  className="flex items-center gap-1 hover:text-blue-600 transition-colors"
-                                >
-                                  <Phone className="h-3 w-3" />
-                                  <span>{client.phone}</span>
-                                  {copiedField === `phone-${client.id}` ? (
-                                    <Check className="h-3 w-3 text-green-600" />
-                                  ) : (
-                                    <Copy className="h-3 w-3 opacity-50" />
-                                  )}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {copiedField === `phone-${client.id}` ? 'Copied!' : 'Click to copy phone'}
-                              </TooltipContent>
-                            </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => copyToClipboard(client.phone, `phone-${client.id}`)}
+                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                  >
+                                    <Phone className="h-3 w-3" />
+                                    <span>{client.phone}</span>
+                                    {copiedField === `phone-${client.id}` ? (
+                                      <Check className="h-3 w-3 text-green-600" />
+                                    ) : (
+                                      <Copy className="h-3 w-3 opacity-50" />
+                                    )}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {copiedField === `phone-${client.id}` ? 'Copied!' : 'Click to copy phone'}
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+
+                            <p className="text-xs text-gray-400">
+                              Added {new Date(client.created_at).toLocaleDateString()}
+                            </p>
                           </div>
-
-                          <p className="text-xs text-gray-400">
-                            Added {new Date(client.created_at).toLocaleDateString()}
-                          </p>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
-                        <Link href={`/clients/${client.id}`}>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4 mr-2" />
-                            View
-                          </Button>
-                        </Link>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <Link href={`/clients/${client.id}`}>
+                            <Button variant="outline" size="sm">
+                              <Eye className="h-4 w-4 mr-2" />
+                              View
                             </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canEditClients && (
-                              <DropdownMenuItem asChild>
-                                <Link href={`/clients/${client.id}/edit`}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit
-                                </Link>
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-orange-600"
-                              onClick={() => {
-                                setClientToArchive(client);
-                                setArchiveDialogOpen(true);
-                              }}
-                            >
-                              <Archive className="h-4 w-4 mr-2" />
-                              Archive
-                            </DropdownMenuItem>
-                            {profile?.role === 'admin' && (
+                          </Link>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" aria-label="Client actions">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canEditClients && (
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/clients/${client.id}/edit`}>
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
                               <DropdownMenuItem
+                                className="text-orange-600"
                                 onClick={() => {
-                                  setClientToDelete(client);
-                                  setDeleteConfirmText('');
-                                  setError(null);
-                                  setDeleteDialogOpen(true);
+                                  setClientToArchive(client);
+                                  setArchiveDialogOpen(true);
                                 }}
-                                className="text-red-600"
                               >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
+                                <Archive className="h-4 w-4 mr-2" />
+                                Archive
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              {profile?.role === 'admin' && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setClientToDelete(client);
+                                    setDeleteConfirmText('');
+                                    setError(null);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                  <p className="text-sm text-gray-500">
+                    Showing {startIndex + 1}-{Math.min(endIndex, filteredClients.length)} of {filteredClients.length} clients
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <span className="text-sm px-3">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Archive Confirmation Dialog */}

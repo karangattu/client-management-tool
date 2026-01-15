@@ -33,6 +33,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Maximum time to wait for initial auth before auto-recovery
+const AUTH_INIT_TIMEOUT_MS = 20000; // 20 seconds
+const MAX_RETRY_ATTEMPTS = 3;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -42,6 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initAttemptRef = useRef(0);
   const profileIdRef = useRef<string | null>(null);
   const isInitializedRef = useRef(false);
+  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
 
   // Memoize the Supabase client to prevent recreation on every render
   const supabase = useMemo(() => createClient(), []);
@@ -251,6 +257,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError('Session error. Please log in again.');
     }
   }, [supabase.auth]);
+
+  // Auto-recovery timeout - if loading takes too long, try to recover
+  useEffect(() => {
+    if (!loading) {
+      // Clear any existing timeout when loading completes
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
+      retryCountRef.current = 0; // Reset retry count on success
+      return;
+    }
+
+    // Set a timeout to auto-recover if loading takes too long
+    initTimeoutRef.current = setTimeout(async () => {
+      if (loading && retryCountRef.current < MAX_RETRY_ATTEMPTS) {
+        retryCountRef.current += 1;
+        console.warn(`[Auth] Loading timeout reached (attempt ${retryCountRef.current}/${MAX_RETRY_ATTEMPTS}), attempting recovery...`);
+        
+        // Force complete the loading state and try again
+        isInitializedRef.current = false;
+        
+        // Try to recover
+        try {
+          await initializeAuth(true);
+        } catch (e) {
+          console.error('[Auth] Recovery attempt failed:', e);
+          if (retryCountRef.current >= MAX_RETRY_ATTEMPTS) {
+            setError('Unable to connect to authentication service. Please check your connection and try again.');
+            setLoading(false);
+          }
+        }
+      } else if (retryCountRef.current >= MAX_RETRY_ATTEMPTS) {
+        console.error('[Auth] Max retry attempts reached, giving up');
+        setError('Unable to connect to authentication service after multiple attempts.');
+        setLoading(false);
+      }
+    }, AUTH_INIT_TIMEOUT_MS);
+
+    return () => {
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
+    };
+  }, [loading, initializeAuth]);
 
   useEffect(() => {
     // Initial auth check
