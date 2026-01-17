@@ -69,10 +69,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If logged in and trying to access login page, redirect to dashboard
+  // If logged in and trying to access login page, redirect based on role
   if (user && request.nextUrl.pathname === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    url.pathname = profile?.role === 'client' ? '/my-portal' : '/dashboard';
     return NextResponse.redirect(url);
   }
 
@@ -83,10 +88,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect root to dashboard for authenticated users
+  // Redirect root to appropriate page based on role for authenticated users
   if (user && request.nextUrl.pathname === '/') {
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    url.pathname = profile?.role === 'client' ? '/my-portal' : '/dashboard';
     return NextResponse.redirect(url);
   }
 
