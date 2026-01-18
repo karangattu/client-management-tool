@@ -45,8 +45,6 @@ interface NotificationSettings {
 const roleDescriptions: Record<string, string> = {
   admin: 'Full access to all features and user management',
   case_manager: 'Manage clients, create tasks, access housing',
-  staff: 'Create intakes, manage assigned clients',
-  volunteer: 'View clients, claim open tasks',
   client: 'View own case and documents',
 };
 
@@ -325,7 +323,7 @@ export default function ProfilePage() {
                     {profile?.role?.replace('_', ' ')}
                   </Badge>
                   <span className="text-sm text-gray-500">
-                    {roleDescriptions[profile?.role || 'staff']}
+                    {roleDescriptions[profile?.role || 'client']}
                   </span>
                 </div>
               </div>
@@ -584,38 +582,6 @@ export default function ProfilePage() {
                     <li className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       Access housing resources
-                    </li>
-                  </>
-                )}
-                {profile?.role === 'staff' && (
-                  <>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Create client intakes
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Manage assigned clients
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Basic document access
-                    </li>
-                  </>
-                )}
-                {profile?.role === 'volunteer' && (
-                  <>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      View client information
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Claim open tasks
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      Limited document access
                     </li>
                   </>
                 )}

@@ -397,7 +397,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
           setAvailableCaseManagers(allStaff.filter(s => {
             const user = (result.data as ProfileRecord[]).find(u => u.id === s.id);
-            return user?.role === 'case_manager' || user?.role === 'staff' || user?.role === 'admin';
+            return user?.role === 'case_manager' || user?.role === 'admin';
           }));
           setVolunteers(allStaff);
         }
@@ -764,7 +764,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const canEdit = canAccessFeature(profile?.role || 'client', 'staff');
+  const canEdit = canAccessFeature(profile?.role || 'client', 'case_manager');
 
   const formatAuditAction = (action: string): string => {
     const actionMap: Record<string, string> = {

@@ -7,7 +7,7 @@ interface CreateUserData {
   password: string;
   first_name: string;
   last_name: string;
-  role: 'admin' | 'case_manager' | 'staff' | 'volunteer' | 'client';
+  role: 'admin' | 'case_manager' | 'client';
 }
 
 interface CreateUserResult {

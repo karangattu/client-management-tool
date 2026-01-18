@@ -136,7 +136,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
       const { data, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name')
-        .in('role', ['staff', 'case_manager'])
+        .in('role', ['case_manager', 'admin'])
         .order('first_name');
 
       if (error) throw error;
@@ -279,7 +279,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  const canEdit = canAccessFeature(profile?.role || 'client', 'staff');
+  const canEdit = canAccessFeature(profile?.role || 'client', 'case_manager');
 
   if (authLoading) {
     return (

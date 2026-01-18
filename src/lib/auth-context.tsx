@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { User, Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
-export type UserRole = 'admin' | 'case_manager' | 'staff' | 'volunteer' | 'client';
+export type UserRole = 'admin' | 'case_manager' | 'client';
 
 export interface UserProfile {
   id: string;
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, email, first_name, last_name, role, phone, profile_picture_url, is_active, created_at')
         .eq('id', userId)
         .limit(1);
 
@@ -406,10 +406,8 @@ export function useAuth() {
 
 // Role hierarchy for permission checks
 export const roleHierarchy: Record<UserRole, number> = {
-  admin: 4,
-  case_manager: 3,
-  staff: 2,
-  volunteer: 1,
+  admin: 2,
+  case_manager: 1,
   client: 0,
 };
 

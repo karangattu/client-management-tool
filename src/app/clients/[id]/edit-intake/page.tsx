@@ -22,7 +22,7 @@ export default function EditClientIntakePage({ params }: { params: Promise<{ id:
   const [clientData, setClientData] = useState<ClientIntakeFormType | null>(null);
   const [clientName, setClientName] = useState<string>('');
 
-  const canEdit = canAccessFeature(profile?.role || 'client', 'staff');
+  const canEdit = canAccessFeature(profile?.role || 'client', 'case_manager');
 
   useEffect(() => {
     const fetchClientData = async () => {

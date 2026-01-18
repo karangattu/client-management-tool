@@ -112,6 +112,8 @@ export default function MyPortalPage() {
     const [alerts, setAlerts] = useState<AlertItem[]>([]);
     const [documents, setDocuments] = useState<Document[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
+    const [taskCompletingId, setTaskCompletingId] = useState<string | null>(null);
 
     // Upload state
     const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -130,11 +132,14 @@ export default function MyPortalPage() {
         setLoading(true);
         try {
             const { data: { user }, error: authError } = await supabase.auth.getUser();
-
+ 
             if (authError || !user) {
                 router.push('/login');
                 return;
             }
+
+            setUserId(user.id);
+
 
             const { data: profileData } = await supabase
                 .from('profiles')
@@ -182,6 +187,10 @@ export default function MyPortalPage() {
 
             setTasks(tasksData as unknown as Task[] || []);
 
+        if (tasksData?.length === 0) {
+            console.warn('[My Portal] No tasks found for client user:', user.id);
+        }
+
             // Fetch alerts for this user
             const { data: alertsData } = await supabase
                 .from('alerts')
@@ -226,6 +235,41 @@ export default function MyPortalPage() {
     const handleSignOut = async () => {
         await supabase.auth.signOut();
         router.push('/login');
+    };
+
+    const handleCompleteTask = async (taskId: string) => {
+        if (!userId) return;
+        setTaskCompletingId(taskId);
+        try {
+            const { error } = await supabase
+                .from('tasks')
+                .update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString(),
+                    completed_by: userId,
+                    completed_by_role: 'client',
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', taskId)
+                .eq('assigned_to', userId);
+
+            if (error) throw error;
+
+            setTasks(prev => prev.filter(task => task.id !== taskId));
+            toast({
+                title: 'Task completed',
+                description: 'Your case manager has been notified.',
+            });
+        } catch (err) {
+            console.error('Error completing task:', err);
+            toast({
+                title: 'Error',
+                description: 'Unable to mark task complete. Please try again.',
+                variant: 'destructive',
+            });
+        } finally {
+            setTaskCompletingId(null);
+        }
     };
 
     const handleDismissAlert = async (alertId: string) => {
@@ -649,13 +693,6 @@ export default function MyPortalPage() {
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {tasks.length > 0 ? tasks.map((task) => {
-                                // Filter out urgent ones already shown above to avoid clutter? 
-                                // Actually, let's keep them but maybe styled differently, or just show non-urgent here.
-                                // For simplicity, we show all, but maybe user wants a unified list.
-                                // Let's filter out the ones already displayed in "Action Required" if they are urgent.
-                                const isUrgent = task.priority === 'urgent' || task.priority === 'high';
-                                if (isUrgent) return null;
-
                                 const action = getTaskAction(task);
                                 return (
                                     <div
@@ -687,19 +724,40 @@ export default function MyPortalPage() {
                                                 <span />
                                             )}
 
-                                            {action && (
-                                                action.href ? (
-                                                    <Link href={action.href}>
-                                                        <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700">
+                                            <div className="flex items-center gap-2">
+                                                {action && (
+                                                    action.href ? (
+                                                        <Link href={action.href}>
+                                                            <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700">
+                                                                {action.label}
+                                                            </Button>
+                                                        </Link>
+                                                    ) : (
+                                                        <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700" onClick={action.onClick}>
                                                             {action.label}
                                                         </Button>
-                                                    </Link>
-                                                ) : (
-                                                    <Button variant="ghost" size="sm" className="h-8 text-blue-600 hover:text-blue-700" onClick={action.onClick}>
-                                                        {action.label}
-                                                    </Button>
-                                                )
-                                            )}
+                                                    )
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8"
+                                                    onClick={() => handleCompleteTask(task.id)}
+                                                    disabled={taskCompletingId === task.id}
+                                                >
+                                                    {taskCompletingId === task.id ? (
+                                                        <>
+                                                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                            Completing
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle className="h-3 w-3 mr-1" />
+                                                            Mark Done
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -710,12 +768,7 @@ export default function MyPortalPage() {
                                     <p className="text-xs text-gray-400 mt-1">No pending tasks.</p>
                                 </div>
                             )}
-                            {/* If all tasks were urgent and filtered out, show empty state */}
-                            {tasks.length > 0 && tasks.every(t => t.priority === 'urgent' || t.priority === 'high') && (
-                                <div className="text-center py-4">
-                                    <p className="text-sm text-gray-500">See &quot;Action Required&quot; above for urgent items.</p>
-                                </div>
-                            )}
+
                         </CardContent>
                     </Card>
 

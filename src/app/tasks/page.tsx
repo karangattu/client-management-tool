@@ -62,6 +62,9 @@ interface Task {
   due_date: string | null;
   category: string;
   created_at: string;
+  completed_at?: string | null;
+  completed_by?: string | null;
+  completed_by_role?: 'client' | 'case_manager' | 'admin' | 'system' | null;
   client?: { first_name: string; last_name: string };
   assignee?: { first_name: string; last_name: string };
 }
@@ -135,6 +138,7 @@ function TasksContent() {
           due_date,
           completed_at,
           completed_by,
+          completed_by_role,
           category,
           tags,
           created_at,
@@ -218,13 +222,16 @@ function TasksContent() {
 
   const handleCompleteTask = async (taskId: string) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', taskId);
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+            completed_by: user?.id || null,
+            completed_by_role: profile?.role === 'admin' ? 'admin' : 'case_manager'
+          })
+          .eq('id', taskId)
+          .eq('assigned_to', user?.id || null);
 
       if (error) throw error;
 
@@ -376,8 +383,8 @@ function TasksContent() {
     }
   };
 
-  const canCreateTasks = canAccessFeature(profile?.role || 'client', 'staff');
-  const canClaimTasks = profile?.role === 'volunteer' || profile?.role === 'case_manager' || profile?.role === 'admin';
+  const canCreateTasks = canAccessFeature(profile?.role || 'client', 'case_manager');
+  const canClaimTasks = profile?.role === 'case_manager' || profile?.role === 'admin';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -740,6 +747,11 @@ function TasksContent() {
                             <Clock className="h-3 w-3" />
                             Due: {new Date(task.due_date).toLocaleDateString()}
                           </span>
+                        )}
+                        {task.completed_at && task.status === 'completed' && (
+                          <Badge variant="outline" className="text-xs">
+                            Completed by {task.completed_by_role === 'client' ? 'client' : task.completed_by_role === 'admin' ? 'admin' : 'case manager'}
+                          </Badge>
                         )}
                         {task.assignee ? (
                           <Badge variant="outline" className="text-xs">

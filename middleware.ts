@@ -52,7 +52,7 @@ export async function middleware(request: NextRequest) {
 
   // Public paths that don't require authentication
   // SECURITY: Only these paths are accessible without login
-  const publicPaths = ['/login', '/self-service', '/client-portal', '/api'];
+  const publicPaths = ['/login', '/self-service', '/client-portal', '/api', '/auth/callback', '/auth/post-login'];
   const isPublicPath = publicPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );

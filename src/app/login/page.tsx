@@ -29,9 +29,14 @@ function LoginForm() {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-          // User already has a valid session, redirect to post-login
           console.log('[Login] User already authenticated, redirecting...');
-          window.location.href = '/auth/post-login?default=my-portal';
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+          window.location.href = redirectPath;
           return;
         }
       } catch (e) {
@@ -90,13 +95,18 @@ function LoginForm() {
         throw new Error('Login succeeded but no session was created. Please try again.');
       }
 
-      // Route through a dedicated post-login handler to avoid first-login races
-      // (session propagation / profile RLS timing / navigation blocking).
+      // Redirect based on profile role when session is ready
       redirectWatchdogRef.current = setTimeout(async () => {
         try {
           const { data: check } = await supabase.auth.getSession();
-          if (check.session) {
-            window.location.href = '/auth/post-login?default=my-portal';
+          if (check.session?.user) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('id', check.session.user.id)
+              .maybeSingle();
+            const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+            window.location.href = redirectPath;
             return;
           }
         } catch {
@@ -106,7 +116,13 @@ function LoginForm() {
         setError('Sign-in did not complete. Please try again.');
       }, 4000);
 
-      window.location.href = '/auth/post-login?default=my-portal';
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .maybeSingle();
+      const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+      window.location.href = redirectPath;
 
     } catch (err) {
       console.error('Login error:', err);

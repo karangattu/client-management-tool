@@ -61,7 +61,7 @@ export async function validateClientReferences(clientId: string): Promise<Valida
 
       if (managerError || !manager) {
         errors.push('Assigned case manager does not exist');
-      } else if (!['staff', 'case_manager', 'admin'].includes(manager.role)) {
+      } else if (!['case_manager', 'admin'].includes(manager.role)) {
         errors.push('Assigned case manager does not have appropriate role');
       }
     }

@@ -131,6 +131,15 @@ export default function DashboardPage() {
     upcomingEvents: 0,
     unreadAlerts: 0,
   });
+  const [onboardingCounts, setOnboardingCounts] = useState({
+    registered: 0,
+    profile: 0,
+    engagement: 0,
+    intake: 0,
+  });
+  const [intakeIncompleteCount, setIntakeIncompleteCount] = useState(0);
+  const [newSelfRegistrations, setNewSelfRegistrations] = useState<Array<{ id: string; first_name: string; last_name: string; created_at: string }>>([]);
+
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [openTasksToClaim, setOpenTasksToClaim] = useState<OpenTask[]>([]);
   const [clientTasks] = useState<ClientTask[]>([]);
@@ -141,7 +150,7 @@ export default function DashboardPage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [listsLoading, setListsLoading] = useState(true);
   const [focusLoading, setFocusLoading] = useState(true);
-  const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
+  const [staffMembers, setStaffMembers] = useState<{ id: string; name: string }[]>([]);
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -162,7 +171,7 @@ export default function DashboardPage() {
     // Only start fetching if we have user AND profile (since logic depends on role)
     if (user && profile) {
       // Check if user has a valid staff/admin role to view dashboard
-      const validRoles = ['admin', 'case_manager', 'staff', 'volunteer'];
+      const validRoles = ['admin', 'case_manager'];
       if (validRoles.includes(profile.role)) {
         fetchDashboardData();
       } else {
@@ -303,6 +312,11 @@ export default function DashboardPage() {
         supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
         supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
         supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'registered'),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'profile'),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'engagement'),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'intake'),
+        supabase.from('clients').select('*', { count: 'exact', head: true }).is('intake_completed_at', null),
       ]);
 
       // 2. Fetch Lists (Parallel)
@@ -314,7 +328,9 @@ export default function DashboardPage() {
             id, title, description, priority, due_date, clients (*)
           `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
         // Fetch staff
-        supabase.from('profiles').select('id, first_name, last_name').neq('role', 'client').order('first_name')
+        supabase.from('profiles').select('id, first_name, last_name').neq('role', 'client').order('first_name'),
+        // Recent self-registrations
+        supabase.from('clients').select('id, first_name, last_name, created_at').eq('onboarding_status', 'registered').order('created_at', { ascending: false }).limit(5)
       ]);
 
       // 3. Fetch Focus Items (Parallel)
@@ -372,7 +388,12 @@ export default function DashboardPage() {
         { count: pendingTasks },
         { count: openTasks },
         { count: upcomingEvents },
-        { count: unreadAlerts }
+        { count: unreadAlerts },
+        { count: registeredCount },
+        { count: profileCount },
+        { count: engagementCount },
+        { count: intakeCount },
+        { count: intakeIncomplete }
       ] = statsResults;
 
       setStats({
@@ -384,11 +405,20 @@ export default function DashboardPage() {
         unreadAlerts: unreadAlerts || 0,
       });
 
+      setOnboardingCounts({
+        registered: registeredCount || 0,
+        profile: profileCount || 0,
+        engagement: engagementCount || 0,
+        intake: intakeCount || 0,
+      });
+      setIntakeIncompleteCount(intakeIncomplete || 0);
+
       // --- Process Lists ---
       const [
         { data: deadlineData },
         { data: openTasksData },
-        { data: staffData }
+        { data: staffData },
+        { data: selfRegistrationData }
       ] = listsResults;
 
       if (deadlineData) {
@@ -413,10 +443,14 @@ export default function DashboardPage() {
       }
 
       if (staffData) {
-        setStaff((staffData as Array<{ id: string; first_name: string; last_name: string }>).map((staffMember) => ({
+        setStaffMembers((staffData as Array<{ id: string; first_name: string; last_name: string }>).map((staffMember) => ({
           id: staffMember.id,
           name: `${staffMember.first_name} ${staffMember.last_name}`
         })));
+      }
+
+      if (selfRegistrationData) {
+        setNewSelfRegistrations(selfRegistrationData as Array<{ id: string; first_name: string; last_name: string; created_at: string }>);
       }
 
       // --- Process Focus Items ---
@@ -731,15 +765,12 @@ export default function DashboardPage() {
 
   const isAdmin = profile.role === 'admin';
   const isCaseManager = profile.role === 'case_manager';
-  const isVolunteer = profile.role === 'volunteer';
   const isClient = profile.role === 'client';
-
-  // Role-based tile visibility
-  const canViewClients = canAccessFeature(profile.role, 'volunteer');
-  const canCreateIntake = canAccessFeature(profile.role, 'staff');
-  const canViewCalendar = canAccessFeature(profile.role, 'volunteer');
-  const canViewTasks = canAccessFeature(profile.role, 'volunteer');
-  const canViewDocuments = canAccessFeature(profile.role, 'volunteer');
+  const canViewClients = canAccessFeature(profile.role, 'case_manager');
+  const canCreateIntake = canAccessFeature(profile.role, 'case_manager');
+  const canViewCalendar = canAccessFeature(profile.role, 'case_manager');
+  const canViewTasks = canAccessFeature(profile.role, 'case_manager');
+  const canViewDocuments = canAccessFeature(profile.role, 'case_manager');
   const canViewAdmin = isAdmin;
 
   const getPriorityBadge = (priority: string, status?: string) => {
@@ -1000,6 +1031,73 @@ export default function DashboardPage() {
               <CheckSquare className="h-5 w-5 text-blue-600" />
               Today&apos;s Focus
             </h2>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="h-4 w-4 text-blue-600" />
+                    New Self-Registrations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {listsLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-10" />
+                      ))}
+                    </div>
+                  ) : newSelfRegistrations.length > 0 ? (
+                    <div className="space-y-2">
+                      {newSelfRegistrations.map((client) => (
+                        <div key={client.id} className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {client.first_name} {client.last_name}
+                            </p>
+                            <p className="text-xs text-gray-500">Registered {formatPacificFriendly(client.created_at, true)}</p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => router.push(`/clients/${client.id}`)}>
+                            Review
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No new self-registrations today.</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Onboarding Pipeline</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Registered</span>
+                    <span className="font-semibold">{onboardingCounts.registered}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Profile</span>
+                    <span className="font-semibold">{onboardingCounts.profile}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Engagement</span>
+                    <span className="font-semibold">{onboardingCounts.engagement}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Intake</span>
+                    <span className="font-semibold">{onboardingCounts.intake}</span>
+                  </div>
+                  <div className="pt-2 border-t text-sm flex items-center justify-between">
+                    <span>Intake incomplete</span>
+                    <span className="font-semibold text-orange-600">{intakeIncompleteCount}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             {focusLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -1068,11 +1166,31 @@ export default function DashboardPage() {
                         {item.type === 'task' && (
                           <Button
                             size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 rounded-full hover:bg-green-50 hover:text-green-600"
-                            onClick={() => handleCompleteTask(item.id)}
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => router.push(`/tasks?filter=open`)}
                           >
-                            <Check className="h-4 w-4" />
+                            View
+                          </Button>
+                        )}
+                        {item.type === 'event' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => router.push('/calendar')}
+                          >
+                            View
+                          </Button>
+                        )}
+                        {item.type === 'alert' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => router.push('/alerts')}
+                          >
+                            View
                           </Button>
                         )}
                       </div>
@@ -1083,6 +1201,7 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
 
         {/* Navigation Tiles */}
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('dashboard.quickActions')}</h2>
@@ -1121,14 +1240,14 @@ export default function DashboardPage() {
           {canViewTasks && (
             <NavigationTile
               title={t('tasks.title')}
-              description={isVolunteer || isCaseManager ? "View & claim open tasks" : "Manage tasks"}
+              description={isCaseManager || isAdmin ? "View & claim open tasks" : "Manage tasks"}
               icon={CheckSquare}
               href="/tasks"
               color="orange"
               badge={stats.pendingTasks > 0 ? stats.pendingTasks : undefined}
             />
           )}
-          {(isVolunteer || isCaseManager) && stats.openTasks > 0 && (
+          {(isCaseManager || isAdmin) && stats.openTasks > 0 && (
             <NavigationTile
               title={t('tasks.openToClaim')}
               description="Claim available tasks"
@@ -1436,7 +1555,7 @@ export default function DashboardPage() {
                               <SelectValue placeholder="Assign To..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {staff.map((s) => (
+                              {staffMembers.map((s: { id: string; name: string }) => (
                                 <SelectItem key={s.id} value={s.id} className="text-xs">
                                   {s.name}
                                 </SelectItem>

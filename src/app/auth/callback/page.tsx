@@ -177,7 +177,7 @@ function AuthCallbackContent() {
             // Route through post-login to avoid first-login/session propagation races.
             // Default to my-portal for verified links (client flow), but post-login will
             // redirect to dashboard for staff/admin roles.
-            const postLoginUrl = '/auth/post-login?default=my-portal';
+            const postLoginUrl = '/auth/post-login?default=dashboard';
 
             // Redirect immediately - fallback timer only if immediate redirect fails
             window.location.href = postLoginUrl;
@@ -189,8 +189,8 @@ function AuthCallbackContent() {
             }, 3000);
           } catch (error) {
             console.error('Error checking user role:', error);
-            // Default to my-portal for verified users coming from email
-            window.location.href = '/auth/post-login?default=my-portal';
+            // Default to dashboard for verified users; post-login will route by role
+            window.location.href = '/auth/post-login?default=dashboard';
           }
         }
       } catch (error) {

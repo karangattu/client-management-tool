@@ -134,7 +134,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
             role: string;
           }
           const managers = (result.data as ProfileRecord[])
-            .filter((u) => u.role === 'case_manager' || u.role === 'staff')
+            .filter((u) => u.role === 'case_manager' || u.role === 'admin')
             .map((u) => ({
               value: u.id,
               label: `${u.first_name} ${u.last_name}`,

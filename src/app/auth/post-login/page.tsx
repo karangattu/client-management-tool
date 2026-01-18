@@ -23,7 +23,7 @@ function PostLoginContent() {
 
       const supabase = createClient();
       const defaultParam = searchParams.get('default');
-      const defaultRedirect = defaultParam === 'dashboard' ? '/dashboard' : '/my-portal';
+      const defaultRedirect = defaultParam === 'my-portal' ? '/my-portal' : '/dashboard';
       console.log('[PostLogin] Starting, defaultRedirect:', defaultRedirect);
 
       // Global timeout - if everything takes too long, redirect to default anyway
@@ -78,41 +78,55 @@ function PostLoginContent() {
         console.log('[PostLogin] Fetching profile for user:', session.user.id);
         let role: string | null = null;
 
-        const profilePromise = supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .maybeSingle();
+      const profilePromise = supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle();
 
-        const profileTimeout = new Promise(((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout')), 2000)
-        ));
+      const profileTimeout = new Promise(((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 2000)
+      ));
 
-        try {
-          const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeout]) as { data: { role: string } | null; error: { message: string } | null };
-          if (profileError) {
-            console.warn('[PostLogin] profile fetch error:', profileError);
-          }
-          role = profile?.role ?? null;
-          console.log('[PostLogin] Profile fetched, role:', role);
-        } catch (profileErr) {
-          console.warn('[PostLogin] Profile fetch failed:', profileErr);
-          // Continue with null role - will use default redirect
+      try {
+        const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeout]) as { data: { role: string } | null; error: { message: string } | null };
+        if (profileError) {
+          console.warn('[PostLogin] profile fetch error:', profileError);
         }
+        role = profile?.role ?? null;
+        console.log('[PostLogin] Profile fetched, role:', role);
+      } catch (profileErr) {
+        console.warn('[PostLogin] Profile fetch failed:', profileErr);
+        role = null;
+      }
+
+      // If profile isn't ready yet, retry a few times before failing
+      if (!role) {
+        for (let attempt = 1; attempt <= 5 && !role; attempt++) {
+          await new Promise((r) => setTimeout(r, 300 * attempt));
+          const { data: retryProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          role = retryProfile?.role ?? null;
+        }
+      }
+
 
         // Clear global timeout since we're about to redirect
         if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
 
-        if (!role) {
-          console.warn('[PostLogin] No role found, signing out and redirecting to login.');
-          await supabase.auth.signOut();
-          if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
-          setFatal('Account details are still syncing. Please sign in again.');
-          return;
-        }
+      if (!role) {
+        console.warn('[PostLogin] No role found, redirecting to login.');
+        if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
+        setFatal('Account details are still syncing. Please sign in again.');
+        return;
+      }
 
-        const redirectPath = role === 'client' ? '/my-portal' : '/dashboard';
-        console.log('[PostLogin] Redirecting to:', redirectPath, 'role:', role);
+      const redirectPath = role === 'client' ? '/my-portal' : '/dashboard';
+      console.log('[PostLogin] Redirecting to:', redirectPath, 'role:', role);
+
 
 
         // Redirect immediately

@@ -262,8 +262,8 @@ export default function ClientsPage() {
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
-  const canCreateClients = canAccessFeature(profile?.role || 'client', 'staff');
-  const canEditClients = canAccessFeature(profile?.role || 'client', 'staff');
+  const canCreateClients = canAccessFeature(profile?.role || 'client', 'case_manager');
+  const canEditClients = canAccessFeature(profile?.role || 'client', 'case_manager');
 
   const stats = {
     total: clients.length,

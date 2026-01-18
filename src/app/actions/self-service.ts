@@ -48,14 +48,12 @@ export async function submitSelfServiceApplication(
       .single();
 
     if (existingProfile) {
-      if (['admin', 'case_manager', 'staff', 'volunteer'].includes(existingProfile.role)) {
+      if (['admin', 'case_manager'].includes(existingProfile.role)) {
         return {
           success: false,
           error: "This email address is associated with a staff account. Please use the staff login.",
         };
       }
-      // If it's a client, Supabase auth.signUp will handle the "already registered" error or merge logic
-      // But we can also be explicit:
       if (existingProfile.role === 'client') {
         return {
           success: false,
@@ -124,6 +122,8 @@ export async function submitSelfServiceApplication(
         state: formData.state || null,
         zip_code: formData.zipCode || null,
         status: "pending",
+        onboarding_status: "registered",
+        onboarding_progress: 0,
         created_at: new Date().toISOString(),
       })
       .select()
@@ -147,7 +147,7 @@ export async function submitSelfServiceApplication(
       console.error("Error creating case management:", caseError);
     }
 
-    // Create a task due in 7 days for profile completion
+    // Create onboarding task for intake completion
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 7);
 
@@ -251,7 +251,9 @@ export async function submitSelfServiceApplication(
         .from('clients')
         .update({
           signed_engagement_letter_at: new Date().toISOString(),
-          engagement_letter_version: 'March 2024'
+          engagement_letter_version: 'March 2024',
+          onboarding_status: 'engagement',
+          onboarding_progress: 50
         })
         .eq('id', clientData.id);
 

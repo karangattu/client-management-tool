@@ -93,6 +93,16 @@ CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 -- CLIENTS
 -- ============================================
 
+DO $$ BEGIN
+    CREATE TYPE client_onboarding_status AS ENUM ('registered', 'profile', 'engagement', 'intake', 'active');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE task_completion_role AS ENUM ('client', 'staff', 'system');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS clients (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     -- Participant Details
@@ -124,6 +134,9 @@ CREATE TABLE IF NOT EXISTS clients (
     has_portal_access BOOLEAN DEFAULT false,
     portal_user_id UUID REFERENCES auth.users(id),
     intake_completed_at TIMESTAMP WITH TIME ZONE,
+    onboarding_status client_onboarding_status DEFAULT 'registered',
+    onboarding_progress INTEGER DEFAULT 0,
+    profile_completed_at TIMESTAMP WITH TIME ZONE,
     -- Engagement Letter Tracking
     signed_engagement_letter_at TIMESTAMP WITH TIME ZONE,
     engagement_letter_version TEXT DEFAULT 'March 2024',
@@ -259,6 +272,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     due_date TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     completed_by UUID REFERENCES profiles(id),
+    completed_by_role task_completion_role,
+    completion_note TEXT,
     category TEXT,
     tags TEXT[],
     program_id UUID REFERENCES programs(id) ON DELETE SET NULL,
@@ -784,6 +799,10 @@ CREATE TRIGGER trigger_benefit_renewal_alerts
 -- ROW LEVEL SECURITY (RLS)
 -- ============================================
 
+-- Trigger to ensure profiles + clients exist for auth users
+-- NOTE: Must be created in Supabase SQL editor or migration (cannot be in schema.sql if using schema-based bootstrap)
+-- See supabase/migrations_20260118_phase1.sql
+
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
@@ -802,8 +821,15 @@ ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
-CREATE POLICY "Users can view all profiles" ON profiles
-    FOR SELECT USING (true);
+CREATE POLICY "Users can view allowed profiles" ON profiles
+    FOR SELECT USING (
+        auth.uid() = id
+        OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        OR (
+            EXISTS (SELECT 1 FROM clients c WHERE c.portal_user_id = auth.uid())
+            AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
+        )
+    );
 
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles
@@ -815,7 +841,7 @@ CREATE POLICY "Users can insert own profile" ON profiles
 
 DROP POLICY IF EXISTS "Service role can manage all profiles" ON profiles;
 CREATE POLICY "Service role can manage all profiles" ON profiles
-    FOR ALL USING (true) WITH CHECK (true);
+    FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
 -- Clients policies
 DROP POLICY IF EXISTS "Staff can view all clients" ON clients;
@@ -880,6 +906,46 @@ CREATE POLICY "Users can update assigned tasks" ON tasks
         assigned_by = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager'))
     );
+
+-- Guard: clients can only update task completion fields
+CREATE OR REPLACE FUNCTION public.enforce_client_task_updates()
+RETURNS TRIGGER AS $$
+DECLARE
+    current_role user_role;
+BEGIN
+    SELECT role INTO current_role FROM profiles WHERE id = auth.uid();
+
+    IF current_role = 'client' THEN
+        IF NEW.title IS DISTINCT FROM OLD.title
+            OR NEW.description IS DISTINCT FROM OLD.description
+            OR NEW.priority IS DISTINCT FROM OLD.priority
+            OR NEW.due_date IS DISTINCT FROM OLD.due_date
+            OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to
+            OR NEW.assigned_by IS DISTINCT FROM OLD.assigned_by
+            OR NEW.client_id IS DISTINCT FROM OLD.client_id
+            OR NEW.category IS DISTINCT FROM OLD.category
+            OR NEW.tags IS DISTINCT FROM OLD.tags
+            OR NEW.program_id IS DISTINCT FROM OLD.program_id THEN
+            RAISE EXCEPTION 'Clients may only update task status and completion fields';
+        END IF;
+
+        IF NEW.completed_by IS NOT NULL AND NEW.completed_by <> auth.uid() THEN
+            RAISE EXCEPTION 'Clients may only mark themselves as completer';
+        END IF;
+
+        IF NEW.completed_by_role IS NOT NULL AND NEW.completed_by_role <> 'client' THEN
+            RAISE EXCEPTION 'Clients must use client completion role';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS enforce_client_task_updates ON tasks;
+CREATE TRIGGER enforce_client_task_updates
+    BEFORE UPDATE ON tasks
+    FOR EACH ROW EXECUTE FUNCTION public.enforce_client_task_updates();
 
 -- Calendar events policies
 -- Staff can view all calendar events

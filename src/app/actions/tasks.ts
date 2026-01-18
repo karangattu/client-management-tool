@@ -131,12 +131,17 @@ export async function completeTaskByTitle(clientId: string, title: string) {
 export async function updateTaskStatus(taskId: string, status: TaskStatus, clientId?: string) {
     try {
         const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
 
-        const updateData: { status: TaskStatus; completed_at: string | null } = { status, completed_at: null };
+        const updateData: { status: TaskStatus; completed_at: string | null; completed_by?: string | null; completed_by_role?: 'client' | 'case_manager' | 'admin' | 'system' | null } = { status, completed_at: null };
         if (status === 'completed') {
             updateData.completed_at = new Date().toISOString();
+            updateData.completed_by = user?.id || null;
+            updateData.completed_by_role = user?.id ? 'case_manager' : null;
         } else {
             updateData.completed_at = null;
+            updateData.completed_by = null;
+            updateData.completed_by_role = null;
         }
 
         const { error } = await supabase

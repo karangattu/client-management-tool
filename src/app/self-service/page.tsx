@@ -41,7 +41,6 @@ import {
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
-
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 
 // Simple header for public self-service page - NO client search
@@ -77,6 +76,8 @@ export default function SelfServiceIntakePage() {
   const [success, setSuccess] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const skipSignature = true;
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -86,13 +87,18 @@ export default function SelfServiceIntakePage() {
     password: '',
     confirmPassword: '',
     preferredLanguage: 'english',
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
   });
 
-  const totalSteps = 4;
+  const totalSteps = skipSignature ? 1 : 2;
   const progress = (currentStep / totalSteps) * 100;
 
   // Initialize canvas
   useEffect(() => {
+    if (!skipSignature) return;
     if (signatureOpen && canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
@@ -105,9 +111,10 @@ export default function SelfServiceIntakePage() {
         ctx.lineJoin = 'round';
       }
     }
-  }, [signatureOpen]);
+  }, [signatureOpen, skipSignature]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (skipSignature) return;
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -131,7 +138,7 @@ export default function SelfServiceIntakePage() {
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (skipSignature || !isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -155,10 +162,12 @@ export default function SelfServiceIntakePage() {
   };
 
   const stopDrawing = () => {
+    if (skipSignature) return;
     setIsDrawing(false);
   };
 
   const clearSignature = () => {
+    if (skipSignature) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -170,6 +179,7 @@ export default function SelfServiceIntakePage() {
   };
 
   const saveSignature = () => {
+    if (skipSignature) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -195,15 +205,15 @@ export default function SelfServiceIntakePage() {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return formData.firstName && formData.lastName && formData.email &&
-          formData.password && formData.password === formData.confirmPassword &&
+        return formData.firstName &&
+          formData.lastName &&
+          formData.email &&
+          formData.phone &&
+          formData.dateOfBirth &&
+          formData.password &&
           formData.password.length >= 6;
       case 2:
-        return true; // Document upload is optional
-      case 3:
-        return agreed;
-      case 4:
-        return signature !== null;
+        return skipSignature ? true : agreed;
       default:
         return true;
     }
@@ -214,17 +224,17 @@ export default function SelfServiceIntakePage() {
     setError(null);
 
     try {
-      // Generate PDF if signature exists
+      // Generate PDF only when signature is captured
       let pdfData = undefined;
-      if (signature) {
+      if (!skipSignature && signature) {
         const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
         pdfData = generateEngagementLetterPDF(`${formData.firstName} ${formData.lastName}`, signature);
       }
 
       const result = await submitSelfServiceApplication({
         ...formData,
-        signature: signature || undefined,
-        pdfData
+        signature: !skipSignature ? signature || undefined : undefined,
+        pdfData: !skipSignature ? pdfData : undefined
       });
 
       if (!result.success) {
@@ -233,7 +243,7 @@ export default function SelfServiceIntakePage() {
 
       setSuccess(true);
 
-      // Redirect to profile completion after 3 seconds
+      // Redirect to login after 3 seconds
       setTimeout(() => {
         router.push('/login?registered=true');
       }, 3000);
@@ -386,6 +396,52 @@ export default function SelfServiceIntakePage() {
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <Label htmlFor="street">Street Address</Label>
+                    <Input
+                      id="street"
+                      name="street"
+                      value={formData.street}
+                      onChange={handleInputChange}
+                      placeholder="Street address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      name="city"
+                      value={formData.city}
+                      onChange={handleInputChange}
+                      placeholder="City"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State</Label>
+                    <Input
+                      id="state"
+                      name="state"
+                      value={formData.state}
+                      onChange={handleInputChange}
+                      placeholder="State"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="zipCode">ZIP Code</Label>
+                    <Input
+                      id="zipCode"
+                      name="zipCode"
+                      value={formData.zipCode}
+                      onChange={handleInputChange}
+                      placeholder="ZIP code"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
                     <Label htmlFor="password">Password *</Label>
                     <Input
                       id="password"
@@ -436,71 +492,22 @@ export default function SelfServiceIntakePage() {
                 <div className="bg-blue-50 p-4 rounded-lg flex gap-3">
                   <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-blue-800">
-                    <p className="font-medium">Your information is secure</p>
-                    <p className="mt-1">All data is encrypted and stored securely in compliance with privacy regulations.</p>
+                    <p className="font-medium">You can finish intake later</p>
+                    <p className="mt-1">Complete the rest of your intake after signing in. We&apos;ll guide you step by step.</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Document Upload */}
-            {currentStep === 2 && (
+            {/* Step 2: Quick Consent (optional) */}
+            {currentStep === 2 && !skipSignature && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">Upload Documents</h2>
-                  <p className="text-gray-500 mt-1">Upload any supporting documents (optional)</p>
+                  <h2 className="text-xl font-semibold">Review Consent</h2>
+                  <p className="text-gray-500 mt-1">You can complete full intake and signature later</p>
                 </div>
 
-                <div className="grid gap-4">
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="font-medium">Drop files here or click to upload</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      PDF, JPG, PNG up to 10MB each
-                    </p>
-                    <Button variant="outline" className="mt-4">
-                      Select Files
-                    </Button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Recommended documents:</p>
-                    <ul className="text-sm text-gray-600 space-y-1">
-                      <li className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Photo ID (Driver&apos;s License, State ID, Passport)
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Proof of Income (Pay stubs, benefits letter)
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Proof of Address (Utility bill, mail)
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="bg-yellow-50 p-4 rounded-lg flex gap-3">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-yellow-800">
-                    <p className="font-medium">Don&apos;t have documents right now?</p>
-                    <p className="mt-1">No problem! You can skip this step and upload documents later from your client portal.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Engagement Letter */}
-            {currentStep === 3 && (
-              <div className="space-y-6">
-                <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">Client Engagement Letter</h2>
-                  <p className="text-gray-500 mt-1">Please read the engagement letter carefully</p>
-                </div>
-
-                <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto bg-gray-50">
+                <div className="border rounded-lg p-4 max-h-[260px] overflow-y-auto bg-gray-50">
                   <pre className="whitespace-pre-wrap text-sm font-sans">
                     {ENGAGEMENT_LETTER_TEXT}
                   </pre>
@@ -514,121 +521,12 @@ export default function SelfServiceIntakePage() {
                     className="mt-1"
                   />
                   <label htmlFor="agree" className="text-sm cursor-pointer">
-                    <span className="font-medium">I have read and agree to the terms</span>
+                    <span className="font-medium">I agree to the engagement terms</span>
                     <p className="text-gray-500 mt-1">
-                      By checking this box, you acknowledge that you have read, understood, and agree to the engagement letter and consent for services.
+                      You can sign later in your client portal.
                     </p>
                   </label>
                 </div>
-              </div>
-            )}
-
-            {/* Step 4: Digital Signature */}
-            {currentStep === 4 && (
-              <div className="space-y-6">
-                <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">Sign to Complete</h2>
-                  <p className="text-gray-500 mt-1">Provide your digital signature below</p>
-                </div>
-
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Signing as: <span className="font-medium">{formData.firstName} {formData.lastName}</span>
-                    <br />
-                    Email: <span className="font-medium">{formData.email}</span>
-                  </p>
-                </div>
-
-                {signature ? (
-                  <div className="border rounded-xl p-6 bg-white shadow-sm ring-1 ring-gray-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm font-medium text-gray-700">Digital Signature Captured</p>
-                      <BadgeCheck className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div className="bg-gray-50 border rounded-lg p-4 flex justify-center">
-                      <Image src={signature} alt="Your signature" width={300} height={96} className="max-h-24 object-contain" />
-                    </div>
-                    <div className="flex justify-between items-center mt-4">
-                      <p className="text-xs text-gray-500 italic">Signed on {new Date().toLocaleDateString()}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-gray-500 hover:text-red-600 h-8 gap-1"
-                        onClick={() => {
-                          setSignature(null);
-                          setSignatureOpen(true);
-                        }}
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        Redraw
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-32 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all rounded-xl group"
-                    onClick={() => setSignatureOpen(true)}
-                  >
-                    <div className="flex flex-col items-center">
-                      <PenLine className="h-10 w-10 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" />
-                      <span className="font-medium text-gray-600 group-hover:text-blue-600">Click to sign engagement letter</span>
-                      <p className="text-xs text-gray-400 mt-1">Draw using mouse or touch</p>
-                    </div>
-                  </Button>
-                )}
-
-                {signature && (
-                  <div className="bg-green-50 p-4 rounded-lg flex gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-                    <div className="text-sm text-green-800">
-                      <p className="font-medium">Ready to submit!</p>
-                      <p className="mt-1">Your signature has been captured. Click &quot;Submit&quot; to complete your registration.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Signature Dialog */}
-                <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
-                  <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                      <DialogTitle>Draw Your Signature</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-500">
-                        Use your finger or mouse to draw your signature in the box below.
-                      </p>
-                      <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
-                        <canvas
-                          ref={canvasRef}
-                          width={400}
-                          height={150}
-                          className="w-full touch-none cursor-crosshair bg-white"
-                          onMouseDown={startDrawing}
-                          onMouseMove={draw}
-                          onMouseUp={stopDrawing}
-                          onMouseLeave={stopDrawing}
-                          onTouchStart={startDrawing}
-                          onTouchMove={draw}
-                          onTouchEnd={stopDrawing}
-                        />
-                      </div>
-                      <div className="flex justify-between">
-                        <Button variant="outline" onClick={clearSignature}>
-                          Clear
-                        </Button>
-                        <div className="flex gap-2">
-                          <Button variant="outline" onClick={() => setSignatureOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button onClick={saveSignature}>
-                            Save Signature
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </div>
             )}
           </CardContent>
@@ -662,12 +560,12 @@ export default function SelfServiceIntakePage() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
+                  Creating Account...
                 </>
               ) : (
                 <>
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Submit Application
+                  Create Account
                 </>
               )}
             </Button>

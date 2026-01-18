@@ -38,7 +38,7 @@ export async function saveClientIntake(
         .from('profiles')
         .select('id, role, first_name, last_name')
         .ilike('email', clientEmail)
-        .in('role', ['admin', 'staff', 'case_manager'])
+        .in('role', ['admin', 'case_manager'])
         .maybeSingle();
 
       if (staffProfile) {
@@ -383,7 +383,7 @@ export async function saveClientIntake(
         .eq('id', user.id)
         .single();
 
-      const isStaff = userProfile?.role && ['admin', 'case_manager', 'staff'].includes(userProfile.role);
+      const isStaff = userProfile?.role && ['admin', 'case_manager'].includes(userProfile.role);
       const isOwnProfile = clientData?.portal_user_id === user.id;
 
       // Mark intake complete if: (client submitting own OR staff submitting) AND not already completed
