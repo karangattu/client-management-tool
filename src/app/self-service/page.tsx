@@ -76,8 +76,6 @@ export default function SelfServiceIntakePage() {
   const [success, setSuccess] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const skipSignature = true;
-
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -93,12 +91,11 @@ export default function SelfServiceIntakePage() {
     zipCode: '',
   });
 
-  const totalSteps = skipSignature ? 1 : 2;
+  const totalSteps = 2;
   const progress = (currentStep / totalSteps) * 100;
 
   // Initialize canvas
   useEffect(() => {
-    if (!skipSignature) return;
     if (signatureOpen && canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
@@ -111,10 +108,9 @@ export default function SelfServiceIntakePage() {
         ctx.lineJoin = 'round';
       }
     }
-  }, [signatureOpen, skipSignature]);
+  }, [signatureOpen]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (skipSignature) return;
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -138,7 +134,7 @@ export default function SelfServiceIntakePage() {
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (skipSignature || !isDrawing) return;
+    if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -162,12 +158,10 @@ export default function SelfServiceIntakePage() {
   };
 
   const stopDrawing = () => {
-    if (skipSignature) return;
     setIsDrawing(false);
   };
 
   const clearSignature = () => {
-    if (skipSignature) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -179,7 +173,6 @@ export default function SelfServiceIntakePage() {
   };
 
   const saveSignature = () => {
-    if (skipSignature) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -213,7 +206,7 @@ export default function SelfServiceIntakePage() {
           formData.password &&
           formData.password.length >= 6;
       case 2:
-        return skipSignature ? true : agreed;
+        return agreed;
       default:
         return true;
     }
@@ -226,15 +219,15 @@ export default function SelfServiceIntakePage() {
     try {
       // Generate PDF only when signature is captured
       let pdfData = undefined;
-      if (!skipSignature && signature) {
+      if (signature) {
         const { generateEngagementLetterPDF } = await import('@/lib/pdf-utils');
         pdfData = generateEngagementLetterPDF(`${formData.firstName} ${formData.lastName}`, signature);
       }
 
       const result = await submitSelfServiceApplication({
         ...formData,
-        signature: !skipSignature ? signature || undefined : undefined,
-        pdfData: !skipSignature ? pdfData : undefined
+        signature: signature || undefined,
+        pdfData
       });
 
       if (!result.success) {
@@ -500,11 +493,11 @@ export default function SelfServiceIntakePage() {
             )}
 
             {/* Step 2: Quick Consent (optional) */}
-            {currentStep === 2 && !skipSignature && (
+            {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">Review Consent</h2>
-                  <p className="text-gray-500 mt-1">You can complete full intake and signature later</p>
+                  <h2 className="text-xl font-semibold">Engagement Letter</h2>
+                  <p className="text-gray-500 mt-1">Please review and sign to continue</p>
                 </div>
 
                 <div className="border rounded-lg p-4 max-h-[260px] overflow-y-auto bg-gray-50">
@@ -521,12 +514,102 @@ export default function SelfServiceIntakePage() {
                     className="mt-1"
                   />
                   <label htmlFor="agree" className="text-sm cursor-pointer">
-                    <span className="font-medium">I agree to the engagement terms</span>
+                    <span className="font-medium">I have read and agree to the terms</span>
                     <p className="text-gray-500 mt-1">
-                      You can sign later in your client portal.
+                      Please sign below to complete your registration.
                     </p>
                   </label>
                 </div>
+
+                {signature ? (
+                  <div className="border rounded-xl p-6 bg-white shadow-sm ring-1 ring-gray-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-medium text-gray-700">Digital Signature Captured</p>
+                      <BadgeCheck className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="bg-gray-50 border rounded-lg p-4 flex justify-center">
+                      <Image src={signature} alt="Your signature" width={300} height={96} className="max-h-24 object-contain" />
+                    </div>
+                    <div className="flex justify-between items-center mt-4">
+                      <p className="text-xs text-gray-500 italic">Signed on {new Date().toLocaleDateString()}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-gray-500 hover:text-red-600 h-8 gap-1"
+                        onClick={() => {
+                          setSignature(null);
+                          setSignatureOpen(true);
+                        }}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Redraw
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full h-32 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all rounded-xl group"
+                    onClick={() => setSignatureOpen(true)}
+                  >
+                    <div className="flex flex-col items-center">
+                      <PenLine className="h-10 w-10 text-gray-400 group-hover:text-blue-500 mb-2 transition-colors" />
+                      <span className="font-medium text-gray-600 group-hover:text-blue-600">Click to sign engagement letter</span>
+                      <p className="text-xs text-gray-400 mt-1">Draw using mouse or touch</p>
+                    </div>
+                  </Button>
+                )}
+
+                {signature && (
+                  <div className="bg-green-50 p-4 rounded-lg flex gap-3">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                    <div className="text-sm text-green-800">
+                      <p className="font-medium">Ready to submit!</p>
+                      <p className="mt-1">Your signature has been captured. Click "Create Account" to finish.</p>
+                    </div>
+                  </div>
+                )}
+
+                <Dialog open={signatureOpen} onOpenChange={setSignatureOpen}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>Draw Your Signature</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-500">
+                        Use your finger or mouse to draw your signature in the box below.
+                      </p>
+                      <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
+                        <canvas
+                          ref={canvasRef}
+                          width={400}
+                          height={150}
+                          className="w-full touch-none cursor-crosshair bg-white"
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                      </div>
+                      <div className="flex justify-between">
+                        <Button variant="outline" onClick={clearSignature}>
+                          Clear
+                        </Button>
+                        <div className="flex gap-2">
+                          <Button variant="outline" onClick={() => setSignatureOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button onClick={saveSignature}>
+                            Save Signature
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             )}
           </CardContent>
