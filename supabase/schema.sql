@@ -799,9 +799,77 @@ CREATE TRIGGER trigger_benefit_renewal_alerts
 -- ROW LEVEL SECURITY (RLS)
 -- ============================================
 
+-- Helper function to check staff/admin roles without recursion
+CREATE OR REPLACE FUNCTION public.is_staff_or_admin(user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    user_role user_role;
+BEGIN
+    SELECT role INTO user_role FROM profiles WHERE id = user_id;
+    RETURN user_role IN ('admin', 'case_manager', 'staff', 'volunteer');
+END;
+$$;
+
 -- Trigger to ensure profiles + clients exist for auth users
--- NOTE: Must be created in Supabase SQL editor or migration (cannot be in schema.sql if using schema-based bootstrap)
--- See supabase/migrations_20260118_phase1.sql
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+    new_role user_role;
+BEGIN
+    new_role := COALESCE((new.raw_user_meta_data->>'role')::public.user_role, 'client'::public.user_role);
+
+    INSERT INTO public.profiles (id, email, first_name, last_name, role, is_active)
+    VALUES (
+        new.id,
+        new.email,
+        COALESCE(new.raw_user_meta_data->>'first_name', ''),
+        COALESCE(new.raw_user_meta_data->>'last_name', ''),
+        new_role,
+        true
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        first_name = EXCLUDED.first_name,
+        last_name = EXCLUDED.last_name,
+        email = EXCLUDED.email,
+        role = EXCLUDED.role;
+
+    IF new_role = 'client' THEN
+        INSERT INTO public.clients (
+            portal_user_id,
+            has_portal_access,
+            first_name,
+            last_name,
+            email,
+            status,
+            onboarding_status,
+            onboarding_progress,
+            created_at
+        ) VALUES (
+            new.id,
+            true,
+            COALESCE(new.raw_user_meta_data->>'first_name', ''),
+            COALESCE(new.raw_user_meta_data->>'last_name', ''),
+            new.email,
+            'pending',
+            'registered',
+            0,
+            now()
+        )
+        ON CONFLICT (portal_user_id) DO NOTHING;
+    END IF;
+
+    RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -824,11 +892,7 @@ DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
 CREATE POLICY "Users can view allowed profiles" ON profiles
     FOR SELECT USING (
         auth.uid() = id
-        OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'case_manager', 'staff', 'volunteer'))
-        OR (
-            EXISTS (SELECT 1 FROM clients c WHERE c.portal_user_id = auth.uid())
-            AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
-        )
+        OR public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
@@ -847,7 +911,7 @@ CREATE POLICY "Service role can manage all profiles" ON profiles
 DROP POLICY IF EXISTS "Staff can view all clients" ON clients;
 CREATE POLICY "Staff can view all clients" ON clients
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own record" ON clients;
@@ -857,13 +921,31 @@ CREATE POLICY "Clients can view own record" ON clients
 DROP POLICY IF EXISTS "Staff can insert clients" ON clients;
 CREATE POLICY "Staff can insert clients" ON clients
     FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
-DROP POLICY IF EXISTS "Staff can update clients" ON clients;
-CREATE POLICY "Staff can update clients" ON clients
-    FOR UPDATE USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+-- Case management policies
+DROP POLICY IF EXISTS "Staff can manage all cases" ON case_management;
+CREATE POLICY "Staff can manage all cases" ON case_management
+    FOR ALL USING (
+        public.is_staff_or_admin(auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Clients can view own case" ON case_management;
+CREATE POLICY "Clients can view own case" ON case_management
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM clients 
+            WHERE clients.id = case_management.client_id 
+            AND clients.portal_user_id = auth.uid()
+        )
+    );
+
+-- Task policies
+DROP POLICY IF EXISTS "Staff can manage all tasks" ON tasks;
+CREATE POLICY "Staff can manage all tasks" ON tasks
+    FOR ALL USING (
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Admins can delete clients" ON clients;
@@ -879,7 +961,7 @@ CREATE POLICY "Users can view assigned tasks" ON tasks
     FOR SELECT USING (
         assigned_to = auth.uid() OR
         assigned_by = auth.uid() OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Clients can view tasks related to their case (linked via client_id -> portal_user_id)
@@ -896,15 +978,25 @@ CREATE POLICY "Clients can view own tasks" ON tasks
 DROP POLICY IF EXISTS "Staff can create tasks" ON tasks;
 CREATE POLICY "Staff can create tasks" ON tasks
     FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
-DROP POLICY IF EXISTS "Users can update assigned tasks" ON tasks;
-CREATE POLICY "Users can update assigned tasks" ON tasks
-    FOR UPDATE USING (
-        assigned_to = auth.uid() OR
-        assigned_by = auth.uid() OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager'))
+DROP POLICY IF EXISTS "Staff can manage programs" ON programs;
+CREATE POLICY "Staff can manage programs" ON programs
+    FOR ALL USING (
+        public.is_staff_or_admin(auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Staff can manage services" ON services;
+CREATE POLICY "Staff can manage services" ON services
+    FOR ALL USING (
+        public.is_staff_or_admin(auth.uid())
+    );
+
+DROP POLICY IF EXISTS "Staff can manage program enrollments" ON program_enrollments;
+CREATE POLICY "Staff can manage program enrollments" ON program_enrollments
+    FOR ALL USING (
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Guard: clients can only update task completion fields
@@ -952,7 +1044,7 @@ CREATE TRIGGER enforce_client_task_updates
 DROP POLICY IF EXISTS "Staff can view calendar events" ON calendar_events;
 CREATE POLICY "Staff can view calendar events" ON calendar_events
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Clients can view calendar events related to their case
@@ -969,13 +1061,13 @@ CREATE POLICY "Clients can view own calendar events" ON calendar_events
 DROP POLICY IF EXISTS "Staff can create calendar events" ON calendar_events;
 CREATE POLICY "Staff can create calendar events" ON calendar_events
     FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Staff can update calendar events" ON calendar_events;
 CREATE POLICY "Staff can update calendar events" ON calendar_events
     FOR UPDATE USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Alerts policies
@@ -991,7 +1083,7 @@ CREATE POLICY "Users can update own alerts" ON alerts
 DROP POLICY IF EXISTS "Staff can view all documents" ON documents;
 CREATE POLICY "Staff can view all documents" ON documents
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own documents" ON documents;
@@ -1003,14 +1095,14 @@ CREATE POLICY "Clients can view own documents" ON documents
 DROP POLICY IF EXISTS "Staff can manage documents" ON documents;
 CREATE POLICY "Staff can manage documents" ON documents
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Emergency Contacts policies
 DROP POLICY IF EXISTS "Staff can manage all emergency contacts" ON emergency_contacts;
 CREATE POLICY "Staff can manage all emergency contacts" ON emergency_contacts
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own emergency contacts" ON emergency_contacts;
@@ -1023,7 +1115,7 @@ CREATE POLICY "Clients can view own emergency contacts" ON emergency_contacts
 DROP POLICY IF EXISTS "Staff can manage all case management" ON case_management;
 CREATE POLICY "Staff can manage all case management" ON case_management
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own case management" ON case_management;
@@ -1036,7 +1128,7 @@ CREATE POLICY "Clients can view own case management" ON case_management
 DROP POLICY IF EXISTS "Staff can manage all demographics" ON demographics;
 CREATE POLICY "Staff can manage all demographics" ON demographics
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own demographics" ON demographics;
@@ -1049,7 +1141,7 @@ CREATE POLICY "Clients can view own demographics" ON demographics
 DROP POLICY IF EXISTS "Staff can manage all household members" ON household_members;
 CREATE POLICY "Staff can manage all household members" ON household_members
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own household members" ON household_members;
@@ -1062,7 +1154,7 @@ CREATE POLICY "Clients can view own household members" ON household_members
 DROP POLICY IF EXISTS "Staff can manage all signature requests" ON signature_requests;
 CREATE POLICY "Staff can manage all signature requests" ON signature_requests
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view/update own signature requests" ON signature_requests;
@@ -1075,7 +1167,7 @@ CREATE POLICY "Clients can view/update own signature requests" ON signature_requ
 DROP POLICY IF EXISTS "Staff can manage all housing applications" ON housing_applications;
 CREATE POLICY "Staff can manage all housing applications" ON housing_applications
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own housing applications" ON housing_applications;
@@ -1088,7 +1180,7 @@ CREATE POLICY "Clients can view own housing applications" ON housing_application
 DROP POLICY IF EXISTS "Staff can manage all client history" ON client_history;
 CREATE POLICY "Staff can manage all client history" ON client_history
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own history" ON client_history;
@@ -1101,7 +1193,7 @@ CREATE POLICY "Clients can view own history" ON client_history
 DROP POLICY IF EXISTS "Staff and admins can view audit log" ON audit_log;
 CREATE POLICY "Staff and admins can view audit log" ON audit_log
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- ============================================
@@ -1180,7 +1272,7 @@ CREATE POLICY "Anyone can view active programs" ON programs
 DROP POLICY IF EXISTS "Staff can manage program enrollments" ON program_enrollments;
 CREATE POLICY "Staff can manage program enrollments" ON program_enrollments
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Clients can view own enrollments" ON program_enrollments;
@@ -1210,35 +1302,25 @@ BEGIN
     DROP POLICY IF EXISTS "Staff can upload client documents" ON storage.objects;
     DROP POLICY IF EXISTS "Staff can update client documents" ON storage.objects;
     
-    -- Re-create with 'volunteer' role included
     CREATE POLICY "Staff can view client documents"
     ON storage.objects FOR SELECT
     USING (
         bucket_id = 'client-documents' AND
-        EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
-        )
+        public.is_staff_or_admin(auth.uid())
     );
 
     CREATE POLICY "Staff can upload client documents"
     ON storage.objects FOR INSERT
     WITH CHECK (
         bucket_id = 'client-documents' AND
-        EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
-        )
+        public.is_staff_or_admin(auth.uid())
     );
 
     CREATE POLICY "Staff can update client documents"
     ON storage.objects FOR UPDATE
     USING (
         bucket_id = 'client-documents' AND
-        EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer')
-        )
+        public.is_staff_or_admin(auth.uid())
     );
 EXCEPTION WHEN undefined_table THEN
     NULL; -- Resume execution if storage.objects doesn't exist yet (unlikely in Supabase context)
@@ -1248,13 +1330,13 @@ END $$;
 DROP POLICY IF EXISTS "Staff can view all documents" ON documents;
 CREATE POLICY "Staff can view all documents" ON documents
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 DROP POLICY IF EXISTS "Staff can manage documents" ON documents;
 CREATE POLICY "Staff can manage documents" ON documents
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Clients can insert their own documents
@@ -1288,14 +1370,14 @@ ALTER TABLE program_enrollment_activity ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Staff can view enrollment activity" ON program_enrollment_activity;
 CREATE POLICY "Staff can view enrollment activity" ON program_enrollment_activity
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 
 -- Staff can insert enrollment activity
 DROP POLICY IF EXISTS "Staff can insert enrollment activity" ON program_enrollment_activity;
 CREATE POLICY "Staff can insert enrollment activity" ON program_enrollment_activity
     FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'case_manager', 'staff', 'volunteer'))
+        public.is_staff_or_admin(auth.uid())
     );
 -- Allow clients to insert their own tasks (needed for self-service intake task creation if service role fails)
 DROP POLICY IF EXISTS "Clients can insert own tasks" ON tasks;
