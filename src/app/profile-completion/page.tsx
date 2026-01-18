@@ -30,25 +30,26 @@ export default function ProfileCompletionPage() {
         }
 
         const clientResult = await getClientByUserId(userResult.data.id);
-        if (clientResult.success && clientResult.data) {
-          setClientId(clientResult.data.id);
-          const fullDataResult = await getClientFullData(clientResult.data.id);
-          if (fullDataResult.success && fullDataResult.data) {
-            setInitialData(fullDataResult.data);
+      if (clientResult.success && clientResult.data) {
+        setClientId(clientResult.data.id);
+        const fullDataResult = await getClientFullData(clientResult.data.id);
+      if (fullDataResult.success && fullDataResult.data) {
+        setInitialData(fullDataResult.data);
+      } else if (fullDataResult.success) {
+        setInitialData({
+          ...defaultClientIntakeForm,
+          participantDetails: {
+            ...defaultClientIntakeForm.participantDetails,
+            firstName: userResult.data.first_name || "",
+            lastName: userResult.data.last_name || "",
+            email: userResult.data.email || "",
           }
-        } else {
-          // New client record needed? 
-          // We set default shared values from profile
-          setInitialData({
-            ...defaultClientIntakeForm,
-            participantDetails: {
-              ...defaultClientIntakeForm.participantDetails,
-              firstName: userResult.data.first_name || "",
-              lastName: userResult.data.last_name || "",
-              email: userResult.data.email || "",
-            }
-          });
-        }
+        });
+      }
+
+      } else {
+        setError("No client profile found. Please contact support.");
+      }
       } catch {
         setError("An unexpected error occurred.");
       } finally {

@@ -759,6 +759,21 @@ CREATE TRIGGER audit_case_management_changes
     AFTER INSERT OR UPDATE OR DELETE ON case_management
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
+DROP TRIGGER IF EXISTS audit_demographics_changes ON demographics;
+CREATE TRIGGER audit_demographics_changes
+    AFTER INSERT OR UPDATE OR DELETE ON demographics
+    FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+DROP TRIGGER IF EXISTS audit_emergency_contacts_changes ON emergency_contacts;
+CREATE TRIGGER audit_emergency_contacts_changes
+    AFTER INSERT OR UPDATE OR DELETE ON emergency_contacts
+    FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+DROP TRIGGER IF EXISTS audit_household_members_changes ON household_members;
+CREATE TRIGGER audit_household_members_changes
+    AFTER INSERT OR UPDATE OR DELETE ON household_members
+    FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
 -- Benefit renewal alert trigger
 DROP TRIGGER IF EXISTS trigger_benefit_renewal_alerts ON case_management;
 CREATE TRIGGER trigger_benefit_renewal_alerts

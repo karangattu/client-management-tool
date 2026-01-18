@@ -4,16 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
     Calendar,
-    CreditCard,
-    Settings,
     User,
     Users,
     LayoutDashboard,
     CheckSquare,
     Search,
-    Plus,
-    Home,
-    FileText
+    Plus
 } from "lucide-react";
 
 import {

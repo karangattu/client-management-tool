@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, use, useCallback } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Trash2, CheckCircle, AlertCircle, ArrowLeft, Loader2, Pencil } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Loader2, Pencil } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -44,24 +44,7 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
         isRequired: true
     });
 
-    useEffect(() => {
-        loadData();
-    }, [id]);
-
-    useEffect(() => {
-        if (!createOpen) {
-            setEditingTask(null);
-            setNewTask({
-                title: '',
-                description: '',
-                priority: 'medium',
-                daysDueOffset: 7,
-                isRequired: true
-            });
-        }
-    }, [createOpen]);
-
-    async function loadData() {
+    const loadData = useCallback(async () => {
         // We need to fetch the specific program. 
         // Since getPrograms fetches all, we filter. Or we could add a specific getProgram(id) action.
         // Optimized for now: just fetch all and find (cached).
@@ -76,7 +59,34 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
             setTasks(taskResult.data);
         }
         setLoading(false);
-    }
+    }, [id]);
+
+    const resetTaskForm = useCallback(() => {
+        setEditingTask(null);
+        setNewTask({
+            title: '',
+            description: '',
+            priority: 'medium',
+            daysDueOffset: 7,
+            isRequired: true
+        });
+    }, []);
+
+    const handleDialogChange = (open: boolean) => {
+        setCreateOpen(open);
+        if (!open) {
+            resetTaskForm();
+        }
+    };
+
+    const handleReload = () => {
+        loadData();
+    };
+
+    useState(() => {
+        handleReload();
+        return null;
+    });
 
     const handleSaveTask = async () => {
         if (!newTask.title.trim()) return;
@@ -105,8 +115,8 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
         }
 
         if (result.success) {
-            setCreateOpen(false);
-            loadData();
+            handleDialogChange(false);
+            handleReload();
         } else {
             alert(editingTask ? "Failed to update task" : "Failed to add task");
         }
@@ -128,11 +138,16 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
     const handleDeleteTask = async (taskId: string) => {
         if (!confirm('Are you sure you want to delete this template task?')) return;
         await deleteProgramTask(taskId);
-        loadData();
+        handleReload();
     };
 
     if (loading) return <div className="p-8"><Skeleton className="h-12 w-full mb-4" /><Skeleton className="h-64 w-full" /></div>;
-    if (!program) return <div className="p-8">Program not found</div>;
+    if (!program) return (
+        <div className="p-8">
+            <p className="mb-4">Program not found</p>
+            <Button variant="outline" onClick={handleReload}>Retry</Button>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -149,7 +164,7 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>Default Tasks</CardTitle>
-                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                        <Dialog open={createOpen} onOpenChange={handleDialogChange}>
                             <DialogTrigger asChild>
                                 <Button>
                                     <Plus className="h-4 w-4 mr-2" />

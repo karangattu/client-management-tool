@@ -62,7 +62,6 @@ import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
 import { type Program } from '@/lib/types';
-import { BENEFITS_OPTIONS } from '@/lib/constants';
 
 interface Client {
   id: string;
@@ -100,7 +99,6 @@ export default function ClientsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -234,7 +232,6 @@ export default function ClientsPage() {
         throw new Error(result.error || 'Failed to delete client');
       }
 
-      setSuccess(result.message || 'Client deleted successfully');
       setDeleteDialogOpen(false);
       setClientToDelete(null);
       setDeleteConfirmText('');

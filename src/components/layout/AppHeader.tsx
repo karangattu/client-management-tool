@@ -40,7 +40,8 @@ export function AppHeader({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clientIntakeIncomplete, setClientIntakeIncomplete] = useState<boolean | null>(null);
 
-  const isHomePage = pathname === '/' || pathname === '/dashboard';
+  const isClientRole = profile?.role === 'client';
+  const isHomePage = pathname === '/' || pathname === '/dashboard' || (isClientRole && pathname === '/my-portal');
 
   // Check if logged-in client has an incomplete intake
   useEffect(() => {
@@ -131,7 +132,7 @@ export function AppHeader({
           {/* Logo/Title */}
           <div
             className="flex items-center gap-2 cursor-pointer"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push(isClientRole ? '/my-portal' : '/dashboard')}
           >
             <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
               <span className="text-white font-bold text-sm">CM</span>
@@ -241,66 +242,97 @@ export function AppHeader({
       {mobileMenuOpen && (
         <nav className="md:hidden border-t bg-white p-4">
           <ul className="space-y-2">
-            <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push('/dashboard');
-                  setMobileMenuOpen(false);
-                }}
-              >
-                Dashboard
-              </Button>
-            </li>
-            <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push('/clients');
-                  setMobileMenuOpen(false);
-                }}
-              >
-                Clients
-              </Button>
-            </li>
-            <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push('/calendar');
-                  setMobileMenuOpen(false);
-                }}
-              >
-                Calendar
-              </Button>
-            </li>
-            <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push('/tasks');
-                  setMobileMenuOpen(false);
-                }}
-              >
-                Tasks
-              </Button>
-            </li>
-            <li>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push('/housing');
-                  setMobileMenuOpen(false);
-                }}
-              >
-                Housing
-              </Button>
-            </li>
+            {profile?.role !== 'client' ? (
+              <>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/dashboard');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Dashboard
+                  </Button>
+                </li>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/clients');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Clients
+                  </Button>
+                </li>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/calendar');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Calendar
+                  </Button>
+                </li>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/tasks');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Tasks
+                  </Button>
+                </li>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/housing');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Housing
+                  </Button>
+                </li>
+              </>
+            ) : (
+              <>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/my-portal');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    My Portal
+                  </Button>
+                </li>
+                <li>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      router.push('/profile');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Profile
+                  </Button>
+                </li>
+              </>
+            )}
           </ul>
         </nav>
       )}

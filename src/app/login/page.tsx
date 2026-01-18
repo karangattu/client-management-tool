@@ -31,7 +31,7 @@ function LoginForm() {
         if (session?.user) {
           // User already has a valid session, redirect to post-login
           console.log('[Login] User already authenticated, redirecting...');
-          window.location.href = '/auth/post-login?default=dashboard';
+          window.location.href = '/auth/post-login?default=my-portal';
           return;
         }
       } catch (e) {
@@ -79,7 +79,7 @@ function LoginForm() {
         setTimeout(() => reject(new Error('Login request timed out')), 30000)
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const { data, error: signInError } = await Promise.race([loginPromise, timeoutPromise]) as { data: { session: unknown; user: { id: string } } | null; error: { message: string } | null };
 
       if (signInError) {
@@ -96,7 +96,7 @@ function LoginForm() {
         try {
           const { data: check } = await supabase.auth.getSession();
           if (check.session) {
-            window.location.href = '/auth/post-login?default=dashboard';
+            window.location.href = '/auth/post-login?default=my-portal';
             return;
           }
         } catch {
@@ -104,9 +104,9 @@ function LoginForm() {
         }
         setLoading(false);
         setError('Sign-in did not complete. Please try again.');
-      }, 8000);
+      }, 4000);
 
-      window.location.href = '/auth/post-login?default=dashboard';
+      window.location.href = '/auth/post-login?default=my-portal';
 
     } catch (err) {
       console.error('Login error:', err);

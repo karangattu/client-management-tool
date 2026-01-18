@@ -375,7 +375,7 @@ export async function updateProgramTask(params: {
     try {
         const supabase = await createClient();
 
-        const updates: any = {};
+        const updates: Record<string, string | number | boolean | null> = {};
         if (params.title !== undefined) updates.title = params.title;
         if (params.description !== undefined) updates.description = params.description || null;
         if (params.priority !== undefined) updates.priority = params.priority;

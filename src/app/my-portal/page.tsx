@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
@@ -50,7 +50,6 @@ import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-
 import { signEngagementLetter } from '@/app/actions/signature';
 import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
-import { jsPDF } from 'jspdf';
 
 interface ClientInfo {
     id: string;
@@ -105,7 +104,7 @@ const DOCUMENT_TYPES = [
 export default function MyPortalPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
     const [loading, setLoading] = useState(true);
     const [client, setClient] = useState<ClientInfo | null>(null);
@@ -134,6 +133,17 @@ export default function MyPortalPage() {
 
             if (authError || !user) {
                 router.push('/login');
+                return;
+            }
+
+            const { data: profileData } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            if (profileData?.role && profileData.role !== 'client') {
+                router.push('/dashboard');
                 return;
             }
 
@@ -200,8 +210,18 @@ export default function MyPortalPage() {
     }, [supabase, router]);
 
     useEffect(() => {
+        const { data: subscription } = supabase.auth.onAuthStateChange((event: string) => {
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                fetchData();
+            }
+        });
+
         fetchData();
-    }, [fetchData]);
+
+        return () => {
+            subscription.subscription.unsubscribe();
+        };
+    }, [fetchData, supabase]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -686,14 +706,14 @@ export default function MyPortalPage() {
                             }) : (
                                 <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
                                     <CheckCircle className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-sm text-gray-500">You're all caught up!</p>
+                                    <p className="text-sm text-gray-500">You&apos;re all caught up!</p>
                                     <p className="text-xs text-gray-400 mt-1">No pending tasks.</p>
                                 </div>
                             )}
                             {/* If all tasks were urgent and filtered out, show empty state */}
                             {tasks.length > 0 && tasks.every(t => t.priority === 'urgent' || t.priority === 'high') && (
                                 <div className="text-center py-4">
-                                    <p className="text-sm text-gray-500">See "Action Required" above for urgent items.</p>
+                                    <p className="text-sm text-gray-500">See &quot;Action Required&quot; above for urgent items.</p>
                                 </div>
                             )}
                         </CardContent>
@@ -708,7 +728,7 @@ export default function MyPortalPage() {
                                         <FileText className="h-5 w-5 text-purple-600" />
                                         My Documents
                                     </CardTitle>
-                                    <CardDescription>Files you've uploaded</CardDescription>
+                                    <CardDescription>Files you&apos;ve uploaded</CardDescription>
                                 </div>
                                 <Button size="sm" variant="outline" onClick={() => setShowUploadDialog(true)}>
                                     <Upload className="h-4 w-4 mr-2" /> Upload

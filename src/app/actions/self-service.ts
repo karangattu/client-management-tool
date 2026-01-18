@@ -36,7 +36,7 @@ export async function submitSelfServiceApplication(
     let db: SupabaseServerClient;
     try {
       db = createServiceClient();
-    } catch (_e) {
+    } catch {
       console.error("SUPABASE_SERVICE_ROLE_KEY missing. Cannot proceed with privileged operations.");
       throw new Error("Configuration error: Service access not available.");
     }

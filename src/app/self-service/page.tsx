@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { jsPDF } from "jspdf";
 import {
   FileText,
   CheckCircle,
@@ -38,12 +36,34 @@ import {
   Loader2,
   AlertCircle,
   RotateCcw,
-  BadgeCheck
+  BadgeCheck,
+  Users
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
+
+// Simple header for public self-service page - NO client search
+function SelfServiceHeader() {
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-white/80 backdrop-blur-md shadow-sm">
+      <div className="container flex h-14 md:h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <Users className="h-5 w-5 text-white" />
+          </div>
+          <span className="font-semibold text-gray-900">Client Self-Service</span>
+        </div>
+        <Link href="/login">
+          <Button variant="outline" size="sm">
+            Already have an account? Sign In
+          </Button>
+        </Link>
+      </div>
+    </header>
+  );
+}
 
 export default function SelfServiceIntakePage() {
   const router = useRouter();
@@ -253,7 +273,7 @@ export default function SelfServiceIntakePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Client Self-Service" showBackButton={false} />
+      <SelfServiceHeader />
 
       <main className="container px-4 py-6 max-w-3xl mx-auto">
         {/* Language selector at top of form */}

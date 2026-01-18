@@ -45,11 +45,13 @@ import {
   Upload,
   Plus,
   Clock,
-  AlertCircle,
   Copy,
   Check,
   Printer,
   TrendingUp,
+  UserPlus,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -64,6 +66,7 @@ import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, 
 
 interface ClientDetail {
   id: string;
+  portal_user_id?: string;
   first_name: string;
   last_name: string;
   preferred_name?: string;
@@ -127,6 +130,8 @@ interface Activity {
   action: string;
   created_at: string;
   user_name?: string;
+  new_values?: Record<string, unknown> | null;
+  old_values?: Record<string, unknown> | null;
 }
 
 interface Interaction {
@@ -312,7 +317,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           supabase.from('tasks').select('id, title, due_date, status, priority, program_id, programs(id, name, category)').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
           supabase.from('documents').select('id, file_name, file_path, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
           profile?.role === 'admin'
-            ? supabase.from('audit_log').select('id, action, created_at').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
+            ? supabase.from('audit_log').select('id, action, created_at, new_values, old_values').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
             : Promise.resolve({ data: [] }),
           getClientHistory(clientId),
           getClientEnrollments(clientId),
@@ -324,9 +329,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         // Normalize tasks: Supabase returns related rows as arrays (programs: [{...}])
         // while our `Task` type expects a single `programs` object or null.
         if (tasksData) {
-          const normalizedTasks = (tasksData as any[]).map((t) => ({
-            ...t,
-            programs: t.programs && Array.isArray(t.programs) && t.programs.length > 0 ? t.programs[0] : null,
+          const normalizedTasks = (tasksData as Array<{
+            id: string;
+            title: string;
+            due_date: string | null;
+            status: string;
+            priority: string;
+            program_id: string | null;
+            programs?: { id: string; name: string; category: string }[] | { id: string; name: string; category: string } | null;
+          }>).map((task) => ({
+            ...task,
+            programs: Array.isArray(task.programs)
+              ? task.programs[0] ?? null
+              : task.programs ?? null,
           })) as Task[];
           setTasks(normalizedTasks);
         } else {
@@ -337,12 +352,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setAvailablePrograms((programsData?.success ? programsData.data : []) as Program[]);
         setInteractions((historyData?.success ? historyData.data : []) as Interaction[]);
 
-        const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string }> })?.data || [];
+        const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string; new_values?: Record<string, unknown> | null; old_values?: Record<string, unknown> | null }> })?.data || [];
         setActivities(activityData.map((a) => ({
           id: a.id,
           action: formatAuditAction(a.action),
           created_at: a.created_at,
           user_name: 'System',
+          new_values: a.new_values || null,
+          old_values: a.old_values || null,
         })) || []);
 
         // Fetch case manager name if assigned
@@ -541,9 +558,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       await supabase.from('audit_log').insert({
         user_id: profile?.id,
         action: 'case_manager_assigned',
-        table_name: 'client',
+        table_name: 'clients',
         record_id: clientId,
-        new_values: { manager_id: managerId, manager_name: manager?.name },
+        old_values: { assigned_case_manager: assignedCaseManager || null },
+        new_values: { assigned_case_manager: manager?.name || null, manager_id: managerId, manager_name: manager?.name || null },
       });
 
       setShowAssignDialog(false);
@@ -604,7 +622,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         clientId: clientId,
         dueDate: dueDate.toISOString(),
         priority: newTaskData.priority as 'low' | 'medium' | 'high' | 'urgent',
-        assignedTo: profile.id,
+        assignedTo: client?.portal_user_id || profile?.id,
       });
 
       if (!result.success) throw new Error(result.error);
@@ -753,9 +771,149 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       INSERT: 'Created client record',
       UPDATE: 'Updated client information',
       DELETE: 'Deleted client record',
+      client_created: 'Created client record',
+      client_updated: 'Updated client profile',
+      client_archived: 'Archived client',
+      client_deleted: 'Deleted client',
+      client_self_registration: 'Client self-registration',
+      case_manager_assigned: 'Assigned case manager',
+      client_intake_updated: 'Updated intake profile',
+      case_management_updated: 'Updated case management',
+      case_management_created: 'Created case management',
+      demographics_updated: 'Updated demographics',
+      demographics_created: 'Created demographics',
+      emergency_contacts_updated: 'Updated emergency contacts',
+      household_members_updated: 'Updated household members',
     };
-    return actionMap[action] || action;
+    return actionMap[action] || action.replace(/_/g, ' ');
   };
+
+  const labelForAuditKey = (key: string) => {
+    const labels: Record<string, string> = {
+      status: 'Status',
+      assigned_case_manager: 'Assigned CM',
+      case_manager: 'Assigned CM',
+      manager_name: 'Assigned CM',
+      manager_id: 'Assigned CM ID',
+      first_name: 'First name',
+      last_name: 'Last name',
+      email: 'Email',
+      phone: 'Phone',
+      preferred_name: 'Preferred name',
+      profile_picture_url: 'Profile photo',
+      contacts: 'Emergency contacts',
+      members: 'Household members',
+    };
+
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const formatPacificDateTime = (value: string) => new Date(value).toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const formatAuditValue = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return '—';
+
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) {
+        return formatPacificDateTime(value);
+      }
+      return value.replace(/_/g, ' ');
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(', ') : '—';
+    }
+
+    return JSON.stringify(value);
+  };
+
+  const formatAuditDetails = (activity: Activity): string[] => {
+    const details: string[] = [];
+    const newValues = activity.new_values || undefined;
+    const oldValues = activity.old_values || undefined;
+    const excludedKeys = new Set(['id', 'client_id', 'created_at', 'updated_at']);
+
+    if (oldValues && newValues) {
+      Object.keys({ ...oldValues, ...newValues })
+        .filter((key) => !excludedKeys.has(key))
+        .sort()
+        .forEach((key) => {
+          const oldValue = oldValues[key];
+          const newValue = newValues[key];
+
+          if (oldValue === newValue) return;
+          if (oldValue === undefined && newValue === undefined) return;
+
+          details.push(`${labelForAuditKey(key)}: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`);
+        });
+    }
+
+    if (newValues?.client_name && typeof newValues.client_name === 'string') {
+      details.push(`Client: ${newValues.client_name}`);
+    }
+
+    if (newValues?.updated_by && typeof newValues.updated_by === 'string') {
+      details.push(`Updated by: ${newValues.updated_by}`);
+    }
+
+    if (newValues?.assigned_case_manager && !details.some((detail) => detail.startsWith('Assigned CM:'))) {
+      const manager = typeof newValues.assigned_case_manager === 'string'
+        ? newValues.assigned_case_manager
+        : JSON.stringify(newValues.assigned_case_manager);
+      details.push(`Assigned CM: ${manager}`);
+    }
+
+    if (newValues?.manager_name && !details.some((detail) => detail.startsWith('Assigned CM:'))) {
+      details.push(`Assigned CM: ${newValues.manager_name}`);
+    }
+
+    if (newValues?.status && typeof newValues.status === 'string' && !details.some((detail) => detail.startsWith('Status:'))) {
+      details.push(`Status: ${formatAuditValue(newValues.status)}`);
+    }
+
+    if (newValues?.notes && typeof newValues.notes === 'string') {
+      details.push(newValues.notes);
+    }
+
+    if (details.length === 0 && activity.action) {
+      details.push('No additional details recorded');
+    }
+
+    return details;
+  };
+
+  const getActivityMeta = (action: string) => {
+    const normalized = action.toLowerCase();
+
+    if (normalized.includes('delete')) {
+      return { label: 'Deleted', classes: 'bg-red-100 text-red-700', icon: Trash2 };
+    }
+
+    if (normalized.includes('archive')) {
+      return { label: 'Archived', classes: 'bg-amber-100 text-amber-700', icon: Archive };
+    }
+
+    if (normalized.includes('assign')) {
+      return { label: 'Assigned', classes: 'bg-purple-100 text-purple-700', icon: UserPlus };
+    }
+
+    if (normalized.includes('create') || normalized.includes('insert') || normalized.includes('registration')) {
+      return { label: 'Created', classes: 'bg-green-100 text-green-700', icon: UserPlus };
+    }
+
+    return { label: 'Updated', classes: 'bg-blue-100 text-blue-700', icon: Edit };
+  };
+
+
 
   if (loading) {
     return (
@@ -1088,24 +1246,48 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 {profile?.role === 'admin' && (
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-lg">Recent Activity</CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">Recent Activity</CardTitle>
+                        <span className="text-xs text-gray-500">Last 5 updates</span>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       {activities.length > 0 ? (
                         <div className="space-y-3">
-                          {activities.slice(0, 5).map((item) => (
-                            <div key={item.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                                <AlertCircle className="h-4 w-4 text-blue-600" />
+                          {activities.slice(0, 5).map((item) => {
+                            const meta = getActivityMeta(item.action);
+                            const details = formatAuditDetails(item);
+                            const Icon = meta.icon;
+
+                            return (
+                              <div key={item.id} className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
+                                <div className="flex items-start gap-3">
+                                  <div className={`flex h-9 w-9 items-center justify-center rounded-full ${meta.classes}`}>
+                                    <Icon className="h-4 w-4" />
+                                  </div>
+                                  <div className="flex-1 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge className={`border-0 ${meta.classes}`}>{meta.label}</Badge>
+                                      <p className="text-sm font-semibold text-gray-900">{item.action}</p>
+                                    </div>
+                                    <div className="grid gap-1 text-xs text-gray-600">
+                                      {details.map((detail, index) => (
+                                        <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
+                                          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                                          <span>{detail}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                      <span>{item.user_name}</span>
+                                      <span>•</span>
+                                      <span>{formatPacificDateTime(item.created_at)} PT</span>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex-1">
-                                <p className="font-medium text-sm capitalize">{item.action}</p>
-                                <p className="text-xs text-gray-500">
-                                  {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-6">
@@ -1466,23 +1648,41 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </CardHeader>
                     <CardContent>
                       {activities.length > 0 ? (
-                        <div className="space-y-4">
-                          {activities.map((item, index) => (
-                            <div key={item.id} className="flex gap-4">
-                              <div className="flex flex-col items-center">
-                                <div className="w-2 h-2 rounded-full bg-gray-300" />
-                                {index < activities.length - 1 && (
-                                  <div className="w-0.5 h-full bg-gray-100 my-1" />
-                                )}
+                        <div className="space-y-3">
+                          {activities.map((item) => {
+                            const meta = getActivityMeta(item.action);
+                            const details = formatAuditDetails(item);
+                            const Icon = meta.icon;
+
+                            return (
+                              <div key={item.id} className="rounded-lg border border-gray-100 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                  <div className={`flex h-9 w-9 items-center justify-center rounded-full ${meta.classes}`}>
+                                    <Icon className="h-4 w-4" />
+                                  </div>
+                                  <div className="flex-1 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge className={`border-0 ${meta.classes}`}>{meta.label}</Badge>
+                                      <p className="text-sm font-semibold text-gray-900">{item.action}</p>
+                                    </div>
+                                    <div className="grid gap-1 text-xs text-gray-600">
+                                      {details.map((detail, index) => (
+                                        <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
+                                          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                                          <span>{detail}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                      <span>{item.user_name}</span>
+                                      <span>•</span>
+                                      <span>{formatPacificDateTime(item.created_at)} PT</span>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex-1 pb-4">
-                                <p className="font-medium text-sm capitalize">{item.action}</p>
-                                <p className="text-xs text-gray-500">
-                                  {item.user_name} • {new Date(item.created_at).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-6">

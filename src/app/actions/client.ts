@@ -3,6 +3,7 @@
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
 import { clientIntakeSchema } from "@/lib/schemas/validation";
 import { createClient } from "@/lib/supabase/server";
+import { diffAuditValues } from "@/lib/audit-log";
 
 
 interface SaveResult {
@@ -55,6 +56,12 @@ export async function saveClientIntake(
     let savedClientId: string;
 
     if (id) {
+      const { data: existingClient } = await supabase
+        .from('clients')
+        .select('first_name, middle_name, last_name, date_of_birth, email, phone, alternate_phone, street_address, city, state, zip_code, ssn_last_four, referral_source, referral_source_details')
+        .eq('id', id)
+        .single();
+
       // Update existing client - only update fields that clients are allowed to modify
       const updateData = {
         first_name: validatedData.participantDetails.firstName,
@@ -88,6 +95,18 @@ export async function saveClientIntake(
 
       if (!clientData || clientData.length === 0) {
         return { success: false, error: "Client not found or access denied" };
+      }
+
+      const { oldValues, newValues } = diffAuditValues(existingClient || null, updateData);
+      if (Object.keys(newValues).length > 0) {
+        await supabase.from('audit_log').insert({
+          user_id: user.id,
+          action: 'client_intake_updated',
+          table_name: 'clients',
+          record_id: id,
+          old_values: oldValues,
+          new_values: newValues,
+        });
       }
 
       savedClientId = clientData[0].id;
@@ -160,7 +179,7 @@ export async function saveClientIntake(
 
     const { data: existingCM } = await supabase
       .from('case_management')
-      .select('id')
+      .select('id, housing_status, primary_language, secondary_language, needs_interpreter, vi_spdat_score, health_insurance, health_insurance_type, non_cash_benefits, health_status')
       .eq('client_id', savedClientId)
       .maybeSingle();
 
@@ -169,12 +188,38 @@ export async function saveClientIntake(
         .from('case_management')
         .update(caseManagementData)
         .eq('client_id', savedClientId);
-      if (cmError) console.error("Error updating case management:", cmError);
+      if (cmError) {
+        console.error("Error updating case management:", cmError);
+      } else {
+        const { oldValues, newValues } = diffAuditValues(existingCM, caseManagementData);
+        if (Object.keys(newValues).length > 0) {
+          await supabase.from('audit_log').insert({
+            user_id: user.id,
+            action: 'case_management_updated',
+            table_name: 'case_management',
+            record_id: existingCM.id,
+            old_values: oldValues,
+            new_values: newValues,
+          });
+        }
+      }
     } else {
-      const { error: cmError } = await supabase
+      const { data: cmInsert, error: cmError } = await supabase
         .from('case_management')
-        .insert(caseManagementData);
-      if (cmError) console.error("Error inserting case management:", cmError);
+        .insert(caseManagementData)
+        .select('id')
+        .single();
+      if (cmError) {
+        console.error("Error inserting case management:", cmError);
+      } else if (cmInsert?.id) {
+        await supabase.from('audit_log').insert({
+          user_id: user.id,
+          action: 'case_management_created',
+          table_name: 'case_management',
+          record_id: cmInsert.id,
+          new_values: caseManagementData,
+        });
+      }
     }
 
     // 3. Save Demographics (check if exists first)
@@ -193,7 +238,7 @@ export async function saveClientIntake(
 
     const { data: existingDemo } = await supabase
       .from('demographics')
-      .select('id')
+      .select('id, gender, ethnicity, race, marital_status, education_level, employment_status, monthly_income, income_source')
       .eq('client_id', savedClientId)
       .maybeSingle();
 
@@ -202,15 +247,46 @@ export async function saveClientIntake(
         .from('demographics')
         .update(demographicsData)
         .eq('client_id', savedClientId);
-      if (demoError) console.error("Error updating demographics:", demoError);
+      if (demoError) {
+        console.error("Error updating demographics:", demoError);
+      } else {
+        const { oldValues, newValues } = diffAuditValues(existingDemo, demographicsData);
+        if (Object.keys(newValues).length > 0) {
+          await supabase.from('audit_log').insert({
+            user_id: user.id,
+            action: 'demographics_updated',
+            table_name: 'demographics',
+            record_id: existingDemo.id,
+            old_values: oldValues,
+            new_values: newValues,
+          });
+        }
+      }
     } else {
-      const { error: demoError } = await supabase
+      const { data: demoInsert, error: demoError } = await supabase
         .from('demographics')
-        .insert(demographicsData);
-      if (demoError) console.error("Error inserting demographics:", demoError);
+        .insert(demographicsData)
+        .select('id')
+        .single();
+      if (demoError) {
+        console.error("Error inserting demographics:", demoError);
+      } else if (demoInsert?.id) {
+        await supabase.from('audit_log').insert({
+          user_id: user.id,
+          action: 'demographics_created',
+          table_name: 'demographics',
+          record_id: demoInsert.id,
+          new_values: demographicsData,
+        });
+      }
     }
 
     // 4. Update Emergency Contacts (Sync)
+    const { data: existingContacts } = await supabase
+      .from('emergency_contacts')
+      .select('name, relationship, phone, email')
+      .eq('client_id', savedClientId);
+
     // Delete existing and re-insert
     await supabase.from('emergency_contacts').delete().eq('client_id', savedClientId);
     if (validatedData.emergencyContacts.length > 0) {
@@ -222,10 +298,40 @@ export async function saveClientIntake(
         email: c.email || null,
       }));
       const { error: ecError } = await supabase.from('emergency_contacts').insert(contacts);
-      if (ecError) console.error("Error saving emergency contacts:", ecError);
+      if (ecError) {
+        console.error("Error saving emergency contacts:", ecError);
+      }
+    }
+
+    const nextContacts = validatedData.emergencyContacts.map(c => ({
+      name: c.name,
+      relationship: c.relationship,
+      phone: c.phone,
+      email: c.email || null,
+    }));
+
+    const { oldValues: contactOldValues, newValues: contactNewValues } = diffAuditValues(
+      { contacts: existingContacts || [] },
+      { contacts: nextContacts }
+    );
+
+    if (Object.keys(contactNewValues).length > 0) {
+      await supabase.from('audit_log').insert({
+        user_id: user.id,
+        action: 'emergency_contacts_updated',
+        table_name: 'emergency_contacts',
+        record_id: savedClientId,
+        old_values: contactOldValues,
+        new_values: contactNewValues,
+      });
     }
 
     // 5. Update Household Members (Sync)
+    const { data: existingMembers } = await supabase
+      .from('household_members')
+      .select('first_name, last_name, relationship, date_of_birth')
+      .eq('client_id', savedClientId);
+
     await supabase.from('household_members').delete().eq('client_id', savedClientId);
     if (validatedData.household.members && validatedData.household.members.length > 0) {
       const members = validatedData.household.members.map(m => ({
@@ -237,6 +343,29 @@ export async function saveClientIntake(
       }));
       const { error: hmError } = await supabase.from('household_members').insert(members);
       if (hmError) console.error("Error saving household members:", hmError);
+    }
+
+    const nextMembers = (validatedData.household.members || []).map(m => ({
+      first_name: m.name.split(' ')[0],
+      last_name: m.name.split(' ').slice(1).join(' ') || '',
+      relationship: m.relationship,
+      date_of_birth: m.dateOfBirth || null,
+    }));
+
+    const { oldValues: memberOldValues, newValues: memberNewValues } = diffAuditValues(
+      { members: existingMembers || [] },
+      { members: nextMembers }
+    );
+
+    if (Object.keys(memberNewValues).length > 0) {
+      await supabase.from('audit_log').insert({
+        user_id: user.id,
+        action: 'household_members_updated',
+        table_name: 'household_members',
+        record_id: savedClientId,
+        old_values: memberOldValues,
+        new_values: memberNewValues,
+      });
     }
 
     // 6. Handle Intake Completion Tracking

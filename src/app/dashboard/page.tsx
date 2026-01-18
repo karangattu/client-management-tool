@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime } from '@/lib/date-utils';
 import {
   Users,
   UserPlus,
@@ -29,15 +30,13 @@ import {
   Printer,
   CheckCircle,
   Plus,
-  ArrowRight,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useToast } from "@/components/ui/use-toast";
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { useLanguage } from '@/lib/language-context';
 import { completeTask, claimTask, assignTask } from '@/app/actions/tasks';
-import { getClientHistory, InteractionType } from '@/app/actions/history';
-import { getAllUsers } from '@/app/actions/users';
+import { InteractionType } from '@/app/actions/history';
 import { ClientHistory } from '@/components/clients/ClientHistory';
 import { PrintableCaseHistory } from '@/components/clients/PrintableCaseHistory';
 import {
@@ -134,11 +133,11 @@ export default function DashboardPage() {
   });
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [openTasksToClaim, setOpenTasksToClaim] = useState<OpenTask[]>([]);
-  const [clientTasks, setClientTasks] = useState<ClientTask[]>([]);
-  const [clientEvents, setClientEvents] = useState<ClientEvent[]>([]);
-  const [clientInteractions, setClientInteractions] = useState<Interaction[]>([]);
-  const [clientDocuments, setClientDocuments] = useState<Array<{ id: string; file_name: string; document_type: string; status?: string; created_at: string; file_path: string }>>([]);
-  const [currentClient, setCurrentClient] = useState<{ id: string; first_name: string; last_name: string;[key: string]: unknown } | null>(null);
+  const [clientTasks] = useState<ClientTask[]>([]);
+  const [clientEvents] = useState<ClientEvent[]>([]);
+  const [clientInteractions] = useState<Interaction[]>([]);
+  const [clientDocuments] = useState<Array<{ id: string; file_name: string; document_type: string; status?: string; created_at: string; file_path: string }>>([]);
+  const [currentClient] = useState<{ id: string; first_name: string; last_name: string;[key: string]: unknown } | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [listsLoading, setListsLoading] = useState(true);
   const [focusLoading, setFocusLoading] = useState(true);
@@ -205,7 +204,7 @@ export default function DashboardPage() {
             schema: 'public',
             table: 'tasks',
           },
-          (payload: any) => {
+          (payload: { eventType: string; new: OpenTask; old: { id: string; status?: string; assigned_to?: string } }) => {
             console.log('[Realtime] Task change detected:', payload.eventType);
 
             if (payload.eventType === 'INSERT') {
@@ -334,7 +333,7 @@ export default function DashboardPage() {
             id, title, start_time, description, clients (*)
           `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
         supabase.from('alerts').select(`
-            id, title, message, priority, created_at, clients (*)
+            id, title, message, alert_type, created_at, clients (*)
           `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
       ]);
 
@@ -407,70 +406,70 @@ export default function DashboardPage() {
       }
 
       if (openTasksData) {
-        setOpenTasksToClaim((openTasksData as any[]).map((task: any) => ({
+        setOpenTasksToClaim((openTasksData as Array<{ id: string; title: string; description?: string | null; priority: string; due_date: string; client_id?: string | null; assigned_to?: string | null; status?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).map((task) => ({
           ...task,
           clients: Array.isArray(task.clients) ? task.clients[0] : task.clients
         })) as OpenTask[]);
       }
 
       if (staffData) {
-        setStaff(staffData.map((u: any) => ({
-          id: u.id,
-          name: `${u.first_name} ${u.last_name}`
+        setStaff((staffData as Array<{ id: string; first_name: string; last_name: string }>).map((staffMember) => ({
+          id: staffMember.id,
+          name: `${staffMember.first_name} ${staffMember.last_name}`
         })));
       }
 
       // --- Process Focus Items ---
       const [
-        { data: urgentTasks },
-        { data: todayEvents },
-        { data: activeAlerts }
+        focusTasks,
+        focusEvents,
+        focusAlerts
       ] = focusResults;
 
       const focus: FocusItem[] = [];
 
-      if (urgentTasks) {
-        (urgentTasks as any[]).forEach((task) => {
+      if (focusTasks.data) {
+        (focusTasks.data as Array<{ id: string; title: string; description?: string | null; due_date?: string | null; priority?: string | null; status?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((task) => {
           const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
           const isOverdue = task.due_date && new Date(task.due_date) < new Date();
           focus.push({
             id: task.id,
             type: 'task',
             title: task.title,
-            description: task.description,
-            time: task.due_date ? new Date(task.due_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : undefined,
+            description: task.description ?? undefined,
+            time: task.due_date ?? undefined,
             priority: isOverdue ? 'urgent' : (task.priority || 'medium') as 'urgent' | 'high' | 'medium' | 'low',
             client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
-            status: task.status,
+            status: task.status ?? undefined,
           });
         });
       }
 
-      if (todayEvents) {
-        (todayEvents as any[]).forEach((event) => {
+      if (focusEvents.data) {
+        (focusEvents.data as Array<{ id: string; title: string; description?: string | null; start_time: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((event) => {
           const client = Array.isArray(event.clients) ? event.clients[0] : event.clients;
           focus.push({
             id: event.id,
             type: 'event',
             title: event.title,
-            description: event.description,
-            time: new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            description: event.description ?? undefined,
+            time: event.start_time,
             priority: 'medium',
             client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
           });
         });
       }
 
-      if (activeAlerts) {
-        (activeAlerts as any[]).forEach((alert) => {
+      if (focusAlerts.data) {
+        (focusAlerts.data as Array<{ id: string; title: string; message?: string | null; created_at: string; alert_type?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((alert) => {
           const client = Array.isArray(alert.clients) ? alert.clients[0] : alert.clients;
           focus.push({
             id: alert.id,
             type: 'alert',
             title: alert.title,
-            description: alert.message,
-            time: new Date(alert.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-            priority: (alert.priority || 'high') as 'urgent' | 'high' | 'medium' | 'low',
+            description: alert.message ?? undefined,
+            time: alert.created_at,
+            priority: alert.alert_type === 'deadline' ? 'urgent' : 'high',
             client_name: client ? `${client.first_name} ${client.last_name}` : undefined,
           });
         });
@@ -626,8 +625,12 @@ export default function DashboardPage() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    router.push('/login');
+    try {
+      await signOut();
+    } finally {
+      // Always redirect to login, even if signOut fails
+      window.location.href = '/login';
+    }
   };
 
   // Show auth error state with retry option
@@ -736,24 +739,8 @@ export default function DashboardPage() {
   const canCreateIntake = canAccessFeature(profile.role, 'staff');
   const canViewCalendar = canAccessFeature(profile.role, 'volunteer');
   const canViewTasks = canAccessFeature(profile.role, 'volunteer');
-  const canViewHousing = canAccessFeature(profile.role, 'staff');
   const canViewDocuments = canAccessFeature(profile.role, 'volunteer');
-  const canViewAlerts = true; // Everyone can view their alerts
   const canViewAdmin = isAdmin;
-
-  const formatTimeAgo = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
-
-    if (hours < 1) return 'Just now';
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
-  };
 
   const getPriorityBadge = (priority: string, status?: string) => {
     if (status === 'in_progress') {
@@ -873,7 +860,7 @@ export default function DashboardPage() {
             </Card>
 
             {/* Profile Completion Prompt - Show if there are pending profile/intake tasks */}
-            {clientTasks.some(task =>
+            {clientTasks.some((task: ClientTask) =>
               task.title.toLowerCase().includes('profile') ||
               task.title.toLowerCase().includes('intake')
             ) && (
@@ -1062,12 +1049,12 @@ export default function DashboardPage() {
                             <p className="text-sm text-gray-500 line-clamp-1">{item.description}</p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
-                            {item.time && (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {item.time}
-                              </span>
-                            )}
+                          {item.time && (
+                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {formatPacificFriendly(item.time, true)}
+                            </span>
+                          )}
                             {item.client_name && (
                               <span className="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-100 rounded-full">
                                 {item.client_name}
@@ -1191,7 +1178,7 @@ export default function DashboardPage() {
                   </div>
                 ) : clientTasks.length > 0 ? (
                   <div className="space-y-3">
-                    {clientTasks.map((task) => (
+                    {clientTasks.map((task: ClientTask) => (
                       <div
                         key={task.id}
                         className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
@@ -1201,12 +1188,9 @@ export default function DashboardPage() {
                           {task.description && (
                             <p className="text-xs text-gray-500 line-clamp-1">{task.description}</p>
                           )}
-                          {task.due_date && (
+                           {task.due_date && (
                             <p className="text-xs text-gray-400 mt-1">
-                              Due: {new Date(task.due_date).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
+                              {formatPacificDueDate(task.due_date)}
                             </p>
                           )}
                         </div>
@@ -1247,23 +1231,16 @@ export default function DashboardPage() {
                   </div>
                 ) : clientEvents.length > 0 ? (
                   <div className="space-y-3">
-                    {clientEvents.map((event) => (
+                    {clientEvents.map((event: ClientEvent) => (
                       <div
                         key={event.id}
                         className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                       >
                         <div>
                           <p className="font-medium text-gray-900 text-sm">{event.title}</p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(event.start_time).toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })} at {new Date(event.start_time).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
-                          </p>
+                           <p className="text-xs text-gray-500">
+                             {formatPacificFriendly(event.start_time, true)}
+                           </p>
                           {event.location && (
                             <p className="text-xs text-gray-400 mt-1">{event.location}</p>
                           )}
@@ -1294,23 +1271,19 @@ export default function DashboardPage() {
                   </div>
                 ) : clientDocuments.length > 0 ? (
                   <div className="space-y-2">
-                    {clientDocuments.map((doc) => (
+                    {clientDocuments.map((doc: { id: string; file_name: string; document_type: string; created_at: string }) => (
                       <div
                         key={doc.id}
                         className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <FileText className="h-4 w-4 text-amber-600 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-gray-900 text-sm truncate">{doc.file_name}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(doc.created_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })}
-                            </p>
-                          </div>
+                           <div className="min-w-0 flex-1">
+                             <p className="font-medium text-gray-900 text-sm truncate">{doc.file_name}</p>
+                             <p className="text-xs text-gray-500">
+                               {formatPacificFriendly(doc.created_at)}
+                             </p>
+                           </div>
                         </div>
                         <Badge variant="secondary" className="shrink-0 ml-2">
                           {doc.document_type?.replace(/_/g, ' ') || 'Document'}
@@ -1392,10 +1365,7 @@ export default function DashboardPage() {
                           <p className="font-medium text-gray-900 text-sm">{deadline.title}</p>
                           <p className="text-xs text-gray-500">
                             {deadline.client_name && `${deadline.client_name} • `}
-                            {new Date(deadline.due_date).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {formatPacificDueDate(deadline.due_date)}
                           </p>
                         </div>
                         {getPriorityBadge(deadline.priority)}
@@ -1435,7 +1405,7 @@ export default function DashboardPage() {
                             {getPriorityBadge(task.priority)}
                             {task.due_date && (
                               <span className={`text-xs px-2 py-0.5 rounded-full ${new Date(task.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
-                                Due {new Date(task.due_date).toLocaleDateString()}
+                                {formatPacificDueDate(task.due_date)}
                               </span>
                             )}
                           </div>

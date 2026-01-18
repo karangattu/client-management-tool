@@ -13,14 +13,11 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
-import { useRef, useEffect } from "react";
-import { jsPDF } from "jspdf";
-import Image from "next/image";
-import { Label } from "@/components/ui/label";
-import { FilePen, CheckCircle2, PenLine, RotateCcw } from "lucide-react";
+import { FilePen, CheckCircle2 } from "lucide-react";
 import { ENGAGEMENT_LETTER_TEXT } from "@/lib/constants";
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
 import { signEngagementLetter } from "@/app/actions/signature";
+import { Label } from "@/components/ui/label";
 
 interface SignEngagementLetterDialogProps {
     clientId: string;

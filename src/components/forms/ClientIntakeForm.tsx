@@ -75,6 +75,7 @@ interface ClientIntakeFormProps {
 
 export function ClientIntakeForm({ initialData, clientId, showStaffFields: _showStaffFields = true }: ClientIntakeFormProps) {
   const { profile } = useAuth();
+  const showStaffFields = _showStaffFields && profile?.role !== 'client';
   const hasSubmittedRef = useRef(false);
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -185,6 +186,11 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   // Dynamic Benefits Calculation
   const benefits = useMemo(() => calculateBenefits(formData), [formData]);
 
+  const visibleSteps = useMemo(
+    () => FORM_STEPS.filter((step) => (showStaffFields ? true : step.id !== "case")),
+    [showStaffFields]
+  );
+
   const validateCurrentStep = async () => {
     const fieldsToValidate = getFieldsForStep(currentStep);
     if (fieldsToValidate.length === 0) return true;
@@ -199,20 +205,22 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   };
 
   const getFieldsForStep = (step: number): string[] => {
-    switch (step) {
-      case 0: // Personal Info
+    const currentStepKey = visibleSteps[step]?.id;
+
+    switch (currentStepKey) {
+      case "participant":
         return ["participantDetails"];
-      case 1: // Emergency Contact
+      case "emergency":
         return ["emergencyContacts"];
-      case 2: // Demographics
+      case "demographics":
         return ["demographics.race", "demographics.genderIdentity", "demographics.ethnicity", "demographics.maritalStatus", "demographics.language"];
-      case 3: // Household
+      case "household":
         return ["household"];
-      case 4: // Financial
+      case "financial":
         return ["demographics.employmentStatus", "demographics.monthlyIncome", "demographics.incomeSource", "demographics.veteranStatus", "demographics.disabilityStatus"];
-      case 5: // Benefits & Health
+      case "health":
         return ["caseManagement.healthInsurance", "caseManagement.healthInsuranceType", "caseManagement.nonCashBenefits", "caseManagement.healthStatus"];
-      case 6: // Case Details
+      case "case":
         return ["caseManagement.clientManager", "caseManagement.clientStatus", "caseManagement.housingStatus", "caseManagement.primaryLanguage"];
       default:
         return [];
@@ -223,7 +231,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
     e.preventDefault();
     e.stopPropagation();
 
-    if (currentStep >= FORM_STEPS.length - 1) {
+    if (currentStep >= visibleSteps.length - 1) {
       return; // Don't proceed if on last step
     }
 
@@ -243,13 +251,13 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   };
 
   const handleStepClick = async (stepIndex: number) => {
-    // Allow going back to any previous step freely
     if (stepIndex < currentStep) {
       setCurrentStep(stepIndex);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
     }
-    // Allow going to next step only if current step is valid
-    else if (stepIndex === currentStep + 1) {
+
+    if (stepIndex === currentStep + 1) {
       const isValid = await validateCurrentStep();
       if (isValid) {
         setCurrentStep(stepIndex);
@@ -356,7 +364,8 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
     });
   };
 
-  const progress = ((currentStep + 1) / FORM_STEPS.length) * 100;
+  const progress = ((currentStep + 1) / visibleSteps.length) * 100;
+  const atFinalStep = currentStep >= visibleSteps.length - 1;
 
   // Compute subtitle for new vs edit intake
   const isEdit = !!clientId;
@@ -367,11 +376,14 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
     ? clientName
       ? `Editing intake for ${clientName}`
       : "Editing existing client intake"
-    : "Create a new client intake (staff/admin only)";
+    : showStaffFields
+      ? "Create a new client intake (staff/admin only)"
+      : "Complete your intake to activate your profile";
+
 
   // Prevent form submission on Enter key (except on last step)
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && currentStep < FORM_STEPS.length - 1) {
+    if (e.key === "Enter" && !atFinalStep) {
       e.preventDefault();
     }
   };
@@ -396,12 +408,16 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
                 )}
                 <span className="truncate">{subtitle}</span>
               </p>
-              {!isEdit && (
-                <p className="text-xs text-muted-foreground mt-1">Staff/volunteers: You can create a client record on behalf of someone who cannot self-register.</p>
-              )}
-              <p className="text-sm text-muted-foreground">
-                Step {currentStep + 1} of {FORM_STEPS.length}
-              </p>
+               {!isEdit && showStaffFields && (
+                 <p className="text-xs text-muted-foreground mt-1">Staff/volunteers: You can create a client record on behalf of someone who cannot self-register.</p>
+               )}
+               {!isEdit && !showStaffFields && (
+                 <p className="text-xs text-muted-foreground mt-1">Case details are completed by your case manager after review.</p>
+               )}
+               <p className="text-sm text-muted-foreground">
+                 Step {currentStep + 1} of {visibleSteps.length}
+               </p>
+
             </div>
             <div className="flex items-center gap-4">
               {lastSaved && (
@@ -425,7 +441,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
 
           {/* Step Indicators */}
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
-            {FORM_STEPS.map((step, index) => {
+            {visibleSteps.map((step, index) => {
               const StepIcon = step.icon;
               const isActive = index === currentStep;
               const isCompleted = index < currentStep;
@@ -468,13 +484,13 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
         {/* Form Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 xl:col-span-9 min-h-[400px]">
-            {currentStep === 0 && <ParticipantDetailsSection />}
-            {currentStep === 1 && <EmergencyContactSection />}
-            {currentStep === 2 && <DemographicsSection />}
-            {currentStep === 3 && <HouseholdSection />}
-            {currentStep === 4 && <FinancialSection />}
-            {currentStep === 5 && <BenefitsHealthSection />}
-            {currentStep === 6 && <CaseManagementSection caseManagers={caseManagers} />}
+            {visibleSteps[currentStep]?.id === "participant" && <ParticipantDetailsSection />}
+            {visibleSteps[currentStep]?.id === "emergency" && <EmergencyContactSection />}
+            {visibleSteps[currentStep]?.id === "demographics" && <DemographicsSection />}
+            {visibleSteps[currentStep]?.id === "household" && <HouseholdSection />}
+            {visibleSteps[currentStep]?.id === "financial" && <FinancialSection />}
+            {visibleSteps[currentStep]?.id === "health" && <BenefitsHealthSection />}
+            {visibleSteps[currentStep]?.id === "case" && <CaseManagementSection caseManagers={caseManagers} />}
           </div>
 
           <aside className="hidden lg:block lg:col-span-4 xl:col-span-3">
@@ -521,7 +537,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
                 Previous
               </Button>
 
-              {currentStep < FORM_STEPS.length - 1 ? (
+              {!atFinalStep ? (
                 <Button
                   type="button"
                   onClick={handleNext}

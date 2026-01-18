@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
 export type Language = 'en' | 'es' | 'zh' | 'vi';
 
@@ -837,18 +837,18 @@ const translations: Record<Language, Translations> = { en, es, zh, vi };
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('en');
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-    const savedLang = localStorage.getItem('preferred-language') as Language;
-    if (savedLang && availableLanguages.some(l => l.code === savedLang)) {
-      setLanguageState(savedLang);
+  const [language, setLanguageState] = useState<Language>(() => {
+    if (typeof window === 'undefined') {
+      return 'en';
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
+    const savedLang = localStorage.getItem('preferred-language') as Language | null;
+    if (savedLang && availableLanguages.some((lang) => lang.code === savedLang)) {
+      return savedLang;
+    }
+
+    return 'en';
+  });
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem('preferred-language', lang);

@@ -20,6 +20,8 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
   let resolvedClientId = clientId;
   let initialData: ClientIntakeFormType | undefined = undefined;
   let showBackButton = true;
+  let role: string | undefined;
+  let showStaffFields = true;
 
   if (!resolvedClientId) {
     const supabase = await createClient();
@@ -37,7 +39,7 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
         .eq('id', user.id)
         .single();
 
-      const role = profile?.role as string | undefined;
+      role = profile?.role as string | undefined;
 
       if (role === 'client') {
         // Client users should go to their portal if they don't have a client record
@@ -57,6 +59,8 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
       // For staff/admin/case_manager roles, allow opening a blank intake to create a new client
     }
   }
+
+  showStaffFields = role ? role !== 'client' : true;
 
   if (resolvedClientId) {
     const result = await getClientFullData(resolvedClientId);
@@ -90,7 +94,7 @@ export default async function ClientIntakePage({ searchParams }: PageProps) {
             </Link>
           )}
         </div>
-        <ClientIntakeForm initialData={initialData} clientId={resolvedClientId} />
+        <ClientIntakeForm initialData={initialData} clientId={resolvedClientId} showStaffFields={showStaffFields} />
         <Toaster />
       </div>
     </div>

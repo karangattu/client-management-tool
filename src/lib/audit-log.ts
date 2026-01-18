@@ -21,6 +21,26 @@ export interface LegacyAuditLogEntry {
   details?: Record<string, unknown>;
 }
 
+export function diffAuditValues(previous: Record<string, unknown> | null, next: Record<string, unknown> | null) {
+  const oldValues: Record<string, unknown> = {};
+  const newValues: Record<string, unknown> = {};
+
+  if (!next) {
+    return { oldValues, newValues };
+  }
+
+  Object.entries(next).forEach(([key, value]) => {
+    const previousValue = previous?.[key];
+
+    if (previousValue !== value) {
+      oldValues[key] = previousValue ?? null;
+      newValues[key] = value ?? null;
+    }
+  });
+
+  return { oldValues, newValues };
+}
+
 export function convertLegacyAuditLog(legacyEntry: LegacyAuditLogEntry): AuditLogEntry {
   // Map entity_type to table_name
   const entityTypeToTableName: Record<string, string> = {

@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { completeTask, claimTask } from '@/app/actions/tasks';
+import { completeTask } from '@/app/actions/tasks';
 import {
     CheckSquare,
     Calendar,
@@ -294,39 +294,7 @@ export default function CommandCenterPage() {
         }
     };
 
-    const handleClaimTask = async (taskId: string) => {
-        // Optimistic update
-        setItems(prev => prev.map(item =>
-            item.id === taskId ? { ...item, client_name: 'Assigned to you' } : item
-        ));
-        // Note: Claiming might change "assigned_to" which isn't directly visible in the item list logic 
-        // derived from "assigned_to.eq.${user?.id},assigned_to.is.null", 
-        // but it effectively moves it to "My Tasks".
-        // For visual feedback, just a toast is mostly enough if the list doesn't fundamentally change structure immediately,
-        // but if we want to reflect it, we'd assume it's now assigned.
 
-        toast({
-            title: "Task Claimed",
-            description: "You have successfully claimed this task.",
-            duration: 3000,
-        });
-
-        try {
-            const result = await claimTask(taskId);
-            if (!result.success) {
-                toast({
-                    title: "Error",
-                    description: result.error || "Failed to claim task",
-                    variant: "destructive",
-                });
-                // Re-fetch to ensure state is correct since claiming is complex
-                fetchCommandCenterData();
-            }
-        } catch (error) {
-            console.error('Error claiming task:', error);
-            fetchCommandCenterData();
-        }
-    };
 
     const toggleClientExpand = (clientId: string) => {
         const newExpanded = new Set(expandedClients);

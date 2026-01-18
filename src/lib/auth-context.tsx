@@ -40,13 +40,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initAttemptRef = useRef(0);
-  const profileIdRef = useRef<string | null>(null);
+  const profileUserIdRef = useRef<string | null>(null); // Track which user ID the profile belongs to
   const isInitializedRef = useRef(false);
+  const loadingRef = useRef(true); // Track loading state for safety timeout
+
+  // Helper to update both loading state and ref
+  const updateLoading = useCallback((value: boolean) => {
+    loadingRef.current = value;
+    setLoading(value);
+  }, []);
 
   // Memoize the Supabase client to prevent recreation on every render
   const supabase = useMemo(() => createClient(), []);
 
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
+    console.log('[Auth] Fetching profile for user:', userId);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -59,15 +67,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[Auth] Profile not found for user:', userId);
           return null;
         }
-        console.error('[Auth] Error fetching profile:', error.code, error.message);
+        console.error('[Auth] Error fetching profile:', error.code, error.message, error);
         return null;
       }
 
       if (!data || data.length === 0) {
-        console.warn('[Auth] No profile data for user:', userId);
+        console.warn('[Auth] No profile data returned for user:', userId);
         return null;
       }
 
+      console.log('[Auth] Profile fetched successfully:', data[0]?.role);
       return data[0] as UserProfile;
     } catch (err) {
       console.error('[Auth] Exception in fetchProfile:', err);
@@ -86,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const attemptNum = initAttemptRef.current;
     console.log(`[Auth] Initializing auth (attempt ${attemptNum}, forced: ${forceRefresh})...`);
 
-    setLoading(true);
+    updateLoading(true);
     setError(null);
 
     try {
@@ -112,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             const profileData = await fetchProfile(refreshData.session.user.id);
             setProfile(profileData);
-            profileIdRef.current = profileData?.id || null;
+            profileUserIdRef.current = refreshData.session.user.id;
             console.log('[Auth] Profile loaded after refresh:', profileData?.role || 'none');
             
             setError(null);
@@ -136,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             const profileData = await fetchProfile(retryData.session.user.id);
             setProfile(profileData);
-            profileIdRef.current = profileData?.id || null;
+            profileUserIdRef.current = retryData.session.user.id;
             
             setError(null);
             isInitializedRef.current = true;
@@ -154,11 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
-          profileIdRef.current = profileData?.id || null;
+          profileUserIdRef.current = session.user.id;
           console.log('[Auth] Profile loaded:', profileData?.role || 'none');
         } else {
           setProfile(null);
-          profileIdRef.current = null;
+          profileUserIdRef.current = null;
         }
 
         setError(null);
@@ -178,9 +187,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      updateLoading(false);
     }
-  }, [supabase, fetchProfile]);
+  }, [supabase, fetchProfile, updateLoading]);
 
 
   const retryAuth = useCallback(async () => {
@@ -220,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setUser(null);
           setProfile(null);
-          profileIdRef.current = null;
+          profileUserIdRef.current = null;
           setError('Your session has expired. Please log in again.');
           return;
         }
@@ -239,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setUser(null);
         setProfile(null);
-        profileIdRef.current = null;
+        profileUserIdRef.current = null;
       }
     } catch (err) {
       console.error('[Auth] Exception during session refresh:', err);
@@ -247,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setUser(null);
       setProfile(null);
-      profileIdRef.current = null;
+      profileUserIdRef.current = null;
       setError('Session error. Please log in again.');
     }
   }, [supabase.auth]);
@@ -259,9 +268,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Safety timeout - ensure loading clears even if something goes wrong
     // This prevents infinite loading states
     const safetyTimeout = setTimeout(() => {
-      if (loading) {
+      if (loadingRef.current) {
         console.warn('[Auth] Safety timeout reached - clearing loading state');
-        setLoading(false);
+        updateLoading(false);
       }
     }, 15000); // 15 seconds max for auth
 
@@ -282,9 +291,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setUser(null);
           setProfile(null);
-          profileIdRef.current = null;
+          profileUserIdRef.current = null;
           setError('Session expired. Please log in again.');
-          setLoading(false);
+          updateLoading(false);
           return;
         }
 
@@ -295,19 +304,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (newSession?.user) {
           // Only fetch profile if it's a different user or we don't have one
           // Use ref to avoid dependency on profile state
-          if (profileIdRef.current !== newSession.user.id) {
+          if (profileUserIdRef.current !== newSession.user.id) {
             const profileData = await fetchProfile(newSession.user.id);
             setProfile(profileData);
-            profileIdRef.current = profileData?.id || null;
+            profileUserIdRef.current = newSession.user.id;
           }
         } else {
           setProfile(null);
-          profileIdRef.current = null;
+          profileUserIdRef.current = null;
         }
 
         // Clear any previous errors on successful auth change
         setError(null);
-        setLoading(false);
+        updateLoading(false);
       }
     );
 
@@ -359,7 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     // Reset refs so re-login can re-initialize
     isInitializedRef.current = false;
-    profileIdRef.current = null;
+    profileUserIdRef.current = null;
   }, [supabase.auth]);
 
 

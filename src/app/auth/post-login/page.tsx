@@ -22,42 +22,47 @@ function PostLoginContent() {
       redirectingRef.current = true;
 
       const supabase = createClient();
-      const defaultRedirect =
-        searchParams.get('default') === 'dashboard' ? '/dashboard' : '/my-portal';
+      const defaultParam = searchParams.get('default');
+      const defaultRedirect = defaultParam === 'dashboard' ? '/dashboard' : '/my-portal';
+      console.log('[PostLogin] Starting, defaultRedirect:', defaultRedirect);
 
       // Global timeout - if everything takes too long, redirect to default anyway
       globalTimeoutRef.current = setTimeout(() => {
-        console.warn('[PostLogin] Global timeout reached, redirecting to default');
+        console.warn('[PostLogin] Global timeout reached, redirecting to default:', defaultRedirect);
         window.location.href = defaultRedirect;
-      }, 10000); // 10 second max
+      }, 5000); // 5 second max
 
       try {
         // First check if we already have a session before trying to refresh
         setDetails('Checking session…');
+        console.log('[PostLogin] Checking session...');
         let session = (await supabase.auth.getSession()).data.session;
+        console.log('[PostLogin] Initial session:', session ? 'found' : 'not found');
 
-        // If no session yet, wait briefly for cookies to propagate (max 1.5s)
+        // If no session yet, wait briefly for cookies to propagate (max 500ms)
         if (!session?.user) {
-          for (let attempt = 1; !session?.user && attempt <= 6; attempt++) {
+          for (let attempt = 1; !session?.user && attempt <= 2; attempt++) {
             await new Promise((r) => setTimeout(r, 250));
             session = (await supabase.auth.getSession()).data.session;
           }
+          console.log('[PostLogin] Session after wait:', session ? 'found' : 'not found');
         }
 
         // Only attempt refresh if we have a session (to ensure tokens are fresh)
         if (session?.user) {
           setDetails('Refreshing session…');
+          console.log('[PostLogin] Refreshing session...');
           try {
             // Add timeout to prevent hanging
             const refreshPromise = supabase.auth.refreshSession();
             const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Refresh timeout')), 3000)
+              setTimeout(() => reject(new Error('Refresh timeout')), 2000)
             );
             await Promise.race([refreshPromise, timeoutPromise]);
+            console.log('[PostLogin] Session refreshed successfully');
           } catch (e) {
             console.warn('[PostLogin] refreshSession failed (continuing):', e);
           }
-          // Re-fetch session after refresh
           session = (await supabase.auth.getSession()).data.session;
         }
 
@@ -68,42 +73,56 @@ function PostLoginContent() {
           return;
         }
 
-        // Retry profile fetch for propagation/RLS timing (max ~3s total).
+        // Fetch profile - single attempt with timeout
         setDetails('Loading your account…');
+        console.log('[PostLogin] Fetching profile for user:', session.user.id);
         let role: string | null = null;
-        for (let attempt = 1; attempt <= 5; attempt++) {
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .maybeSingle();
 
-          if (profile?.role) {
-            role = profile.role;
-            break;
-          }
+        const profilePromise = supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle();
 
+        const profileTimeout = new Promise(((_, reject) =>
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 2000)
+        ));
+
+        try {
+          const { data: profile, error: profileError } = await Promise.race([profilePromise, profileTimeout]) as { data: { role: string } | null; error: { message: string } | null };
           if (profileError) {
-            console.warn('[PostLogin] profile fetch error (retrying):', profileError);
+            console.warn('[PostLogin] profile fetch error:', profileError);
           }
-
-          // Shorter delays: 200, 400, 600, 800ms
-          await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+          role = profile?.role ?? null;
+          console.log('[PostLogin] Profile fetched, role:', role);
+        } catch (profileErr) {
+          console.warn('[PostLogin] Profile fetch failed:', profileErr);
+          // Continue with null role - will use default redirect
         }
 
         // Clear global timeout since we're about to redirect
         if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
 
-        const redirectPath = role === 'client' ? '/my-portal' : role ? '/dashboard' : defaultRedirect;
-        console.log('[PostLogin] Redirecting to:', redirectPath, 'role:', role ?? 'unknown');
+        if (!role) {
+          console.warn('[PostLogin] No role found, signing out and redirecting to login.');
+          await supabase.auth.signOut();
+          if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);
+          setFatal('Account details are still syncing. Please sign in again.');
+          return;
+        }
+
+        const redirectPath = role === 'client' ? '/my-portal' : '/dashboard';
+        console.log('[PostLogin] Redirecting to:', redirectPath, 'role:', role);
+
 
         // Redirect immediately
         window.location.href = redirectPath;
 
         // Fallback timer in case navigation is blocked.
         fallbackTimerRef.current = setTimeout(() => {
+          console.log('[PostLogin] Fallback redirect to:', redirectPath);
           window.location.replace(redirectPath);
-        }, 2000);
+        }, 1500);
       } catch (e) {
         console.error('[PostLogin] Unexpected error:', e);
         if (globalTimeoutRef.current) clearTimeout(globalTimeoutRef.current);

@@ -13,7 +13,7 @@ import {
     Calendar,
     Briefcase
 } from 'lucide-react';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday } from 'date-fns';
 
 interface Interaction {
     id: string;

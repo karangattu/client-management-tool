@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { diffAuditValues } from '@/lib/audit-log';
 import { uploadProfilePicture } from '@/lib/supabase/storage';
 import { US_STATES } from '@/lib/constants';
 
@@ -73,6 +74,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
     zip_code: '',
     status: 'active',
   });
+  const [originalClientData, setOriginalClientData] = useState<ClientData | null>(null);
 
   const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
         if (error) throw error;
 
         if (data) {
-          setClientData({
+          const nextClientData = {
             first_name: data.first_name || '',
             last_name: data.last_name || '',
             preferred_name: data.preferred_name || '',
@@ -104,15 +106,16 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
             city: data.city || '',
             state: data.state || '',
             zip_code: data.zip_code || '',
-
             status: data.status || 'active',
             profile_picture_url: data.profile_picture_url,
-          });
+            assigned_case_manager: data.assigned_case_manager || undefined,
+          } as ClientData;
+
+          setClientData(nextClientData);
+          setOriginalClientData(nextClientData);
+
           if (data.profile_picture_url) {
             setProfilePicturePreview(data.profile_picture_url);
-          }
-          if (data.assigned_case_manager) {
-            setClientData(prev => ({ ...prev, assigned_case_manager: data.assigned_case_manager }));
           }
         }
       } catch (err) {
@@ -211,15 +214,61 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
       if (error) throw error;
 
       // Log the update
-      await supabase.from('audit_log').insert({
-        user_id: profile?.id,
-        action: 'client_updated',
-        table_name: 'clients',
-        record_id: clientId,
-        new_values: { updated_by: `${profile?.first_name} ${profile?.last_name}` },
-      });
+      const previousValues = originalClientData
+        ? {
+          first_name: originalClientData.first_name,
+          last_name: originalClientData.last_name,
+          preferred_name: originalClientData.preferred_name,
+          email: originalClientData.email,
+          phone: originalClientData.phone,
+          date_of_birth: originalClientData.date_of_birth,
+          street_address: originalClientData.street_address,
+          city: originalClientData.city,
+          state: originalClientData.state,
+          zip_code: originalClientData.zip_code,
+          status: originalClientData.status,
+          assigned_case_manager: originalClientData.assigned_case_manager || null,
+          profile_picture_url: originalClientData.profile_picture_url || null,
+        }
+        : null;
+
+      const nextValues = {
+        first_name: clientData.first_name,
+        last_name: clientData.last_name,
+        preferred_name: clientData.preferred_name,
+        email: clientData.email,
+        phone: clientData.phone,
+        date_of_birth: clientData.date_of_birth,
+        street_address: clientData.street_address,
+        city: clientData.city,
+        state: clientData.state,
+        zip_code: clientData.zip_code,
+        status: clientData.status,
+        assigned_case_manager: clientData.assigned_case_manager || null,
+        profile_picture_url: profilePictureUrl || null,
+      };
+
+      const { oldValues, newValues } = diffAuditValues(previousValues, nextValues);
+
+      if (Object.keys(newValues).length > 0) {
+        await supabase.from('audit_log').insert({
+          user_id: profile?.id,
+          action: 'client_updated',
+          table_name: 'clients',
+          record_id: clientId,
+          old_values: oldValues,
+          new_values: {
+            ...newValues,
+            updated_by: `${profile?.first_name} ${profile?.last_name}`,
+          },
+        });
+      }
 
       setSuccess(true);
+      setOriginalClientData({
+        ...clientData,
+        profile_picture_url: profilePictureUrl,
+      });
       setTimeout(() => {
         router.push(`/clients/${clientId}`);
       }, 1500);
