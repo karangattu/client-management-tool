@@ -11,6 +11,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Users, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 
+const prefetchDashboardData = async (userId: string) => {
+  try {
+    const supabase = createClient();
+    await supabase.rpc('dashboard_summary', { current_user_id: userId });
+    await supabase
+      .from('tasks')
+      .select('id')
+      .eq('assigned_to', userId)
+      .in('status', ['pending', 'in_progress'])
+      .limit(5);
+  } catch {
+    // ignore prefetch errors
+  }
+};
+
+const prefetchClientPortalData = async (userId: string) => {
+  try {
+    const supabase = createClient();
+    await supabase
+      .from('tasks')
+      .select('id')
+      .eq('assigned_to', userId)
+      .in('status', ['pending', 'in_progress'])
+      .limit(5);
+    await supabase
+      .from('alerts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_read', false)
+      .limit(5);
+  } catch {
+    // ignore prefetch errors
+  }
+};
+
 function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
@@ -106,6 +141,13 @@ function LoginForm() {
               .eq('id', check.session.user.id)
               .maybeSingle();
             const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+
+            if (profile?.role === 'client') {
+              prefetchClientPortalData(check.session.user.id).catch(() => null);
+            } else {
+              prefetchDashboardData(check.session.user.id).catch(() => null);
+            }
+
             window.location.href = redirectPath;
             return;
           }
@@ -122,6 +164,13 @@ function LoginForm() {
         .eq('id', data.user.id)
         .maybeSingle();
       const redirectPath = profile?.role === 'client' ? '/my-portal' : '/dashboard';
+
+      if (profile?.role === 'client') {
+        prefetchClientPortalData(data.user.id).catch(() => null);
+      } else {
+        prefetchDashboardData(data.user.id).catch(() => null);
+      }
+
       window.location.href = redirectPath;
 
     } catch (err) {

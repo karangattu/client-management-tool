@@ -1,8 +1,8 @@
 "use server";
 
-import type { ClientIntakeForm } from "@/lib/schemas/validation";
-import { clientIntakeSchema } from "@/lib/schemas/validation";
 import { createClient } from "@/lib/supabase/server";
+import { cacheReadOnly } from "@/app/actions/cache";
+import { clientIntakeSchema, ClientIntakeForm } from "@/lib/schemas/validation";
 import { diffAuditValues } from "@/lib/audit-log";
 
 
@@ -530,40 +530,42 @@ export async function getClient(clientId: string) {
   }
 }
 
+const getAllClientsCached = cacheReadOnly(async () => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, first_name, last_name, email, phone, status, created_at, updated_at')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  interface ClientQueryResult {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    phone: string | null;
+    status: string | null;
+    created_at: string;
+    updated_at: string;
+  }
+
+  return (data as unknown as ClientQueryResult[])?.map((client) => ({
+    id: client.id,
+    name: `${client.first_name} ${client.last_name}`,
+    email: client.email || "",
+    phone: client.phone || "",
+    status: client.status || "pending",
+    createdAt: client.created_at,
+    updatedAt: client.updated_at,
+  })) || [];
+}, ['clients', 'all'], 60);
+
 export async function getAllClients() {
   try {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-      .from('clients')
-      .select('id, first_name, last_name, email, phone, status, created_at, updated_at')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
-    interface ClientQueryResult {
-      id: string;
-      first_name: string;
-      last_name: string;
-      email: string | null;
-      phone: string | null;
-      status: string | null;
-      created_at: string;
-      updated_at: string;
-    }
-
-    const clients = (data as unknown as ClientQueryResult[])?.map((client) => ({
-      id: client.id,
-      name: `${client.first_name} ${client.last_name}`,
-      email: client.email || "",
-      phone: client.phone || "",
-      status: client.status || "pending",
-      createdAt: client.created_at,
-      updatedAt: client.updated_at,
-    })) || [];
-
+    const clients = await getAllClientsCached();
     return { success: true, data: clients };
   } catch (error) {
     console.error("Error fetching clients:", error);

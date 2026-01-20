@@ -78,7 +78,7 @@ interface Client {
 function TasksContent() {
   const { user, profile } = useAuth();
   const searchParams = useSearchParams();
-  const initialFilter = searchParams.get('filter') || 'all';
+  const initialFilter = searchParams.get('filter') || (profile?.role === 'admin' ? 'open' : 'all');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -104,11 +104,13 @@ function TasksContent() {
   const supabase = createClient();
 
   useEffect(() => {
-    fetchTasks();
-    fetchClients();
-    fetchStaff();
+    if (profile) {
+      fetchTasks();
+      fetchClients();
+      fetchStaff();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [profile]);
 
   const fetchStaff = async () => {
     const result = await getAllUsers();
@@ -222,16 +224,16 @@ function TasksContent() {
 
   const handleCompleteTask = async (taskId: string) => {
     try {
-        const { error } = await supabase
-          .from('tasks')
-          .update({
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-            completed_by: user?.id || null,
-            completed_by_role: profile?.role === 'admin' ? 'admin' : 'case_manager'
-          })
-          .eq('id', taskId)
-          .eq('assigned_to', user?.id || null);
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          completed_by: user?.id || null,
+          completed_by_role: ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '') ? (profile?.role as any) : 'system'
+        })
+        .eq('id', taskId)
+        .eq('assigned_to', user?.id || null);
 
       if (error) throw error;
 
@@ -384,7 +386,7 @@ function TasksContent() {
   };
 
   const canCreateTasks = canAccessFeature(profile?.role || 'client', 'case_manager');
-  const canClaimTasks = profile?.role === 'case_manager' || profile?.role === 'admin';
+  const canClaimTasks = ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '');
 
   return (
     <div className="min-h-screen bg-gray-50">

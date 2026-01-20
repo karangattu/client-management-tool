@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { cacheReadOnly } from "@/app/actions/cache";
 
 export interface Program {
     id: string;
@@ -31,17 +32,24 @@ export interface Enrollment {
 /**
  * Fetches all active programs.
  */
+const getProgramsCached = cacheReadOnly(async () => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from('programs')
+        .select('*')
+        .eq('is_active', true)
+        .order('category')
+        .order('name');
+
+    if (error) throw error;
+
+    return data as Program[];
+}, ['programs', 'active'], 120);
+
 export async function getPrograms() {
     try {
-        const supabase = await createClient();
-        const { data, error } = await supabase
-            .from('programs')
-            .select('*')
-            .eq('is_active', true)
-            .order('name', { ascending: true });
-
-        if (error) throw error;
-        return { success: true, data: data as Program[] };
+        const data = await getProgramsCached();
+        return { success: true, data };
     } catch (error) {
         console.error("Error fetching programs:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failed to fetch programs" };

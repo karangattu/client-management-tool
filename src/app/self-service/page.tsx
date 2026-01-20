@@ -303,13 +303,7 @@ export default function SelfServiceIntakePage() {
               Basic Info
             </span>
             <span className={`text-xs ${currentStep >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Documents
-            </span>
-            <span className={`text-xs ${currentStep >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
               Engagement Letter
-            </span>
-            <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Sign
             </span>
           </div>
         </div>

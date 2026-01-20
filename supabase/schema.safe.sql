@@ -21,47 +21,65 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 DO $$ BEGIN
     CREATE TYPE user_role AS ENUM ('admin', 'case_manager', 'staff', 'volunteer', 'client');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE client_status AS ENUM ('active', 'inactive', 'pending', 'archived');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE housing_status AS ENUM ('housed', 'unhoused', 'at_risk', 'transitional', 'unknown');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE task_status AS ENUM ('pending', 'in_progress', 'completed', 'cancelled', 'overdue');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE task_priority AS ENUM ('low', 'medium', 'high', 'urgent');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE document_type AS ENUM ('id', 'income', 'housing', 'medical', 'legal', 'consent', 'engagement_letter', 'other');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE alert_type AS ENUM ('deadline', 'follow_up', 'document_expiry', 'appointment', 'benefit_renewal', 'custom');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE signature_type AS ENUM ('consent', 'engagement_letter', 'release_of_information', 'housing_agreement', 'other');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE housing_application_status AS ENUM ('draft', 'submitted', 'under_review', 'approved', 'denied', 'waitlist', 'housed');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 -- ============================================
@@ -87,6 +105,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 
 -- ============================================
@@ -95,12 +114,16 @@ CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 
 DO $$ BEGIN
     CREATE TYPE client_onboarding_status AS ENUM ('registered', 'profile', 'engagement', 'intake', 'active');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 DO $$ BEGIN
     CREATE TYPE task_completion_role AS ENUM ('client', 'staff', 'system');
+
 EXCEPTION WHEN duplicate_object THEN NULL;
+
 END $$;
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -151,11 +174,17 @@ CREATE TABLE IF NOT EXISTS clients (
 );
 
 CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
+
 CREATE INDEX IF NOT EXISTS idx_clients_case_manager ON clients(assigned_case_manager);
+
 CREATE INDEX IF NOT EXISTS idx_clients_referral_source ON clients(referral_source);
+
 CREATE INDEX IF NOT EXISTS idx_clients_portal_user ON clients(portal_user_id);
+
 CREATE INDEX IF NOT EXISTS idx_clients_onboarding_status ON clients(onboarding_status);
+
 CREATE INDEX IF NOT EXISTS idx_clients_intake_completed ON clients(intake_completed_at);
 
 -- ============================================
@@ -289,12 +318,19 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_client ON tasks(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_program_id ON tasks(program_id);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned_status ON tasks(assigned_to, status);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_client_status ON tasks(client_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned_due ON tasks(assigned_to, due_date);
 
 -- ============================================
@@ -322,7 +358,9 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_calendar_events_client ON calendar_events(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(start_time);
+
 CREATE INDEX IF NOT EXISTS idx_calendar_events_type ON calendar_events(event_type);
 
 -- Alerts/Notifications
@@ -342,8 +380,11 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_user ON alerts(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_alerts_unread ON alerts(user_id, is_read) WHERE NOT is_read;
+
 CREATE INDEX IF NOT EXISTS idx_alerts_trigger ON alerts(trigger_at);
+
 CREATE INDEX IF NOT EXISTS idx_alerts_client ON alerts(client_id);
 
 -- ============================================
@@ -373,9 +414,13 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_client ON documents(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(document_type);
+
 CREATE INDEX IF NOT EXISTS idx_documents_expiry ON documents(expiry_date);
+
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+
 CREATE INDEX IF NOT EXISTS idx_documents_client_created ON documents(client_id, created_at);
 
 -- ============================================
@@ -401,6 +446,7 @@ CREATE TABLE IF NOT EXISTS signature_requests (
 );
 
 CREATE INDEX IF NOT EXISTS idx_signatures_client ON signature_requests(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_signatures_pending ON signature_requests(is_signed) WHERE NOT is_signed;
 
 -- Engagement Letters (generated for self-service clients)
@@ -457,7 +503,9 @@ CREATE TABLE IF NOT EXISTS housing_applications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_housing_apps_client ON housing_applications(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_housing_apps_status ON housing_applications(status);
+
 CREATE INDEX IF NOT EXISTS idx_housing_apps_program ON housing_applications(program_id);
 
 -- Housing History
@@ -514,6 +562,7 @@ CREATE TABLE IF NOT EXISTS form_drafts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_form_drafts_user ON form_drafts(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_form_drafts_client ON form_drafts(client_id);
 
 -- ============================================
@@ -532,6 +581,7 @@ CREATE TABLE IF NOT EXISTS client_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_client_history_client ON client_history(client_id);
+
 CREATE INDEX IF NOT EXISTS idx_client_history_date ON client_history(created_at DESC);
 
 -- ============================================
@@ -552,7 +602,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_audit_log_table ON audit_log(table_name);
+
 CREATE INDEX IF NOT EXISTS idx_audit_log_date ON audit_log(created_at DESC);
 
 -- ============================================
@@ -589,6 +641,7 @@ LEFT JOIN profiles p ON c.assigned_case_manager = p.id;
 -- Tasks Overview View
 -- Drop first to avoid column structure conflicts on existing databases
 DROP VIEW IF EXISTS tasks_overview;
+
 CREATE OR REPLACE VIEW tasks_overview AS
 SELECT 
     t.*,
@@ -656,8 +709,11 @@ CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
-    RETURN NEW;
+
+RETURN NEW;
+
 END;
+
 $$ LANGUAGE plpgsql;
 
 -- Create audit log entry
@@ -667,18 +723,27 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values)
         VALUES (auth.uid(), TG_OP, TG_TABLE_NAME, OLD.id, to_jsonb(OLD));
-        RETURN OLD;
-    ELSIF TG_OP = 'UPDATE' THEN
+
+RETURN OLD;
+
+ELSIF TG_OP = 'UPDATE' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
         VALUES (auth.uid(), TG_OP, TG_TABLE_NAME, NEW.id, to_jsonb(OLD), to_jsonb(NEW));
-        RETURN NEW;
-    ELSIF TG_OP = 'INSERT' THEN
+
+RETURN NEW;
+
+ELSIF TG_OP = 'INSERT' THEN
         INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
         VALUES (auth.uid(), TG_OP, TG_TABLE_NAME, NEW.id, to_jsonb(NEW));
-        RETURN NEW;
-    END IF;
-    RETURN NULL;
+
+RETURN NEW;
+
+END IF;
+
+RETURN NULL;
+
 END;
+
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Auto-create alerts for benefit renewals
@@ -686,18 +751,22 @@ CREATE OR REPLACE FUNCTION create_benefit_renewal_alerts()
 RETURNS TRIGGER AS $$
 DECLARE
     benefit_name TEXT;
-    renewal_date DATE;
-    assigned_user UUID;
+
+renewal_date DATE;
+
+assigned_user UUID;
+
 BEGIN
     -- Get assigned case manager
     SELECT assigned_case_manager INTO assigned_user 
     FROM clients WHERE id = NEW.client_id;
-    
-    IF assigned_user IS NULL THEN
-        RETURN NEW;
-    END IF;
 
-    -- Check each benefit and create alerts
+IF assigned_user IS NULL THEN
+        RETURN NEW;
+
+END IF;
+
+-- Check each benefit and create alerts
     IF NEW.receives_snap AND NEW.snap_renewal_date IS NOT NULL AND 
        (OLD.snap_renewal_date IS NULL OR NEW.snap_renewal_date != OLD.snap_renewal_date) THEN
         INSERT INTO alerts (user_id, client_id, title, message, alert_type, trigger_at)
@@ -709,11 +778,14 @@ BEGIN
             'benefit_renewal',
             NEW.snap_renewal_date - INTERVAL '30 days'
         );
-    END IF;
 
-    -- Similar for other benefits...
+END IF;
+
+-- Similar for other benefits...
     RETURN NEW;
+
 END;
+
 $$ LANGUAGE plpgsql;
 
 -- Function to create new user (called by admin)
@@ -729,19 +801,23 @@ CREATE OR REPLACE FUNCTION create_staff_user(
 RETURNS UUID AS $$
 DECLARE
     new_user_id UUID;
+
 BEGIN
     -- Check if caller is admin
     IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin') THEN
         RAISE EXCEPTION 'Only admins can create new users';
-    END IF;
 
-    -- Create auth user (this would typically be done via Supabase Admin API)
+END IF;
+
+-- Create auth user (this would typically be done via Supabase Admin API)
     -- The actual user creation should be done via the Supabase Admin API in your application
     -- This function creates the profile entry
     
     -- For now, return null - actual implementation requires Admin API
     RETURN NULL;
+
 END;
+
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================
@@ -750,57 +826,69 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Updated_at triggers
 DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_clients_updated_at ON clients;
+
 CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON clients
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+
 CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_documents_updated_at ON documents;
+
 CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_calendar_events_updated_at ON calendar_events;
+
 CREATE TRIGGER update_calendar_events_updated_at BEFORE UPDATE ON calendar_events
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_housing_applications_updated_at ON housing_applications;
+
 CREATE TRIGGER update_housing_applications_updated_at BEFORE UPDATE ON housing_applications
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Audit triggers (add to sensitive tables)
 DROP TRIGGER IF EXISTS audit_clients_changes ON clients;
+
 CREATE TRIGGER audit_clients_changes
     AFTER INSERT OR UPDATE OR DELETE ON clients
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 DROP TRIGGER IF EXISTS audit_case_management_changes ON case_management;
+
 CREATE TRIGGER audit_case_management_changes
     AFTER INSERT OR UPDATE OR DELETE ON case_management
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 DROP TRIGGER IF EXISTS audit_demographics_changes ON demographics;
+
 CREATE TRIGGER audit_demographics_changes
     AFTER INSERT OR UPDATE OR DELETE ON demographics
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 DROP TRIGGER IF EXISTS audit_emergency_contacts_changes ON emergency_contacts;
+
 CREATE TRIGGER audit_emergency_contacts_changes
     AFTER INSERT OR UPDATE OR DELETE ON emergency_contacts
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 DROP TRIGGER IF EXISTS audit_household_members_changes ON household_members;
+
 CREATE TRIGGER audit_household_members_changes
     AFTER INSERT OR UPDATE OR DELETE ON household_members
     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
 
 -- Benefit renewal alert trigger
 DROP TRIGGER IF EXISTS trigger_benefit_renewal_alerts ON case_management;
+
 CREATE TRIGGER trigger_benefit_renewal_alerts
     AFTER INSERT OR UPDATE ON case_management
     FOR EACH ROW EXECUTE FUNCTION create_benefit_renewal_alerts();
@@ -818,31 +906,51 @@ SET search_path = public
 AS $$
 DECLARE
     total_clients integer;
-    active_clients integer;
-    pending_tasks integer;
-    open_tasks integer;
-    upcoming_events integer;
-    unread_alerts integer;
-    registered_count integer;
-    profile_count integer;
-    engagement_count integer;
-    intake_count integer;
-    intake_incomplete integer;
+
+active_clients integer;
+
+pending_tasks integer;
+
+open_tasks integer;
+
+upcoming_events integer;
+
+unread_alerts integer;
+
+registered_count integer;
+
+profile_count integer;
+
+engagement_count integer;
+
+intake_count integer;
+
+intake_incomplete integer;
+
 BEGIN
     SELECT count(*) INTO total_clients FROM clients;
-    SELECT count(*) INTO active_clients FROM clients WHERE status = 'active';
-    SELECT count(*) INTO pending_tasks FROM tasks WHERE assigned_to = current_user_id AND status IN ('pending', 'in_progress');
-    SELECT count(*) INTO open_tasks FROM tasks WHERE assigned_to IS NULL AND status = 'pending';
-    SELECT count(*) INTO upcoming_events FROM calendar_events WHERE start_time >= now();
-    SELECT count(*) INTO unread_alerts FROM alerts WHERE user_id = current_user_id AND is_read = false;
 
-    SELECT count(*) INTO registered_count FROM clients WHERE onboarding_status = 'registered';
-    SELECT count(*) INTO profile_count FROM clients WHERE onboarding_status = 'profile';
-    SELECT count(*) INTO engagement_count FROM clients WHERE onboarding_status = 'engagement';
-    SELECT count(*) INTO intake_count FROM clients WHERE onboarding_status = 'intake';
-    SELECT count(*) INTO intake_incomplete FROM clients WHERE intake_completed_at IS NULL;
+SELECT count(*) INTO active_clients FROM clients WHERE status = 'active';
 
-    RETURN json_build_object(
+SELECT count(*) INTO pending_tasks FROM tasks WHERE assigned_to = current_user_id AND status IN ('pending', 'in_progress');
+
+SELECT count(*) INTO open_tasks FROM tasks WHERE assigned_to IS NULL AND status = 'pending';
+
+SELECT count(*) INTO upcoming_events FROM calendar_events WHERE start_time >= now();
+
+SELECT count(*) INTO unread_alerts FROM alerts WHERE user_id = current_user_id AND is_read = false;
+
+SELECT count(*) INTO registered_count FROM clients WHERE onboarding_status = 'registered';
+
+SELECT count(*) INTO profile_count FROM clients WHERE onboarding_status = 'profile';
+
+SELECT count(*) INTO engagement_count FROM clients WHERE onboarding_status = 'engagement';
+
+SELECT count(*) INTO intake_count FROM clients WHERE onboarding_status = 'intake';
+
+SELECT count(*) INTO intake_incomplete FROM clients WHERE intake_completed_at IS NULL;
+
+RETURN json_build_object(
         'totalClients', total_clients,
         'activeClients', active_clients,
         'pendingTasks', pending_tasks,
@@ -855,7 +963,9 @@ BEGIN
         'intake', intake_count,
         'intakeIncomplete', intake_incomplete
     );
+
 END;
+
 $$;
 
 -- Helper function to check staff/admin roles without recursion
@@ -867,10 +977,14 @@ SET search_path = public
 AS $$
 DECLARE
     user_role user_role;
+
 BEGIN
     SELECT role INTO user_role FROM profiles WHERE id = user_id;
-    RETURN user_role IN ('admin', 'case_manager', 'staff', 'volunteer');
+
+RETURN user_role IN ('admin', 'case_manager', 'staff', 'volunteer');
+
 END;
+
 $$;
 
 -- Trigger to ensure profiles + clients exist for auth users
@@ -878,10 +992,11 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     new_role user_role;
+
 BEGIN
     new_role := COALESCE((new.raw_user_meta_data->>'role')::public.user_role, 'client'::public.user_role);
 
-    INSERT INTO public.profiles (id, email, first_name, last_name, role, is_active)
+INSERT INTO public.profiles (id, email, first_name, last_name, role, is_active)
     VALUES (
         new.id,
         new.email,
@@ -896,7 +1011,7 @@ BEGIN
         email = EXCLUDED.email,
         role = EXCLUDED.role;
 
-    IF new_role = 'client' THEN
+IF new_role = 'client' THEN
         INSERT INTO public.clients (
             portal_user_id,
             has_portal_access,
@@ -919,154 +1034,158 @@ BEGIN
             now()
         )
         ON CONFLICT (portal_user_id) DO NOTHING;
-    END IF;
 
-    RETURN new;
+END IF;
+
+RETURN new;
+
 END;
+
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE emergency_contacts ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE case_management ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE demographics ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE signature_requests ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE housing_applications ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE client_history ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- ROW LEVEL SECURITY POLICIES
+-- ============================================
 
 -- Profiles policies
 DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
+DROP POLICY IF EXISTS "Users can view allowed profiles" ON profiles;
 CREATE POLICY "Users can view allowed profiles" ON profiles
-    FOR SELECT USING (
-        auth.uid() = id
-        OR public.is_staff_or_admin(auth.uid())
-    );
+  FOR SELECT USING (
+    auth.uid() = id
+    OR public.is_staff_or_admin(auth.uid())
+  );
 
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles
-    FOR UPDATE USING (auth.uid() = id);
+  FOR UPDATE USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
 CREATE POLICY "Users can insert own profile" ON profiles
-    FOR INSERT WITH CHECK (auth.uid() = id);
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Service role can manage all profiles" ON profiles;
 CREATE POLICY "Service role can manage all profiles" ON profiles
-    FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+  FOR ALL USING (auth.role() = 'service_role');
 
 -- Clients policies
 DROP POLICY IF EXISTS "Staff can view all clients" ON clients;
 CREATE POLICY "Staff can view all clients" ON clients
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Clients can view own record" ON clients;
-CREATE POLICY "Clients can view own record" ON clients
-    FOR SELECT USING (portal_user_id = auth.uid());
+  FOR SELECT USING (public.is_staff_or_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Staff can insert clients" ON clients;
 CREATE POLICY "Staff can insert clients" ON clients
-    FOR INSERT WITH CHECK (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR INSERT WITH CHECK (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can update clients" ON clients;
+CREATE POLICY "Staff can update clients" ON clients
+  FOR UPDATE USING (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Admins can delete clients" ON clients;
+CREATE POLICY "Admins can delete clients" ON clients
+  FOR DELETE USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+
+DROP POLICY IF EXISTS "Clients can view own record" ON clients;
+CREATE POLICY "Clients can view own record" ON clients
+  FOR SELECT USING (portal_user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Clients can update own record" ON clients;
+CREATE POLICY "Clients can update own record" ON clients
+  FOR UPDATE USING (portal_user_id = auth.uid());
 
 -- Case management policies
 DROP POLICY IF EXISTS "Staff can manage all cases" ON case_management;
 CREATE POLICY "Staff can manage all cases" ON case_management
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
-DROP POLICY IF EXISTS "Clients can view own case" ON case_management;
-CREATE POLICY "Clients can view own case" ON case_management
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM clients 
-            WHERE clients.id = case_management.client_id 
-            AND clients.portal_user_id = auth.uid()
-        )
-    );
-
--- Task policies
-DROP POLICY IF EXISTS "Staff can manage all tasks" ON tasks;
-CREATE POLICY "Staff can manage all tasks" ON tasks
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Admins can delete clients" ON clients;
-CREATE POLICY "Admins can delete clients" ON clients
-    FOR DELETE USING (
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-    );
+DROP POLICY IF EXISTS "Clients can view own case management" ON case_management;
+CREATE POLICY "Clients can view own case management" ON case_management
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = case_management.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Tasks policies
--- Users can view tasks they're assigned to, created, or if they're staff/admin
+DROP POLICY IF EXISTS "Staff can manage all tasks" ON tasks;
+CREATE POLICY "Staff can manage all tasks" ON tasks
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
+
 DROP POLICY IF EXISTS "Users can view assigned tasks" ON tasks;
 CREATE POLICY "Users can view assigned tasks" ON tasks
-    FOR SELECT USING (
-        assigned_to = auth.uid() OR
-        assigned_by = auth.uid() OR
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR SELECT USING (
+    assigned_to = auth.uid()
+    OR assigned_by = auth.uid()
+    OR public.is_staff_or_admin(auth.uid())
+  );
 
--- Clients can view tasks related to their case (linked via client_id -> portal_user_id)
 DROP POLICY IF EXISTS "Clients can view own tasks" ON tasks;
 CREATE POLICY "Clients can view own tasks" ON tasks
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM clients 
-            WHERE clients.id = tasks.client_id 
-            AND clients.portal_user_id = auth.uid()
-        )
-    );
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = tasks.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
-DROP POLICY IF EXISTS "Staff can create tasks" ON tasks;
-CREATE POLICY "Staff can create tasks" ON tasks
-    FOR INSERT WITH CHECK (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Staff can manage programs" ON programs;
-CREATE POLICY "Staff can manage programs" ON programs
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Staff can manage services" ON services;
-CREATE POLICY "Staff can manage services" ON services
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Staff can manage program enrollments" ON program_enrollments;
-CREATE POLICY "Staff can manage program enrollments" ON program_enrollments
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+DROP POLICY IF EXISTS "Clients can update own tasks" ON tasks;
+CREATE POLICY "Clients can update own tasks" ON tasks
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = tasks.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Guard: clients can only update task completion fields
 CREATE OR REPLACE FUNCTION public.enforce_client_task_updates()
 RETURNS TRIGGER AS $$
 DECLARE
     current_role user_role;
+
 BEGIN
     SELECT role INTO current_role FROM profiles WHERE id = auth.uid();
 
-    IF current_role = 'client' THEN
+IF current_role = 'client' THEN
         IF NEW.title IS DISTINCT FROM OLD.title
             OR NEW.description IS DISTINCT FROM OLD.description
             OR NEW.priority IS DISTINCT FROM OLD.priority
@@ -1078,22 +1197,29 @@ BEGIN
             OR NEW.tags IS DISTINCT FROM OLD.tags
             OR NEW.program_id IS DISTINCT FROM OLD.program_id THEN
             RAISE EXCEPTION 'Clients may only update task status and completion fields';
-        END IF;
 
-        IF NEW.completed_by IS NOT NULL AND NEW.completed_by <> auth.uid() THEN
+END IF;
+
+IF NEW.completed_by IS NOT NULL AND NEW.completed_by <> auth.uid() THEN
             RAISE EXCEPTION 'Clients may only mark themselves as completer';
-        END IF;
 
-        IF NEW.completed_by_role IS NOT NULL AND NEW.completed_by_role <> 'client' THEN
+END IF;
+
+IF NEW.completed_by_role IS NOT NULL AND NEW.completed_by_role <> 'client' THEN
             RAISE EXCEPTION 'Clients must use client completion role';
-        END IF;
-    END IF;
 
-    RETURN NEW;
+END IF;
+
+END IF;
+
+RETURN NEW;
+
 END;
+
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS enforce_client_task_updates ON tasks;
+
 CREATE TRIGGER enforce_client_task_updates
     BEFORE UPDATE ON tasks
     FOR EACH ROW EXECUTE FUNCTION public.enforce_client_task_updates();
@@ -1102,158 +1228,206 @@ CREATE TRIGGER enforce_client_task_updates
 -- Staff can view all calendar events
 DROP POLICY IF EXISTS "Staff can view calendar events" ON calendar_events;
 CREATE POLICY "Staff can view calendar events" ON calendar_events
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR SELECT USING (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can manage calendar events" ON calendar_events;
+CREATE POLICY "Staff can manage calendar events" ON calendar_events
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
 -- Clients can view calendar events related to their case
 DROP POLICY IF EXISTS "Clients can view own calendar events" ON calendar_events;
 CREATE POLICY "Clients can view own calendar events" ON calendar_events
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM clients 
-            WHERE clients.id = calendar_events.client_id 
-            AND clients.portal_user_id = auth.uid()
-        )
-    );
-
-DROP POLICY IF EXISTS "Staff can create calendar events" ON calendar_events;
-CREATE POLICY "Staff can create calendar events" ON calendar_events
-    FOR INSERT WITH CHECK (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Staff can update calendar events" ON calendar_events;
-CREATE POLICY "Staff can update calendar events" ON calendar_events
-    FOR UPDATE USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = calendar_events.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Alerts policies
 DROP POLICY IF EXISTS "Users can view own alerts" ON alerts;
 CREATE POLICY "Users can view own alerts" ON alerts
-    FOR SELECT USING (user_id = auth.uid());
+  FOR SELECT USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "Users can update own alerts" ON alerts;
 CREATE POLICY "Users can update own alerts" ON alerts
-    FOR UPDATE USING (user_id = auth.uid());
+  FOR UPDATE USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Staff can manage alerts" ON alerts;
+CREATE POLICY "Staff can manage alerts" ON alerts
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
 -- Documents policies
 DROP POLICY IF EXISTS "Staff can view all documents" ON documents;
 CREATE POLICY "Staff can view all documents" ON documents
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Clients can view own documents" ON documents;
-CREATE POLICY "Clients can view own documents" ON documents
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = documents.client_id AND portal_user_id = auth.uid())
-    );
+  FOR SELECT USING (public.is_staff_or_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Staff can manage documents" ON documents;
 CREATE POLICY "Staff can manage documents" ON documents
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Clients can view own documents" ON documents;
+CREATE POLICY "Clients can view own documents" ON documents
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = documents.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Clients can insert own documents" ON documents;
+CREATE POLICY "Clients can insert own documents" ON documents
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = documents.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Emergency Contacts policies
 DROP POLICY IF EXISTS "Staff can manage all emergency contacts" ON emergency_contacts;
 CREATE POLICY "Staff can manage all emergency contacts" ON emergency_contacts
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
-DROP POLICY IF EXISTS "Clients can view own emergency contacts" ON emergency_contacts;
-CREATE POLICY "Clients can view own emergency contacts" ON emergency_contacts
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = emergency_contacts.client_id AND portal_user_id = auth.uid())
-    );
+DROP POLICY IF EXISTS "Clients can manage own emergency contacts" ON emergency_contacts;
+CREATE POLICY "Clients can manage own emergency contacts" ON emergency_contacts
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = emergency_contacts.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
--- Case Management policies
+-- Case Management policies (SELECT for clients already added above)
 DROP POLICY IF EXISTS "Staff can manage all case management" ON case_management;
-CREATE POLICY "Staff can manage all case management" ON case_management
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Clients can view own case management" ON case_management;
-CREATE POLICY "Clients can view own case management" ON case_management
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = case_management.client_id AND portal_user_id = auth.uid())
-    );
+-- Already covered by "Staff can manage all cases" policy above
 
 -- Demographics policies
 DROP POLICY IF EXISTS "Staff can manage all demographics" ON demographics;
 CREATE POLICY "Staff can manage all demographics" ON demographics
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Clients can view own demographics" ON demographics;
 CREATE POLICY "Clients can view own demographics" ON demographics
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = demographics.client_id AND portal_user_id = auth.uid())
-    );
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = demographics.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Household Members policies
 DROP POLICY IF EXISTS "Staff can manage all household members" ON household_members;
 CREATE POLICY "Staff can manage all household members" ON household_members
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
-DROP POLICY IF EXISTS "Clients can view own household members" ON household_members;
-CREATE POLICY "Clients can view own household members" ON household_members
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = household_members.client_id AND portal_user_id = auth.uid())
-    );
+DROP POLICY IF EXISTS "Clients can manage own household members" ON household_members;
+CREATE POLICY "Clients can manage own household members" ON household_members
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = household_members.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Signature Requests policies
 DROP POLICY IF EXISTS "Staff can manage all signature requests" ON signature_requests;
 CREATE POLICY "Staff can manage all signature requests" ON signature_requests
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
-DROP POLICY IF EXISTS "Clients can view/update own signature requests" ON signature_requests;
-CREATE POLICY "Clients can view/update own signature requests" ON signature_requests
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = signature_requests.client_id AND portal_user_id = auth.uid())
-    );
+DROP POLICY IF EXISTS "Clients can view own signature requests" ON signature_requests;
+CREATE POLICY "Clients can view own signature requests" ON signature_requests
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = signature_requests.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Clients can update own signature requests" ON signature_requests;
+CREATE POLICY "Clients can update own signature requests" ON signature_requests
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = signature_requests.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Housing Applications policies
 DROP POLICY IF EXISTS "Staff can manage all housing applications" ON housing_applications;
 CREATE POLICY "Staff can manage all housing applications" ON housing_applications
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Clients can view own housing applications" ON housing_applications;
 CREATE POLICY "Clients can view own housing applications" ON housing_applications
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = housing_applications.client_id AND portal_user_id = auth.uid())
-    );
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = housing_applications.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Client History policies
 DROP POLICY IF EXISTS "Staff can manage all client history" ON client_history;
 CREATE POLICY "Staff can manage all client history" ON client_history
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Clients can view own history" ON client_history;
 CREATE POLICY "Clients can view own history" ON client_history
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE id = client_history.client_id AND portal_user_id = auth.uid())
-    );
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = client_history.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
 
 -- Audit log - staff and admins can view
 DROP POLICY IF EXISTS "Staff and admins can view audit log" ON audit_log;
 CREATE POLICY "Staff and admins can view audit log" ON audit_log
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
+  FOR SELECT USING (public.is_staff_or_admin(auth.uid()));
+
+-- Programs policies  
+DROP POLICY IF EXISTS "Anyone can view active programs" ON programs;
+CREATE POLICY "Anyone can view active programs" ON programs
+  FOR SELECT USING (is_active = true OR public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can manage programs" ON programs;
+CREATE POLICY "Staff can manage programs" ON programs
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
+
+-- Program Enrollments policies
+DROP POLICY IF EXISTS "Staff can manage enrollments" ON program_enrollments;
+CREATE POLICY "Staff can manage enrollments" ON program_enrollments
+  FOR ALL USING (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Clients can view own enrollments" ON program_enrollments;
+CREATE POLICY "Clients can view own enrollments" ON program_enrollments
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = program_enrollments.client_id
+      AND clients.portal_user_id = auth.uid()
+    )
+  );
+
+-- Program Enrollment Activity policies
+DROP POLICY IF EXISTS "Staff can view enrollment activity" ON program_enrollment_activity;
+CREATE POLICY "Staff can view enrollment activity" ON program_enrollment_activity
+  FOR SELECT USING (public.is_staff_or_admin(auth.uid()));
+
+DROP POLICY IF EXISTS "Staff can insert enrollment activity" ON program_enrollment_activity;
+CREATE POLICY "Staff can insert enrollment activity" ON program_enrollment_activity
+  FOR INSERT WITH CHECK (public.is_staff_or_admin(auth.uid()));
 
 -- ============================================
 -- SAMPLE DATA FOR DEVELOPMENT
@@ -1321,89 +1495,22 @@ ON CONFLICT (name) DO UPDATE SET
 
 -- 4. Enable RLS
 ALTER TABLE programs ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE program_enrollments ENABLE ROW LEVEL SECURITY;
 
 -- 5. Create Policies
 DROP POLICY IF EXISTS "Anyone can view active programs" ON programs;
-CREATE POLICY "Anyone can view active programs" ON programs
-    FOR SELECT USING (is_active = true);
-
-DROP POLICY IF EXISTS "Staff can manage program enrollments" ON program_enrollments;
-CREATE POLICY "Staff can manage program enrollments" ON program_enrollments
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Clients can view own enrollments" ON program_enrollments;
-CREATE POLICY "Clients can view own enrollments" ON program_enrollments
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM clients WHERE portal_user_id = auth.uid() AND id = program_enrollments.client_id)
-    );
 
 -- 6. Add trigger for updated_at
 DROP TRIGGER IF EXISTS update_programs_updated_at ON programs;
+
 CREATE TRIGGER update_programs_updated_at BEFORE UPDATE ON programs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_enrollments_updated_at ON program_enrollments;
+
 CREATE TRIGGER update_enrollments_updated_at BEFORE UPDATE ON program_enrollments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
--- ============================================
--- MIGRATION: FIX DOCUMENT UPLOAD POLICIES
--- ============================================
-
--- Fix storage policies for client-documents bucket
-DO $$
-BEGIN
-    -- Drop existing policies first
-    DROP POLICY IF EXISTS "Staff can view client documents" ON storage.objects;
-    DROP POLICY IF EXISTS "Staff can upload client documents" ON storage.objects;
-    DROP POLICY IF EXISTS "Staff can update client documents" ON storage.objects;
-    
-    CREATE POLICY "Staff can view client documents"
-    ON storage.objects FOR SELECT
-    USING (
-        bucket_id = 'client-documents' AND
-        public.is_staff_or_admin(auth.uid())
-    );
-
-    CREATE POLICY "Staff can upload client documents"
-    ON storage.objects FOR INSERT
-    WITH CHECK (
-        bucket_id = 'client-documents' AND
-        public.is_staff_or_admin(auth.uid())
-    );
-
-    CREATE POLICY "Staff can update client documents"
-    ON storage.objects FOR UPDATE
-    USING (
-        bucket_id = 'client-documents' AND
-        public.is_staff_or_admin(auth.uid())
-    );
-EXCEPTION WHEN undefined_table THEN
-    NULL; -- Resume execution if storage.objects doesn't exist yet (unlikely in Supabase context)
-END $$;
-
--- Fix documents table policies
-DROP POLICY IF EXISTS "Staff can view all documents" ON documents;
-CREATE POLICY "Staff can view all documents" ON documents
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
-DROP POLICY IF EXISTS "Staff can manage documents" ON documents;
-CREATE POLICY "Staff can manage documents" ON documents
-    FOR ALL USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
--- Clients can insert their own documents
-DROP POLICY IF EXISTS "Clients can upload own documents" ON documents;
-CREATE POLICY "Clients can upload own documents" ON documents
-    FOR INSERT WITH CHECK (
-        EXISTS (SELECT 1 FROM clients WHERE id = documents.client_id AND portal_user_id = auth.uid())
-    );
 
 -- ============================================
 -- MIGRATION: ENROLLMENT ACTIVITY LOG
@@ -1420,77 +1527,19 @@ CREATE TABLE IF NOT EXISTS program_enrollment_activity (
 );
 
 CREATE INDEX IF NOT EXISTS idx_enrollment_activity_enrollment ON program_enrollment_activity(enrollment_id);
+
 CREATE INDEX IF NOT EXISTS idx_enrollment_activity_changed_at ON program_enrollment_activity(changed_at);
 
 -- RLS Policies
 ALTER TABLE program_enrollment_activity ENABLE ROW LEVEL SECURITY;
 
--- Staff can view all enrollment activity
-DROP POLICY IF EXISTS "Staff can view enrollment activity" ON program_enrollment_activity;
-CREATE POLICY "Staff can view enrollment activity" ON program_enrollment_activity
-    FOR SELECT USING (
-        public.is_staff_or_admin(auth.uid())
-    );
-
--- Staff can insert enrollment activity
-DROP POLICY IF EXISTS "Staff can insert enrollment activity" ON program_enrollment_activity;
-CREATE POLICY "Staff can insert enrollment activity" ON program_enrollment_activity
-    FOR INSERT WITH CHECK (
-        public.is_staff_or_admin(auth.uid())
-    );
--- Allow clients to insert their own tasks (needed for self-service intake task creation if service role fails)
+-- Allow clients to insert their own tasks (for self-service intake)
 DROP POLICY IF EXISTS "Clients can insert own tasks" ON tasks;
 CREATE POLICY "Clients can insert own tasks" ON tasks
-    FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM clients 
-            WHERE clients.id = tasks.client_id 
-            AND clients.portal_user_id = auth.uid()
-        )
-    );
--- Allow clients to upload their own documents to storage
--- (Policy allows insert if the path starts with their client ID)
--- Note: We can't easily check client ID ownership in storage RLS without a complex join or a helper function.
--- A simpler approach for the bucket policy: Allow authenticated users to upload to folders matching their claimed client ID?
--- But 'auth.uid()' is the user ID, not client ID.
--- The file path is `${clientData.id}/consent/${documentFileName}`.
--- We need to check if the folder name is the client ID owned by the user.
-
--- Let's enable a broader upload policy for authenticated users to the 'client-documents' bucket, 
--- but we might want to restrict it.
--- However, for now, to unblock the feature:
-
-DROP POLICY IF EXISTS "Clients can upload own documents" ON storage.objects;
-create policy "Clients can upload own documents"
-on storage.objects for insert
-with check (
-  bucket_id = 'client-documents' and
-  auth.role() = 'authenticated' and
-  (
-    -- Ensure the user is the one associated with the folder (client_id)
-    -- This requires a subquery to clients table using the folder name as client ID
-    exists (
-      select 1 from clients 
-      where 
-        clients.portal_user_id = auth.uid() and
-        -- This is a bit tricky in exact SQL for storage paths, attempting simplified check:
-        -- storage.objects.name like (clients.id || '/%')
-        (storage.foldername(name))[1] = clients.id::text
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM clients
+      WHERE clients.id = tasks.client_id
+      AND clients.portal_user_id = auth.uid()
     )
-  )
-);
-
--- Also allow them to read their own documents
-DROP POLICY IF EXISTS "Clients can view own documents" ON storage.objects;
-create policy "Clients can view own documents"
-on storage.objects for select
-using (
-  bucket_id = 'client-documents' and
-  auth.role() = 'authenticated' and
-  exists (
-    select 1 from clients 
-    where 
-      clients.portal_user_id = auth.uid() and
-      (storage.foldername(name))[1] = clients.id::text
-  )
-);
+  );

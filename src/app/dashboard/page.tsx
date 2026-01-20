@@ -171,7 +171,7 @@ export default function DashboardPage() {
     // Only start fetching if we have user AND profile (since logic depends on role)
     if (user && profile) {
       // Check if user has a valid staff/admin role to view dashboard
-      const validRoles = ['admin', 'case_manager'];
+      const validRoles = ['admin', 'case_manager', 'staff', 'volunteer'];
       if (validRoles.includes(profile.role)) {
         fetchDashboardData();
       } else {
@@ -305,27 +305,16 @@ export default function DashboardPage() {
 
     try {
       // 1. Fetch Stats (Parallel)
-      const statsPromise = Promise.all([
-        supabase.from('clients').select('*', { count: 'exact', head: true }),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']),
-        supabase.from('tasks').select('*', { count: 'exact', head: true }).is('assigned_to', null).eq('status', 'pending'),
-        supabase.from('calendar_events').select('*', { count: 'exact', head: true }).gte('start_time', new Date().toISOString()),
-        supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('user_id', user?.id).eq('is_read', false),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'registered'),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'profile'),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'engagement'),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).eq('onboarding_status', 'intake'),
-        supabase.from('clients').select('*', { count: 'exact', head: true }).is('intake_completed_at', null),
-      ]);
+      const nowIso = new Date().toISOString();
+      const statsPromise = supabase.rpc('dashboard_summary', { current_user_id: user?.id });
 
       // 2. Fetch Lists (Parallel)
       const listsPromise = Promise.all([
         supabase.from('tasks').select(`
-            id, title, due_date, priority, clients (*)
-          `).not('due_date', 'is', null).gte('due_date', new Date().toISOString()).order('due_date', { ascending: true }).limit(5),
+            id, title, due_date, priority, clients (first_name, last_name)
+          `).not('due_date', 'is', null).gte('due_date', nowIso).order('due_date', { ascending: true }).limit(5),
         supabase.from('tasks').select(`
-            id, title, description, priority, due_date, clients (*)
+            id, title, description, priority, due_date, clients (first_name, last_name)
           `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
         // Fetch staff
         supabase.from('profiles').select('id, first_name, last_name').neq('role', 'client').order('first_name'),
@@ -360,12 +349,10 @@ export default function DashboardPage() {
         focusPromise
       ]);
 
-      // Log any errors from stats queries
-      statsResults.forEach((result, index) => {
-        if (result.error) {
-          console.error(`[Dashboard] Stats query ${index} error:`, result.error);
-        }
-      });
+      // Log any errors from stats query
+      if (statsResults.error) {
+        console.error('[Dashboard] Stats query error:', statsResults.error);
+      }
 
       // Log any errors from lists queries
       listsResults.forEach((result, index) => {
@@ -382,36 +369,36 @@ export default function DashboardPage() {
       });
 
       // --- Process Stats ---
-      const [
-        { count: totalClients },
-        { count: activeClients },
-        { count: pendingTasks },
-        { count: openTasks },
-        { count: upcomingEvents },
-        { count: unreadAlerts },
-        { count: registeredCount },
-        { count: profileCount },
-        { count: engagementCount },
-        { count: intakeCount },
-        { count: intakeIncomplete }
-      ] = statsResults;
+      const statsPayload = statsResults.data as {
+        totalClients?: number;
+        activeClients?: number;
+        pendingTasks?: number;
+        openTasks?: number;
+        upcomingEvents?: number;
+        unreadAlerts?: number;
+        registered?: number;
+        profile?: number;
+        engagement?: number;
+        intake?: number;
+        intakeIncomplete?: number;
+      } | null;
 
       setStats({
-        totalClients: totalClients || 0,
-        activeClients: activeClients || 0,
-        pendingTasks: pendingTasks || 0,
-        openTasks: openTasks || 0,
-        upcomingEvents: upcomingEvents || 0,
-        unreadAlerts: unreadAlerts || 0,
+        totalClients: statsPayload?.totalClients || 0,
+        activeClients: statsPayload?.activeClients || 0,
+        pendingTasks: statsPayload?.pendingTasks || 0,
+        openTasks: statsPayload?.openTasks || 0,
+        upcomingEvents: statsPayload?.upcomingEvents || 0,
+        unreadAlerts: statsPayload?.unreadAlerts || 0,
       });
 
       setOnboardingCounts({
-        registered: registeredCount || 0,
-        profile: profileCount || 0,
-        engagement: engagementCount || 0,
-        intake: intakeCount || 0,
+        registered: statsPayload?.registered || 0,
+        profile: statsPayload?.profile || 0,
+        engagement: statsPayload?.engagement || 0,
+        intake: statsPayload?.intake || 0,
       });
-      setIntakeIncompleteCount(intakeIncomplete || 0);
+      setIntakeIncompleteCount(statsPayload?.intakeIncomplete || 0);
 
       // --- Process Lists ---
       const [
@@ -1147,12 +1134,12 @@ export default function DashboardPage() {
                             <p className="text-sm text-gray-500 line-clamp-1">{item.description}</p>
                           )}
                           <div className="flex items-center gap-2 mt-1">
-                          {item.time && (
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {formatPacificFriendly(item.time, true)}
-                            </span>
-                          )}
+                            {item.time && (
+                              <span className="text-xs text-gray-400 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatPacificFriendly(item.time, true)}
+                              </span>
+                            )}
                             {item.client_name && (
                               <span className="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-100 rounded-full">
                                 {item.client_name}
@@ -1307,7 +1294,7 @@ export default function DashboardPage() {
                           {task.description && (
                             <p className="text-xs text-gray-500 line-clamp-1">{task.description}</p>
                           )}
-                           {task.due_date && (
+                          {task.due_date && (
                             <p className="text-xs text-gray-400 mt-1">
                               {formatPacificDueDate(task.due_date)}
                             </p>
@@ -1357,9 +1344,9 @@ export default function DashboardPage() {
                       >
                         <div>
                           <p className="font-medium text-gray-900 text-sm">{event.title}</p>
-                           <p className="text-xs text-gray-500">
-                             {formatPacificFriendly(event.start_time, true)}
-                           </p>
+                          <p className="text-xs text-gray-500">
+                            {formatPacificFriendly(event.start_time, true)}
+                          </p>
                           {event.location && (
                             <p className="text-xs text-gray-400 mt-1">{event.location}</p>
                           )}
@@ -1397,12 +1384,12 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <FileText className="h-4 w-4 text-amber-600 shrink-0" />
-                           <div className="min-w-0 flex-1">
-                             <p className="font-medium text-gray-900 text-sm truncate">{doc.file_name}</p>
-                             <p className="text-xs text-gray-500">
-                               {formatPacificFriendly(doc.created_at)}
-                             </p>
-                           </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-gray-900 text-sm truncate">{doc.file_name}</p>
+                            <p className="text-xs text-gray-500">
+                              {formatPacificFriendly(doc.created_at)}
+                            </p>
+                          </div>
                         </div>
                         <Badge variant="secondary" className="shrink-0 ml-2">
                           {doc.document_type?.replace(/_/g, ' ') || 'Document'}

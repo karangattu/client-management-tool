@@ -134,8 +134,10 @@ export default function ClientsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    fetchClients();
-  }, [fetchClients]);
+    if (profile) {
+      fetchClients();
+    }
+  }, [fetchClients, profile]);
 
   const fuse = useMemo(() => {
     return new Fuse<Client>(clients, {

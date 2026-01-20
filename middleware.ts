@@ -6,6 +6,11 @@ export async function middleware(request: NextRequest) {
     request,
   });
 
+  const cacheablePublicPaths = ['/login', '/self-service'];
+  const isCacheablePublicPath = cacheablePublicPaths.some((path) =>
+    request.nextUrl.pathname.startsWith(path)
+  );
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
@@ -107,6 +112,10 @@ export async function middleware(request: NextRequest) {
       url.pathname = '/login';
       return NextResponse.redirect(url);
     }
+  }
+
+  if (isCacheablePublicPath) {
+    supabaseResponse.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
   }
 
   return supabaseResponse;

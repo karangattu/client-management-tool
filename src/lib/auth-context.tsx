@@ -4,7 +4,8 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { User, Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
-export type UserRole = 'admin' | 'case_manager' | 'client';
+export const validRoles = ['admin', 'case_manager', 'staff', 'volunteer'];
+export type UserRole = 'admin' | 'case_manager' | 'staff' | 'volunteer' | 'client';
 
 export interface UserProfile {
   id: string;
@@ -53,8 +54,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Memoize the Supabase client to prevent recreation on every render
   const supabase = useMemo(() => createClient(), []);
 
+  const profileCacheRef = useRef<{ userId: string | null; profile: UserProfile | null; timestamp: number }>({
+    userId: null,
+    profile: null,
+    timestamp: 0,
+  });
+
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     console.log('[Auth] Fetching profile for user:', userId);
+
+    const now = Date.now();
+    if (profileCacheRef.current.userId === userId && now - profileCacheRef.current.timestamp < 60000) {
+      return profileCacheRef.current.profile;
+    }
+
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -77,6 +90,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[Auth] Profile fetched successfully:', data[0]?.role);
+      profileCacheRef.current = {
+        userId,
+        profile: data[0] as UserProfile,
+        timestamp: now,
+      };
       return data[0] as UserProfile;
     } catch (err) {
       console.error('[Auth] Exception in fetchProfile:', err);
@@ -84,13 +102,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase]);
 
+  const isInitializingRef = useRef(false);
+
   const initializeAuth = useCallback(async (forceRefresh = false) => {
+    // Prevent concurrent initializations
+    if (isInitializingRef.current && !forceRefresh) {
+      console.log('[Auth] Initialization already in progress, skipping');
+      return;
+    }
+
     // Prevent re-initialization if already completed (unless forced)
     if (isInitializedRef.current && !forceRefresh) {
       console.log('[Auth] Already initialized, skipping');
       return;
     }
 
+    isInitializingRef.current = true;
     initAttemptRef.current += 1;
     const attemptNum = initAttemptRef.current;
     console.log(`[Auth] Initializing auth (attempt ${attemptNum}, forced: ${forceRefresh})...`);
@@ -99,59 +126,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      // Create an AbortController for the timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
       try {
         // If forcing refresh, try to refresh the session first
         if (forceRefresh) {
           console.log('[Auth] Force refresh requested, attempting session refresh');
           const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          
+
           if (refreshError) {
             console.warn('[Auth] Refresh failed during force init:', refreshError.message);
             // Continue with getSession fallback
           } else if (refreshData?.session) {
-            clearTimeout(timeoutId);
             console.log('[Auth] Session refreshed successfully during init');
-            
+
             setSession(refreshData.session);
             setUser(refreshData.session.user);
-            
+
             const profileData = await fetchProfile(refreshData.session.user.id);
             setProfile(profileData);
             profileUserIdRef.current = refreshData.session.user.id;
             console.log('[Auth] Profile loaded after refresh:', profileData?.role || 'none');
-            
+
             setError(null);
             isInitializedRef.current = true;
             return;
           }
         }
-        
+
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        clearTimeout(timeoutId);
 
         if (sessionError) {
           console.error('[Auth] Session error:', sessionError);
-          
+
           // If session retrieval fails, try one refresh attempt
           const { data: retryData, error: retryError } = await supabase.auth.refreshSession();
           if (!retryError && retryData?.session) {
             console.log('[Auth] Session recovered via refresh after error');
             setSession(retryData.session);
             setUser(retryData.session.user);
-            
+
             const profileData = await fetchProfile(retryData.session.user.id);
             setProfile(profileData);
             profileUserIdRef.current = retryData.session.user.id;
-            
+
             setError(null);
             isInitializedRef.current = true;
             return;
           }
-          
+
           throw sessionError;
         }
 
@@ -161,10 +182,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
+          console.log('[Auth] Fetching profile for user:', session.user.id);
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
           profileUserIdRef.current = session.user.id;
-          console.log('[Auth] Profile loaded:', profileData?.role || 'none');
+          if (profileData) {
+            console.log('[Auth] Profile loaded successfully. Role:', profileData.role);
+          } else {
+            console.warn('[Auth] Profile NOT found in database for authenticated user');
+            setError('User profile record missing. Please contact administrator.');
+          }
         } else {
           setProfile(null);
           profileUserIdRef.current = null;
@@ -174,19 +201,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Mark as initialized AFTER setting all state
         isInitializedRef.current = true;
       } catch (e) {
-        clearTimeout(timeoutId);
         throw e;
       }
     } catch (err) {
+      if (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('aborted'))) {
+        console.warn('[Auth] Initialization aborted. Retrying in 500ms...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        isInitializingRef.current = false;
+        return initializeAuth(forceRefresh);
+      }
+
       const errorMessage = err instanceof Error ? err.message : 'Unknown auth error';
       console.error('[Auth] Initialization failed:', errorMessage);
 
-      // Clear auth state on error
+      // Clear auth state on fatal error
       setSession(null);
       setUser(null);
       setProfile(null);
       setError(errorMessage);
     } finally {
+      isInitializingRef.current = false;
       updateLoading(false);
     }
   }, [supabase, fetchProfile, updateLoading]);
@@ -324,10 +358,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible') {
         console.log('[Auth] Tab became visible, checking session...');
-        
+
         // Check if we have a session before trying to refresh
         const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
+
         if (currentSession) {
           refreshSession();
         } else if (loading) {
@@ -369,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Reset refs so re-login can re-initialize
     isInitializedRef.current = false;
     profileUserIdRef.current = null;
+    profileCacheRef.current = { userId: null, profile: null, timestamp: 0 };
   }, [supabase.auth]);
 
 
@@ -406,8 +441,10 @@ export function useAuth() {
 
 // Role hierarchy for permission checks
 export const roleHierarchy: Record<UserRole, number> = {
-  admin: 2,
-  case_manager: 1,
+  admin: 3,
+  case_manager: 2,
+  staff: 1,
+  volunteer: 1,
   client: 0,
 };
 

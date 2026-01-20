@@ -1,13 +1,15 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { cacheReadOnly } from "@/app/actions/cache";
+import type { UserRole } from "@/lib/auth-context";
 
 interface CreateUserData {
   email: string;
   password: string;
   first_name: string;
   last_name: string;
-  role: 'admin' | 'case_manager' | 'client';
+  role: UserRole;
 }
 
 interface CreateUserResult {
@@ -207,26 +209,25 @@ export async function archiveUser(userId: string): Promise<{ success: boolean; e
   }
 }
 
+const getAllUsersCached = cacheReadOnly(async () => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, first_name, last_name, role, is_active, created_at")
+    .order("first_name");
+
+  if (error) throw error;
+
+  return data;
+}, ['profiles', 'all-users'], 60);
+
 export async function getAllUsers() {
   try {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
+    const data = await getAllUsersCached();
     return { success: true, data };
   } catch (error) {
     console.error("Error fetching users:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to fetch users",
-    };
+    return { success: false, error: error instanceof Error ? error.message : "Failed to fetch users" };
   }
 }
 

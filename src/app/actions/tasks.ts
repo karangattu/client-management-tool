@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { cacheReadOnly } from "@/app/actions/cache";
 import { revalidatePath } from "next/cache";
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'overdue';
@@ -295,6 +296,21 @@ export async function createClientOnboardingTasks(clientId: string, userId: stri
 /**
  * Get tasks assigned to the current client user
  */
+const getClientTasksCached = cacheReadOnly(async (userId: string) => {
+    const supabase = await createClient();
+    const { data: tasks, error } = await supabase
+        .from('tasks')
+        .select('id, title, description, status, priority, due_date, category, created_at')
+        .eq('assigned_to', userId)
+        .in('status', ['pending', 'in_progress'])
+        .order('priority', { ascending: false })
+        .order('due_date', { ascending: true });
+
+    if (error) throw error;
+
+    return tasks || [];
+}, ['tasks', 'client'], 45);
+
 export async function getClientTasks() {
     try {
         const supabase = await createClient();
@@ -304,17 +320,8 @@ export async function getClientTasks() {
             return { success: false, error: 'Not authenticated', data: [] };
         }
 
-        const { data: tasks, error } = await supabase
-            .from('tasks')
-            .select('id, title, description, status, priority, due_date, category, created_at')
-            .eq('assigned_to', user.id)
-            .in('status', ['pending', 'in_progress'])
-            .order('priority', { ascending: false })
-            .order('due_date', { ascending: true });
-
-        if (error) throw error;
-
-        return { success: true, data: tasks || [] };
+        const data = await getClientTasksCached(user.id);
+        return { success: true, data };
     } catch (error) {
         console.error("Error fetching client tasks:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failed to fetch tasks", data: [] };
@@ -324,6 +331,21 @@ export async function getClientTasks() {
 /**
  * Get alerts for the current user
  */
+const getClientAlertsCached = cacheReadOnly(async (userId: string) => {
+    const supabase = await createClient();
+    const { data: alerts, error } = await supabase
+        .from('alerts')
+        .select('id, title, message, alert_type, is_read, trigger_at, created_at')
+        .eq('user_id', userId)
+        .eq('is_dismissed', false)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+    if (error) throw error;
+
+    return alerts || [];
+}, ['alerts', 'client'], 45);
+
 export async function getClientAlerts() {
     try {
         const supabase = await createClient();
@@ -333,17 +355,8 @@ export async function getClientAlerts() {
             return { success: false, error: 'Not authenticated', data: [] };
         }
 
-        const { data: alerts, error } = await supabase
-            .from('alerts')
-            .select('id, title, message, alert_type, is_read, trigger_at, created_at')
-            .eq('user_id', user.id)
-            .eq('is_dismissed', false)
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-        if (error) throw error;
-
-        return { success: true, data: alerts || [] };
+        const data = await getClientAlertsCached(user.id);
+        return { success: true, data };
     } catch (error) {
         console.error("Error fetching client alerts:", error);
         return { success: false, error: error instanceof Error ? error.message : "Failed to fetch alerts", data: [] };

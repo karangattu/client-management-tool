@@ -52,7 +52,7 @@ interface ClientGroup {
 }
 
 export default function CommandCenterPage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, profile, loading: authLoading } = useAuth();
     const router = useRouter();
     const [items, setItems] = useState<CommandItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -61,36 +61,40 @@ export default function CommandCenterPage() {
     const [activeTab, setActiveTab] = useState('all');
 
     useEffect(() => {
-        if (authLoading) return;
-        if (!user) {
-            router.push('/login');
-            return;
-        }
+        if (!profile) return;
         fetchCommandCenterData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, authLoading]);
+    }, [user, profile, authLoading]);
 
     const fetchCommandCenterData = async () => {
         const supabase = createClient();
         setLoading(true);
 
         try {
+            const isStaff = ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '');
+
+            const tasksQuery = supabase.from('tasks').select(`
+          id, title, description, priority, due_date, status, client_id, clients (first_name, last_name)
+        `);
+
+            const tasksRequest = isStaff
+                ? tasksQuery.order('due_date', { ascending: true })
+                : tasksQuery.or(`assigned_to.eq.${user?.id},assigned_to.is.null`).order('due_date', { ascending: true });
+
             const [
                 { data: tasks },
                 { data: events },
                 { data: alerts }
             ] = await Promise.all([
-                // All my tasks (pending and completed for toggle)
-                supabase.from('tasks').select(`
-          id, title, description, priority, due_date, status, client_id, clients (first_name, last_name)
-        `).or(`assigned_to.eq.${user?.id},assigned_to.is.null`).order('due_date', { ascending: true }),
+                // Tasks
+                tasksRequest,
                 // Upcoming events (next 7 days)
                 supabase.from('calendar_events').select(`
           id, title, description, start_time, client_id, clients (first_name, last_name)
         `).gte('start_time', new Date().toISOString()).lte('start_time', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()).order('start_time', { ascending: true }),
                 // All alerts for this user
                 supabase.from('alerts').select(`
-          id, title, message, priority, is_read, created_at, client_id, clients (first_name, last_name)
+          id, title, message, alert_type, is_read, created_at, client_id, clients (first_name, last_name)
         `).eq('user_id', user?.id).order('created_at', { ascending: false })
             ]);
 
@@ -134,14 +138,15 @@ export default function CommandCenterPage() {
 
             if (alerts) {
                 alerts.forEach((alert: unknown) => {
-                    const alertTyped = alert as { id: string; title: string; message?: string; priority?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
+                    const alertTyped = alert as { id: string; title: string; message?: string; alert_type?: string; is_read?: boolean; client_id?: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
                     const client = Array.isArray(alertTyped.clients) ? alertTyped.clients[0] : alertTyped.clients;
+                    const derivedPriority = ['benefit_renewal', 'deadline', 'document_expiry'].includes(alertTyped.alert_type || '') ? 'high' : 'medium';
                     allItems.push({
                         id: alertTyped.id,
                         type: 'alert',
                         title: alertTyped.title,
                         description: alertTyped.message,
-                        priority: alertTyped.priority || 'high',
+                        priority: derivedPriority,
                         is_read: alertTyped.is_read,
                         is_completed: alertTyped.is_read,
                         client_id: alertTyped.client_id,
