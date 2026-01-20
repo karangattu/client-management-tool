@@ -523,20 +523,63 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const handleViewDocument = async (doc: Document) => {
     try {
       if (!doc.file_path) {
-        alert('Document file path not available.');
+        toast({
+          title: "Error",
+          description: "Document file path not available.",
+          variant: "destructive",
+        });
         return;
       }
-      const { data, error } = await supabase.storage
-        .from('client-documents')
-        .createSignedUrl(doc.file_path, 3600);
+      
+      console.log('Attempting to view document:', { 
+        file_path: doc.file_path, 
+        file_name: doc.file_name,
+        document_type: doc.document_type 
+      });
+      
+      // Use server action to get signed URL (handles auth and uses service role)
+      const { getDocumentSignedUrlAction } = await import('@/app/actions/documents');
+      const { url, error } = await getDocumentSignedUrlAction(doc.file_path);
 
-      if (error) throw error;
-      if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+      if (error) {
+        console.error('Storage error details:', {
+          message: error,
+          file_path: doc.file_path
+        });
+        
+        // Provide more helpful error message
+        if (error.includes('Object not found') || error.includes('not found')) {
+          toast({
+            title: "Document Not Found",
+            description: "The document file may have been moved or deleted from storage. Please contact support if this issue persists.",
+            variant: "destructive",
+          });
+        } else if (error.includes('Access denied')) {
+          toast({
+            title: "Access Denied",
+            description: "You don't have permission to view this document.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: `Failed to access document: ${error}`,
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+      
+      if (url) {
+        window.open(url, '_blank');
       }
     } catch (err) {
       console.error('Error viewing document:', err);
-      alert('Failed to open document. Please try again.');
+      toast({
+        title: "Error",
+        description: "Failed to open document. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 

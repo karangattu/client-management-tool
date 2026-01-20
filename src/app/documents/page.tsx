@@ -51,7 +51,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { getDocumentSignedUrl } from '@/lib/supabase/storage';
 import { Textarea } from '@/components/ui/textarea';
 
 interface Document {
@@ -249,8 +248,33 @@ export default function DocumentsPage() {
     }
 
     try {
-      const { url, error } = await getDocumentSignedUrl(doc.file_path);
-      if (error || !url) throw error || new Error('Failed to get signed URL');
+      console.log('Attempting to view document:', { 
+        file_path: doc.file_path, 
+        name: doc.name,
+        type: doc.type,
+        client_id: doc.client_id
+      });
+      
+      // Use server action to get signed URL (handles auth and uses service role)
+      const { getDocumentSignedUrlAction } = await import('@/app/actions/documents');
+      const { url, error } = await getDocumentSignedUrlAction(doc.file_path);
+      
+      if (error) {
+        console.error('Storage error:', error);
+        if (error.includes('Object not found') || error.includes('not found')) {
+          alert('Document file not found in storage. The file may have been moved or deleted.');
+        } else if (error.includes('Access denied')) {
+          alert('You don\'t have permission to view this document.');
+        } else {
+          alert(`Failed to access document: ${error}`);
+        }
+        return;
+      }
+      
+      if (!url) {
+        alert('Failed to generate document URL');
+        return;
+      }
 
       window.open(url, '_blank');
     } catch (err) {
