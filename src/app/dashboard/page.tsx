@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime } from '@/lib/date-utils';
+import { DailyTriageMode, useDailyTriageMode } from '@/components/layout/DailyTriageMode';
 import {
   Users,
   UserPlus,
@@ -30,6 +31,7 @@ import {
   Printer,
   CheckCircle,
   Plus,
+  Sun,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useToast } from "@/components/ui/use-toast";
@@ -154,6 +156,10 @@ export default function DashboardPage() {
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const { t } = useLanguage();
   const { toast } = useToast();
+  
+  // Daily Triage Mode
+  const { showTriage, completeTriage, openTriage, closeTriage } = useDailyTriageMode();
+  const [triageTasksChecked, setTriageTasksChecked] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (authLoading) return;
@@ -780,6 +786,41 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Daily Triage Mode Overlay */}
+      <DailyTriageMode
+        isOpen={showTriage && !isClient && !statsLoading}
+        onClose={closeTriage}
+        userName={profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}` : 'there'}
+        urgentTasks={focusItems
+          .filter(item => item.type === 'task' && ['urgent', 'high'].includes(item.priority))
+          .map(item => ({
+            id: item.id,
+            title: item.title,
+            clientName: item.client_name,
+            priority: item.priority as 'urgent' | 'high' | 'medium',
+            dueDate: item.time,
+            completed: triageTasksChecked.has(item.id),
+          }))}
+        alerts={focusItems
+          .filter(item => item.type === 'alert')
+          .map(item => ({
+            id: item.id,
+            message: item.title,
+            type: item.priority === 'urgent' ? 'urgent' as const : 'warning' as const,
+          }))}
+        appointmentsToday={focusItems.filter(item => item.type === 'event').length}
+        pendingFollowUps={stats.pendingTasks}
+        onTaskToggle={(taskId, checked) => {
+          setTriageTasksChecked(prev => {
+            const next = new Set(prev);
+            if (checked) next.add(taskId);
+            else next.delete(taskId);
+            return next;
+          });
+        }}
+        onStartDay={completeTriage}
+      />
+
       <AppHeader
         title={t('dashboard.title')}
         showBackButton={false}
@@ -804,6 +845,13 @@ export default function DashboardPage() {
             </Badge>
           </div>
           <div className="flex gap-2">
+            {/* Start Day button for staff */}
+            {!isClient && (
+              <Button variant="outline" onClick={openTriage} className="gap-2">
+                <Sun className="h-4 w-4" />
+                <span className="hidden sm:inline">Start Day</span>
+              </Button>
+            )}
             {canCreateIntake && (
               <Button asChild className="bg-green-600 hover:bg-green-700">
                 <NextLink href="/client-intake">
@@ -1107,26 +1155,27 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             ) : (
-              <AnimatePresence mode="popLayout">
-                <div className="space-y-3">
-                  {focusItems.map((item, index) => (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.2, delay: index * 0.05 }}
-                      className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-1 p-2 rounded-lg ${item.type === 'task' ? 'bg-blue-100 text-blue-600' :
-                          item.type === 'event' ? 'bg-purple-100 text-purple-600' :
-                            'bg-orange-100 text-orange-600'
-                          }`}>
-                          {item.type === 'task' ? <CheckSquare className="h-4 w-4" /> :
-                            item.type === 'event' ? <Calendar className="h-4 w-4" /> :
-                              <AlertCircle className="h-4 w-4" />}
+              <>
+                <AnimatePresence mode="popLayout">
+                  <div className="space-y-3">
+                    {focusItems.slice(0, 3).map((item, index) => (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.2, delay: index * 0.05 }}
+                        className="flex items-center justify-between p-4 bg-white border rounded-xl shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 p-2 rounded-lg ${item.type === 'task' ? 'bg-blue-100 text-blue-600' :
+                            item.type === 'event' ? 'bg-purple-100 text-purple-600' :
+                              'bg-orange-100 text-orange-600'
+                            }`}>
+                            {item.type === 'task' ? <CheckSquare className="h-4 w-4" /> :
+                              item.type === 'event' ? <Calendar className="h-4 w-4" /> :
+                                <AlertCircle className="h-4 w-4" />}
                         </div>
                         <div>
                           <p className="font-semibold text-gray-900">{item.title}</p>
@@ -1185,6 +1234,18 @@ export default function DashboardPage() {
                   ))}
                 </div>
               </AnimatePresence>
+              {focusItems.length > 3 && (
+                <div className="mt-4 text-center">
+                  <Button 
+                    variant="link" 
+                    className="text-blue-600"
+                    onClick={() => router.push('/command-center')}
+                  >
+                    View all {focusItems.length} items →
+                  </Button>
+                </div>
+              )}
+              </>
             )}
           </div>
         )}
@@ -1194,47 +1255,47 @@ export default function DashboardPage() {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('dashboard.quickActions')}</h2>
         <NavigationTileGrid>
           {/* Command Center - Primary action for staff */}
-          {!isClient && (
-            <NavigationTile
-              title="Command Center"
-              description="All tasks, events & alerts"
-              icon={Bell}
-              href="/command-center"
-              color="red"
-              badge={stats.pendingTasks + stats.unreadAlerts > 0 ? stats.pendingTasks + stats.unreadAlerts : undefined}
-            />
-          )}
-          {canViewClients && (
-            <NavigationTile
-              title={t('clients.title')}
-              description="View and manage client records"
-              icon={Users}
-              href="/clients"
-              color="blue"
-              badge={stats.totalClients > 0 ? stats.totalClients : undefined}
-            />
-          )}
-          {canViewCalendar && (
-            <NavigationTile
-              title={t('calendar.title')}
-              description="Appointments and deadlines"
-              icon={Calendar}
-              href="/calendar"
-              color="purple"
-              badge={stats.upcomingEvents > 0 ? stats.upcomingEvents : undefined}
-            />
-          )}
-          {canViewTasks && (
-            <NavigationTile
-              title={t('tasks.title')}
-              description={isCaseManager || isAdmin ? "View & claim open tasks" : "Manage tasks"}
-              icon={CheckSquare}
-              href="/tasks"
-              color="orange"
-              badge={stats.pendingTasks > 0 ? stats.pendingTasks : undefined}
-            />
-          )}
-          {(isCaseManager || isAdmin) && stats.openTasks > 0 && (
+          <NavigationTile
+            title="Command Center"
+            description="All tasks, events & alerts"
+            icon={Bell}
+            href="/command-center"
+            color="red"
+            badge={stats.pendingTasks + stats.unreadAlerts > 0 ? stats.pendingTasks + stats.unreadAlerts : undefined}
+            minimumRole="staff"
+            userRole={profile.role}
+          />
+          <NavigationTile
+            title={t('clients.title')}
+            description="View and manage client records"
+            icon={Users}
+            href="/clients"
+            color="blue"
+            badge={stats.totalClients > 0 ? stats.totalClients : undefined}
+            minimumRole="case_manager"
+            userRole={profile.role}
+          />
+          <NavigationTile
+            title={t('calendar.title')}
+            description="Appointments and deadlines"
+            icon={Calendar}
+            href="/calendar"
+            color="purple"
+            badge={stats.upcomingEvents > 0 ? stats.upcomingEvents : undefined}
+            minimumRole="case_manager"
+            userRole={profile.role}
+          />
+          <NavigationTile
+            title={t('tasks.title')}
+            description={isCaseManager || isAdmin ? "View & claim open tasks" : "Manage tasks"}
+            icon={CheckSquare}
+            href="/tasks"
+            color="orange"
+            badge={stats.pendingTasks > 0 ? stats.pendingTasks : undefined}
+            minimumRole="case_manager"
+            userRole={profile.role}
+          />
+          {stats.openTasks > 0 && (
             <NavigationTile
               title={t('tasks.openToClaim')}
               description="Claim available tasks"
@@ -1242,26 +1303,28 @@ export default function DashboardPage() {
               href="/tasks?filter=open"
               color="cyan"
               badge={stats.openTasks}
+              allowedRoles={['admin', 'case_manager']}
+              userRole={profile.role}
             />
           )}
-          {canViewDocuments && (
-            <NavigationTile
-              title={t('documents.title')}
-              description="Document management"
-              icon={FileText}
-              href="/documents"
-              color="amber"
-            />
-          )}
-          {canViewAdmin && (
-            <NavigationTile
-              title={t('admin.title')}
-              description="User management & settings"
-              icon={Settings}
-              href="/admin"
-              color="gray"
-            />
-          )}
+          <NavigationTile
+            title={t('documents.title')}
+            description="Document management"
+            icon={FileText}
+            href="/documents"
+            color="amber"
+            minimumRole="case_manager"
+            userRole={profile.role}
+          />
+          <NavigationTile
+            title={t('admin.title')}
+            description="User management & settings"
+            icon={Settings}
+            href="/admin"
+            color="gray"
+            allowedRoles={['admin']}
+            userRole={profile.role}
+          />
         </NavigationTileGrid>
 
         {/* Client Dashboard Section - Tasks and Appointments */}

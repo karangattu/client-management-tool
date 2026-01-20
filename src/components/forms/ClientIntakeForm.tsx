@@ -81,6 +81,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [caseManagers, setCaseManagers] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
@@ -109,6 +110,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
           if (!hasSubmittedRef.current) {
             reset(parsed.data);
             setLastSaved(new Date(parsed.savedAt));
+            setDraftRestored(true);
             toast({
               title: "Draft restored",
               description: "Your previous progress has been restored.",
@@ -438,6 +440,37 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
           </div>
 
           <Progress value={progress} className="h-2 mb-4" />
+
+          {/* Draft Restored Banner */}
+          {draftRestored && lastSaved && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-800">
+                <Sparkles className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  Continuing from your saved draft from {lastSaved.toLocaleDateString()} at {lastSaved.toLocaleTimeString()}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                onClick={() => {
+                  localStorage.removeItem(DRAFT_KEY);
+                  reset(defaultClientIntakeForm);
+                  setDraftRestored(false);
+                  setLastSaved(null);
+                  setCurrentStep(0);
+                  toast({
+                    title: "Draft cleared",
+                    description: "Starting fresh with a new form.",
+                  });
+                }}
+              >
+                Start Fresh
+              </Button>
+            </div>
+          )}
 
           {/* Step Indicators */}
           <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">

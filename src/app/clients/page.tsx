@@ -62,6 +62,8 @@ import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
 import { type Program } from '@/lib/types';
+import { CLIENT_STATUS_CONFIG, getClientStatusConfig } from '@/lib/status-config';
+import { ClientSummaryDrawer } from '@/components/clients/ClientSummaryDrawer';
 
 interface Client {
   id: string;
@@ -76,11 +78,12 @@ interface Client {
   case_management?: { non_cash_benefits: string[] }[];
 }
 
+// Using unified status config from status-config.ts
 const statusConfig: Record<string, { label: string; color: string }> = {
-  active: { label: 'Active', color: 'bg-green-100 text-green-800' },
-  pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
-  inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-800' },
-  archived: { label: 'Archived', color: 'bg-red-100 text-red-800' },
+  active: { label: CLIENT_STATUS_CONFIG.active.label, color: CLIENT_STATUS_CONFIG.active.classes },
+  pending: { label: CLIENT_STATUS_CONFIG.pending.label, color: CLIENT_STATUS_CONFIG.pending.classes },
+  inactive: { label: CLIENT_STATUS_CONFIG.inactive.label, color: CLIENT_STATUS_CONFIG.inactive.classes },
+  archived: { label: CLIENT_STATUS_CONFIG.archived.label, color: CLIENT_STATUS_CONFIG.archived.classes },
 };
 
 export default function ClientsPage() {
@@ -96,6 +99,7 @@ export default function ClientsPage() {
   const [clientToArchive, setClientToArchive] = useState<Client | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [previewClientId, setPreviewClientId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -484,6 +488,14 @@ export default function ClientsPage() {
                       </div>
 
                       <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => setPreviewClientId(client.id)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          Quick View
+                        </Button>
                         <Link href={`/clients/${client.id}`}>
                           <Button variant="outline" size="sm">
                             <Eye className="h-4 w-4 mr-2" />
@@ -652,6 +664,13 @@ export default function ClientsPage() {
               )}
             </DialogContent>
           </Dialog>
+
+          {/* Client Summary Drawer */}
+          <ClientSummaryDrawer
+            clientId={previewClientId}
+            isOpen={!!previewClientId}
+            onClose={() => setPreviewClientId(null)}
+          />
         </main>
       </div>
     </TooltipProvider>

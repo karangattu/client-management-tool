@@ -50,6 +50,7 @@ import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-
 import { signEngagementLetter } from '@/app/actions/signature';
 import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
+import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
 
 interface ClientInfo {
     id: string;
@@ -127,6 +128,9 @@ export default function MyPortalPage() {
     const [signatureOpen, setSignatureOpen] = useState(false);
     const [signature, setSignature] = useState<string | null>(null);
     const [signing, setSigning] = useState(false);
+
+    // Task completion dialog state
+    const [taskToComplete, setTaskToComplete] = useState<Task | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -237,7 +241,7 @@ export default function MyPortalPage() {
         router.push('/login');
     };
 
-    const handleCompleteTask = async (taskId: string) => {
+    const handleCompleteTask = async (taskId: string, completionNote?: string) => {
         if (!userId) return;
         setTaskCompletingId(taskId);
         try {
@@ -248,6 +252,7 @@ export default function MyPortalPage() {
                     completed_at: new Date().toISOString(),
                     completed_by: userId,
                     completed_by_role: 'client',
+                    completion_note: completionNote || null,
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', taskId)
@@ -256,6 +261,7 @@ export default function MyPortalPage() {
             if (error) throw error;
 
             setTasks(prev => prev.filter(task => task.id !== taskId));
+            setTaskToComplete(null);
             toast({
                 title: 'Task completed',
                 description: 'Your case manager has been notified.',
@@ -270,6 +276,10 @@ export default function MyPortalPage() {
         } finally {
             setTaskCompletingId(null);
         }
+    };
+
+    const openCompleteDialog = (task: Task) => {
+        setTaskToComplete(task);
     };
 
     const handleDismissAlert = async (alertId: string) => {
@@ -742,7 +752,7 @@ export default function MyPortalPage() {
                                                     size="sm"
                                                     variant="outline"
                                                     className="h-8"
-                                                    onClick={() => handleCompleteTask(task.id)}
+                                                    onClick={() => openCompleteDialog(task)}
                                                     disabled={taskCompletingId === task.id}
                                                 >
                                                     {taskCompletingId === task.id ? (
@@ -952,6 +962,21 @@ export default function MyPortalPage() {
                 onSave={setSignature}
                 title="Draw Your Signature"
                 description="Use your finger or mouse to sign below."
+            />
+
+            {/* Task Completion Dialog */}
+            <TaskCompleteDialog
+                isOpen={!!taskToComplete}
+                onClose={() => setTaskToComplete(null)}
+                onConfirm={async (note) => {
+                    if (taskToComplete) {
+                        await handleCompleteTask(taskToComplete.id, note);
+                    }
+                }}
+                taskTitle={taskToComplete?.title || ''}
+                isLoading={!!taskCompletingId}
+                showNoteField={true}
+                notePlaceholder="How did you complete this task? (optional)"
             />
         </div>
     );

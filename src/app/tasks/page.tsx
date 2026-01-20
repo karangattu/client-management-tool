@@ -45,11 +45,14 @@ import {
   Hand,
   Archive,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { assignTask } from '@/app/actions/tasks';
 import { getAllUsers } from '@/app/actions/users';
+import { TaskTemplateSelector } from '@/components/tasks/TaskTemplateSelector';
+import type { TaskTemplate } from '@/lib/task-templates';
 
 interface Task {
   id: string;
@@ -100,6 +103,9 @@ function TasksContent() {
     due_date: '',
     category: 'general',
   });
+  
+  // Task template selector state
+  const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
 
   const supabase = createClient();
 
@@ -283,6 +289,19 @@ function TasksContent() {
     } catch (err) {
       console.error('Error assigning task:', err);
     }
+  };
+
+  // Handle template selection
+  const handleTemplateSelect = (template: TaskTemplate & { calculatedDueDate: string }) => {
+    setNewTask({
+      title: template.suggestedTitle,
+      description: template.suggestedDescription,
+      client_id: '', // User will select client
+      priority: template.defaultPriority,
+      due_date: template.calculatedDueDate,
+      category: template.category,
+    });
+    setCreateOpen(true);
   };
 
   const handleCreateTask = async () => {
@@ -508,7 +527,21 @@ function TasksContent() {
             </Select>
 
             {canCreateTasks && (
-              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <>
+                {/* Template Selector */}
+                <TaskTemplateSelector
+                  isOpen={templateSelectorOpen}
+                  onClose={() => setTemplateSelectorOpen(false)}
+                  onSelectTemplate={handleTemplateSelect}
+                />
+                
+                {/* Use Template Button */}
+                <Button variant="outline" onClick={() => setTemplateSelectorOpen(true)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Template
+                </Button>
+                
+                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
@@ -675,6 +708,7 @@ function TasksContent() {
                   </div>
                 </DialogContent>
               </Dialog>
+              </>
             )}
           </div>
         </div>
@@ -843,13 +877,22 @@ function TasksContent() {
             ) : (
               <div className="text-center py-12">
                 <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No tasks found</p>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-gray-600 font-medium">No tasks found</p>
+                <p className="text-sm text-gray-400 mt-1 mb-4">
                   {statusFilter === 'open'
                     ? 'There are no open tasks available to claim right now.'
                     : 'Try adjusting your search or filters.'
                   }
                 </p>
+                {canCreateTasks && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Task
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>

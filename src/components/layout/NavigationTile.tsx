@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { type UserRole, canAccessFeature } from '@/lib/auth-context';
 
 interface NavigationTileProps {
   title: string;
@@ -12,6 +13,12 @@ interface NavigationTileProps {
   color: string;
   badge?: number;
   disabled?: boolean;
+  /** Minimum role required to see this tile. If not set, tile is always visible. */
+  minimumRole?: UserRole;
+  /** Current user's role, used with minimumRole for visibility filtering */
+  userRole?: UserRole;
+  /** Alternative: explicit list of roles that can see this tile */
+  allowedRoles?: UserRole[];
 }
 
 export function NavigationTile({
@@ -22,7 +29,20 @@ export function NavigationTile({
   color,
   badge,
   disabled = false,
+  minimumRole,
+  userRole,
+  allowedRoles,
 }: NavigationTileProps) {
+  // Role-based visibility check
+  if (allowedRoles && userRole) {
+    if (!allowedRoles.includes(userRole)) {
+      return null;
+    }
+  } else if (minimumRole && userRole) {
+    if (!canAccessFeature(userRole, minimumRole)) {
+      return null;
+    }
+  }
   const colorClasses: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300',
     green: 'bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300',

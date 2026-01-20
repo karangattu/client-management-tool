@@ -61,6 +61,7 @@ import { ClientHistory } from '@/components/clients/ClientHistory';
 import { LogInteractionDialog } from '@/components/clients/LogInteractionDialog';
 import { PrintableCaseHistory } from '@/components/clients/PrintableCaseHistory';
 import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementLetterDialog';
+import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { updateTaskStatus } from '@/app/actions/tasks';
 import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
 
@@ -85,6 +86,8 @@ interface ClientDetail {
   is_chronically_homeless?: boolean;
   created_at: string;
   signed_engagement_letter_at?: string | null;
+  intake_completed_at?: string | null;
+  profile_completed_at?: string | null;
 }
 
 /**
@@ -1035,6 +1038,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             VI-SPDAT: {client.vi_spdat_score}
                           </Badge>
                         )}
+                        {/* Onboarding Progress Indicator */}
+                        <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-md">
+                          <span className="text-xs text-gray-500">Onboarding:</span>
+                          <OnboardingProgress 
+                            steps={getClientOnboardingSteps(client)} 
+                            compact 
+                          />
+                        </div>
                       </div>
                     </div>
                     {canEdit && (

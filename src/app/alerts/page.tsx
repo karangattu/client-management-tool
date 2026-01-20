@@ -8,6 +8,16 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import {
   Bell,
   AlertTriangle,
   Clock,
@@ -20,9 +30,11 @@ import {
   Archive,
   CheckCheck,
   MailOpen,
+  Save,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 
 interface Alert {
   id: string;
@@ -37,17 +49,66 @@ interface Alert {
   client?: { first_name: string; last_name: string };
 }
 
+interface NotificationSettings {
+  emailTaskReminders: boolean;
+  emailDeadlineAlerts: boolean;
+  emailBenefitRenewals: boolean;
+  emailNewClients: boolean;
+  showDesktopNotifications: boolean;
+  dailyDigest: boolean;
+}
+
+const DEFAULT_SETTINGS: NotificationSettings = {
+  emailTaskReminders: true,
+  emailDeadlineAlerts: true,
+  emailBenefitRenewals: true,
+  emailNewClients: false,
+  showDesktopNotifications: true,
+  dailyDigest: false,
+};
+
 export default function AlertsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
+  const [savingSettings, setSavingSettings] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
     fetchAlerts();
+    loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const loadSettings = () => {
+    // Load settings from localStorage (could be extended to save in DB)
+    const saved = localStorage.getItem('notificationSettings');
+    if (saved) {
+      try {
+        setSettings(JSON.parse(saved));
+      } catch {
+        setSettings(DEFAULT_SETTINGS);
+      }
+    }
+  };
+
+  const saveSettings = () => {
+    setSavingSettings(true);
+    // Save to localStorage (could be extended to save in DB)
+    localStorage.setItem('notificationSettings', JSON.stringify(settings));
+    setTimeout(() => {
+      setSavingSettings(false);
+      setSettingsOpen(false);
+      toast({
+        title: 'Settings saved',
+        description: 'Your notification preferences have been updated.',
+      });
+    }, 300);
+  };
 
   const fetchAlerts = async () => {
     if (!user) return;
@@ -251,12 +312,124 @@ export default function AlertsPage() {
               <CheckCheck className="h-4 w-4 mr-2" />
               Mark all read
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
               <Settings className="h-4 w-4 mr-2" />
               Settings
             </Button>
           </div>
         </div>
+
+        {/* Settings Dialog */}
+        <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Notification Settings
+              </DialogTitle>
+              <DialogDescription>
+                Configure how you receive alerts and notifications.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6 py-4">
+              {/* Email Notifications */}
+              <div>
+                <h4 className="font-medium text-sm mb-3">Email Notifications</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailTaskReminders" className="flex flex-col gap-1">
+                      <span>Task Reminders</span>
+                      <span className="text-xs text-muted-foreground font-normal">Get email reminders for upcoming tasks</span>
+                    </Label>
+                    <Switch
+                      id="emailTaskReminders"
+                      checked={settings.emailTaskReminders}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, emailTaskReminders: checked }))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailDeadlineAlerts" className="flex flex-col gap-1">
+                      <span>Deadline Alerts</span>
+                      <span className="text-xs text-muted-foreground font-normal">Get notified when deadlines are approaching</span>
+                    </Label>
+                    <Switch
+                      id="emailDeadlineAlerts"
+                      checked={settings.emailDeadlineAlerts}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, emailDeadlineAlerts: checked }))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailBenefitRenewals" className="flex flex-col gap-1">
+                      <span>Benefit Renewals</span>
+                      <span className="text-xs text-muted-foreground font-normal">Alerts for client benefit renewal dates</span>
+                    </Label>
+                    <Switch
+                      id="emailBenefitRenewals"
+                      checked={settings.emailBenefitRenewals}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, emailBenefitRenewals: checked }))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="emailNewClients" className="flex flex-col gap-1">
+                      <span>New Client Registrations</span>
+                      <span className="text-xs text-muted-foreground font-normal">Get notified when new clients self-register</span>
+                    </Label>
+                    <Switch
+                      id="emailNewClients"
+                      checked={settings.emailNewClients}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, emailNewClients: checked }))}
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <Separator />
+              
+              {/* Other Settings */}
+              <div>
+                <h4 className="font-medium text-sm mb-3">Other Settings</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="showDesktopNotifications" className="flex flex-col gap-1">
+                      <span>Desktop Notifications</span>
+                      <span className="text-xs text-muted-foreground font-normal">Show browser notifications for urgent alerts</span>
+                    </Label>
+                    <Switch
+                      id="showDesktopNotifications"
+                      checked={settings.showDesktopNotifications}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, showDesktopNotifications: checked }))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="dailyDigest" className="flex flex-col gap-1">
+                      <span>Daily Digest</span>
+                      <span className="text-xs text-muted-foreground font-normal">Receive a daily summary email instead of individual alerts</span>
+                    </Label>
+                    <Switch
+                      id="dailyDigest"
+                      checked={settings.dailyDigest}
+                      onCheckedChange={(checked) => setSettings(s => ({ ...s, dailyDigest: checked }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setSettingsOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={saveSettings} disabled={savingSettings}>
+                {savingSettings ? 'Saving...' : 'Save Settings'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Tabs and List */}
         <Card>
