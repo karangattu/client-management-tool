@@ -724,9 +724,9 @@ export default function DashboardPage() {
     );
   }
 
-  // Redirect to login if no user (not loading, no error, just no user)
+  // If no user after loading completes, the useEffect will redirect to login
+  // Just return null here to prevent rendering while redirect happens
   if (!user) {
-    router.push('/login');
     return null;
   }
 

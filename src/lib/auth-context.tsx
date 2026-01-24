@@ -65,15 +65,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const now = Date.now();
     if (profileCacheRef.current.userId === userId && now - profileCacheRef.current.timestamp < 60000) {
+      console.log('[Auth] Returning cached profile');
       return profileCacheRef.current.profile;
     }
 
     try {
-      const { data, error } = await supabase
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+      );
+      
+      const fetchPromise = supabase
         .from('profiles')
         .select('id, email, first_name, last_name, role, phone, profile_picture_url, is_active, created_at')
         .eq('id', userId)
         .limit(1);
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as Awaited<typeof fetchPromise>;
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -188,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           profileUserIdRef.current = session.user.id;
           if (profileData) {
             console.log('[Auth] Profile loaded successfully. Role:', profileData.role);
+            setError(null);
           } else {
             console.warn('[Auth] Profile NOT found in database for authenticated user');
             setError('User profile record missing. Please contact administrator.');
@@ -195,9 +204,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setProfile(null);
           profileUserIdRef.current = null;
+          setError(null);
         }
 
-        setError(null);
         // Mark as initialized AFTER setting all state
         isInitializedRef.current = true;
       } catch (e) {
@@ -228,6 +237,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const retryAuth = useCallback(async () => {
     console.log('[Auth] Retrying authentication with force refresh...');
+    // Clear profile cache to ensure fresh fetch
+    profileCacheRef.current = { userId: null, profile: null, timestamp: 0 };
     isInitializedRef.current = false; // Reset to allow re-initialization
     await initializeAuth(true); // Force refresh on retry
   }, [initializeAuth]);
@@ -313,9 +324,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event: string, newSession: Session | null) => {
         console.log('[Auth] Auth state changed:', event);
 
-        // Skip INITIAL_SESSION - we handle this in initializeAuth to avoid race conditions
+        // Skip INITIAL_SESSION and early SIGNED_IN - we handle initial state in initializeAuth
+        // This prevents race conditions where onAuthStateChange fires before initializeAuth completes
         if (event === 'INITIAL_SESSION') {
           console.log('[Auth] Skipping INITIAL_SESSION event (handled by initializeAuth)');
+          return;
+        }
+        
+        // If we're still initializing and get SIGNED_IN, let initializeAuth handle it
+        if (event === 'SIGNED_IN' && !isInitializedRef.current) {
+          console.log('[Auth] Skipping early SIGNED_IN event (initializeAuth will handle it)');
           return;
         }
 
