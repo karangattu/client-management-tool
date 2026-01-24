@@ -137,6 +137,8 @@ export default function ClientsPage() {
 
       setClients(clientsData || []);
       setPrograms(programsData || []);
+      // Initialize filteredClients with server-filtered results
+      setFilteredClients(clientsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -193,7 +195,8 @@ export default function ClientsPage() {
       filtered = results.map(({ item }) => item);
     }
 
-    // Status filter is now applied server-side, no need for client-side filtering
+    // Status filter is applied server-side in fetchClients, 
+    // so clients array already contains only filtered status records
 
     // Apply program filter (client-side due to join complexity)
     if (programFilter !== 'all') {

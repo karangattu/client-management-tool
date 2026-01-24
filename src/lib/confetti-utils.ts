@@ -3,21 +3,47 @@
  * Reduces initial bundle size by dynamically importing canvas-confetti only when needed
  */
 
-let confettiModule: typeof import('canvas-confetti') | null = null;
+// Type for confetti options
+interface ConfettiOptions {
+  particleCount?: number;
+  angle?: number;
+  spread?: number;
+  startVelocity?: number;
+  decay?: number;
+  gravity?: number;
+  drift?: number;
+  ticks?: number;
+  origin?: {
+    x?: number;
+    y?: number;
+  };
+  colors?: string[];
+  shapes?: Array<'square' | 'circle'>;
+  scalar?: number;
+  zIndex?: number;
+  disableForReducedMotion?: boolean;
+}
 
-export async function triggerConfetti(options?: Parameters<typeof import('canvas-confetti')>[0]) {
+type ConfettiFunction = (options?: ConfettiOptions) => Promise<null> | null;
+
+let confettiModule: ConfettiFunction | null = null;
+
+export async function triggerConfetti(options?: ConfettiOptions): Promise<null | void> {
   // Lazy load canvas-confetti only when triggered
   if (!confettiModule) {
-    confettiModule = (await import('canvas-confetti')).default;
+    const module = await import('canvas-confetti');
+    confettiModule = (module.default || module) as ConfettiFunction;
   }
   
-  return confettiModule(options);
+  if (confettiModule) {
+    return confettiModule(options);
+  }
 }
 
 /**
  * Celebration confetti with default settings
  */
-export async function celebrateSuccess() {
+export async function celebrateSuccess(): Promise<null | void> {
   return triggerConfetti({
     particleCount: 100,
     spread: 70,
