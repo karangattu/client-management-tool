@@ -93,9 +93,10 @@ body {
   opacity: 0.5;
 }
 
-/* Form input focus rings */
+/* Form input focus rings - uses ring utilities from Tailwind for consistent focus states */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
 }

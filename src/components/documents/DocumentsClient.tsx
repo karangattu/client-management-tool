@@ -622,13 +622,24 @@ export default function DocumentsClient() {
                   key={doc.id}
                   className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex-shrink-0 cursor-pointer" onClick={() => handleView(doc)}>
+                  <button
+                    type="button"
+                    className="flex-shrink-0 cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={() => handleView(doc)}
+                    aria-label={`View ${doc.name}`}
+                  >
                     {getFileIcon(doc.name)}
-                  </div>
+                  </button>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-medium truncate hover:text-blue-600 cursor-pointer" onClick={() => handleView(doc)}>{doc.name}</p>
+                      <button
+                        type="button"
+                        className="font-medium truncate hover:text-blue-600 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+                        onClick={() => handleView(doc)}
+                      >
+                        {doc.name}
+                      </button>
                       {getStatusBadge(doc.status)}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">

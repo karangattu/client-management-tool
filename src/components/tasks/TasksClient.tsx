@@ -689,21 +689,26 @@ function TasksContent() {
                                 className="h-9"
                               />
                               <div className="border rounded-md max-h-48 overflow-y-auto">
-                                <div className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => { setNewTask(prev => ({ ...prev, client_id: '' })); setClientSearchQuery(''); }}>
+                                <button
+                                  type="button"
+                                  className="w-full p-2 hover:bg-gray-100 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                  onClick={() => { setNewTask(prev => ({ ...prev, client_id: '' })); setClientSearchQuery(''); }}
+                                >
                                   <div className="text-sm font-medium">No client</div>
-                                </div>
+                                </button>
                                 {filteredClients.length > 0 ? (
                                   filteredClients.map(client => (
-                                    <div
+                                    <button
+                                      type="button"
                                       key={client.id}
-                                      className="p-2 hover:bg-gray-100 cursor-pointer border-t"
+                                      className="w-full p-2 hover:bg-gray-100 cursor-pointer border-t text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                       onClick={() => {
                                         setNewTask(prev => ({ ...prev, client_id: client.id }));
                                         setClientSearchQuery('');
                                       }}
                                     >
                                       <div className="text-sm font-medium">{client.first_name} {client.last_name}</div>
-                                    </div>
+                                    </button>
                                   ))
                                 ) : clientSearchQuery.trim() ? (
                                   <div className="p-2 text-center text-xs text-gray-500 border-t">
