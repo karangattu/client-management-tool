@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { cacheReadOnly } from "@/app/actions/cache";
 
@@ -33,7 +33,8 @@ export interface Enrollment {
  * Fetches all active programs.
  */
 const getProgramsCached = cacheReadOnly(async () => {
-    const supabase = await createClient();
+    // Use service client to bypass RLS and avoid cookies issue in cached function
+    const supabase = createServiceClient();
     const { data, error } = await supabase
         .from('programs')
         .select('*')

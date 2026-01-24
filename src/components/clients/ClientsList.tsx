@@ -126,6 +126,11 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
 
   const supabase = createClient();
   const observerTarget = useRef<HTMLDivElement>(null);
+  const programNameById = useMemo(
+    () => new Map(programs.map((program) => [program.id, program.name])),
+    [programs]
+  );
+  const hasActiveFilters = statusFilter !== 'all' || programFilter !== 'all' || searchQuery.trim() !== '';
 
   // Realtime subscription for clients - enables multi-user sync
   const { isSubscribed: isRealtimeConnected } = useRealtimeClients(
@@ -362,6 +367,12 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
     return <Badge className={config.color}>{config.label}</Badge>;
   };
 
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setProgramFilter('all');
+  };
+
   const canCreateClients = canAccessFeature(profile?.role || 'client', 'case_manager');
   const canEditClients = canAccessFeature(profile?.role || 'client', 'case_manager');
 
@@ -468,8 +479,12 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
             <CardContent className="pt-6">
               <div className="flex flex-col xl:flex-row gap-4">
                 <div className="relative flex-1">
+                  <Label htmlFor="client-search" className="sr-only">
+                    Search clients
+                  </Label>
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
+                    id="client-search"
                     placeholder="Search by name, email, or phone..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -504,6 +519,16 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
           </Card>
 
           {/* Client List */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <p className="text-sm text-gray-600">
+              {isPending ? 'Refreshing clients...' : `Showing ${filteredClients.length} of ${clients.length} clients`}
+            </p>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear all filters
+              </Button>
+            )}
+          </div>
           {filteredClients.length === 0 && !isPending ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -516,155 +541,192 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                     ? 'Get started by adding your first client.'
                     : 'Try adjusting your search or filter criteria.'}
                 </p>
-                {clients.length === 0 && canCreateClients && (
+                {clients.length === 0 && canCreateClients ? (
                   <Link href="/client-intake">
                     <Button>
                       <Plus className="h-4 w-4 mr-2" />
                       Add First Client
                     </Button>
                   </Link>
+                ) : (
+                  hasActiveFilters && (
+                    <Button variant="outline" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  )
                 )}
               </CardContent>
             </Card>
           ) : (
             <>
               <div className="space-y-4">
-                {filteredClients.map((client) => (
-                  <Card key={client.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4 sm:p-6">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                          <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
-                            {client.first_name[0]}{client.last_name[0]}
-                          </div>
-                          <div className="space-y-1 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-semibold">
-                                {client.first_name} {client.last_name}
-                              </h3>
-                              {getStatusBadge(client.status)}
-                              {client.intake_completed_at ? (
-                                <Badge className="bg-blue-50 text-blue-700 border-blue-200">
-                                  <Check className="h-3 w-3 mr-1" />
-                                  Intake Complete
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-gray-500">
-                                  Intake In Progress
-                                </Badge>
+                {filteredClients.map((client) => {
+                  const programBadges = (client.program_enrollments || [])
+                    .map((enrollment) => ({
+                      id: enrollment.program_id,
+                      label: programNameById.get(enrollment.program_id),
+                    }))
+                    .filter((enrollment) => Boolean(enrollment.label));
+                  const visiblePrograms = programBadges.slice(0, 3);
+                  const extraProgramCount = Math.max(programBadges.length - visiblePrograms.length, 0);
+
+                  return (
+                    <Card key={client.id} className="hover:shadow-md transition-shadow">
+                      <CardContent className="p-4 sm:p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="flex items-start gap-4">
+                            <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
+                              {client.first_name[0]}{client.last_name[0]}
+                            </div>
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold">
+                                  {client.first_name} {client.last_name}
+                                </h3>
+                                {getStatusBadge(client.status)}
+                                {client.intake_completed_at ? (
+                                  <Badge className="bg-blue-50 text-blue-700 border-blue-200">
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Intake Complete
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-gray-500">
+                                    Intake In Progress
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyToClipboard(client.email, `email-${client.id}`)}
+                                      className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                      aria-label={`Copy email for ${client.first_name} ${client.last_name}`}
+                                    >
+                                      <Mail className="h-3 w-3" />
+                                      <span>{client.email}</span>
+                                      {copiedField === `email-${client.id}` ? (
+                                        <Check className="h-3 w-3 text-green-600" />
+                                      ) : (
+                                        <Copy className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {copiedField === `email-${client.id}` ? 'Copied!' : 'Click to copy email'}
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => copyToClipboard(client.phone, `phone-${client.id}`)}
+                                      className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                                      aria-label={`Copy phone for ${client.first_name} ${client.last_name}`}
+                                    >
+                                      <Phone className="h-3 w-3" />
+                                      <span>{client.phone}</span>
+                                      {copiedField === `phone-${client.id}` ? (
+                                        <Check className="h-3 w-3 text-green-600" />
+                                      ) : (
+                                        <Copy className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {copiedField === `phone-${client.id}` ? 'Copied!' : 'Click to copy phone'}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+
+                              {visiblePrograms.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                  <span className="uppercase tracking-wide text-[10px] text-gray-400">Programs</span>
+                                  {visiblePrograms.map((enrollment) => (
+                                    <Badge key={enrollment.id} variant="outline" className="bg-white">
+                                      {enrollment.label}
+                                    </Badge>
+                                  ))}
+                                  {extraProgramCount > 0 && (
+                                    <span className="text-[11px] text-gray-400">
+                                      +{extraProgramCount} more
+                                    </span>
+                                  )}
+                                </div>
                               )}
+
+                              <p className="text-xs text-gray-400">
+                                Added {formatPacificLocaleDate(client.created_at)}
+                              </p>
                             </div>
-
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    onClick={() => copyToClipboard(client.email, `email-${client.id}`)}
-                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
-                                  >
-                                    <Mail className="h-3 w-3" />
-                                    <span>{client.email}</span>
-                                    {copiedField === `email-${client.id}` ? (
-                                      <Check className="h-3 w-3 text-green-600" />
-                                    ) : (
-                                      <Copy className="h-3 w-3 opacity-50" />
-                                    )}
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {copiedField === `email-${client.id}` ? 'Copied!' : 'Click to copy email'}
-                                </TooltipContent>
-                              </Tooltip>
-
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    onClick={() => copyToClipboard(client.phone, `phone-${client.id}`)}
-                                    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
-                                  >
-                                    <Phone className="h-3 w-3" />
-                                    <span>{client.phone}</span>
-                                    {copiedField === `phone-${client.id}` ? (
-                                      <Check className="h-3 w-3 text-green-600" />
-                                    ) : (
-                                      <Copy className="h-3 w-3 opacity-50" />
-                                    )}
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {copiedField === `phone-${client.id}` ? 'Copied!' : 'Click to copy phone'}
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-
-                            <p className="text-xs text-gray-400">
-                              Added {formatPacificLocaleDate(client.created_at)}
-                            </p>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => setPreviewClientId(client.id)}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            Quick View
-                          </Button>
-                          <Link href={`/clients/${client.id}`}>
-                            <Button variant="outline" size="sm">
-                              <Eye className="h-4 w-4 mr-2" />
-                              View
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => setPreviewClientId(client.id)}
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              Quick View
                             </Button>
-                          </Link>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
+                            <Link href={`/clients/${client.id}`}>
+                              <Button variant="outline" size="sm">
+                                <Eye className="h-4 w-4 mr-2" />
+                                View
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              {canEditClients && (
-                                <DropdownMenuItem asChild>
-                                  <Link href={`/clients/${client.id}/edit`}>
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </Link>
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-orange-600"
-                                onClick={() => {
-                                  setClientToArchive(client);
-                                  setArchiveDialogOpen(true);
-                                }}
-                              >
-                                <Archive className="h-4 w-4 mr-2" />
-                                Archive
-                              </DropdownMenuItem>
-                              {profile?.role === 'admin' && (
+                            </Link>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canEditClients && (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/clients/${client.id}/edit`}>
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Edit
+                                    </Link>
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
+                                  className="text-orange-600"
                                   onClick={() => {
-                                    setClientToDelete(client);
-                                    setDeleteConfirmText('');
-                                    setError(null);
-                                    setDeleteDialogOpen(true);
+                                    setClientToArchive(client);
+                                    setArchiveDialogOpen(true);
                                   }}
-                                  className="text-red-600"
                                 >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
+                                  <Archive className="h-4 w-4 mr-2" />
+                                  Archive
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {profile?.role === 'admin' && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setClientToDelete(client);
+                                      setDeleteConfirmText('');
+                                      setError(null);
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                    className="text-red-600"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
 
               {/* Infinite Scroll Trigger */}

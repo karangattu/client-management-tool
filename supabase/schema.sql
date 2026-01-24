@@ -1255,6 +1255,13 @@ CREATE POLICY "Staff and admins can view audit log" ON audit_log
         public.is_staff_or_admin(auth.uid())
     );
 
+-- Audit log - staff and admins can insert
+DROP POLICY IF EXISTS "Staff and admins can insert audit log" ON audit_log;
+CREATE POLICY "Staff and admins can insert audit log" ON audit_log
+    FOR INSERT WITH CHECK (
+        public.is_staff_or_admin(auth.uid())
+    );
+
 -- ============================================
 -- SAMPLE DATA FOR DEVELOPMENT
 -- ============================================
