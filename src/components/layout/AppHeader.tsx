@@ -204,7 +204,6 @@ export function AppHeader({
                       height={32}
                       className="object-cover rounded-full"
                       sizes="32px"
-                      priority={false}
                     />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center">

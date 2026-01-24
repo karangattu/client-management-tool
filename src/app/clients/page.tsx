@@ -195,8 +195,8 @@ export default function ClientsPage() {
       filtered = results.map(({ item }) => item);
     }
 
-    // Status filter is applied server-side in fetchClients, 
-    // so clients array already contains only filtered status records
+    // Status filtering is handled server-side in fetchClients(),
+    // so the clients array contains only records matching the selected status filter
 
     // Apply program filter (client-side due to join complexity)
     if (programFilter !== 'all') {
