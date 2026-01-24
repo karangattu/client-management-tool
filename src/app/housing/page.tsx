@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 interface HousingApplication {
   id: string;
@@ -462,7 +463,7 @@ export default function HousingPage() {
                           )}
                           {app.submitted_at && (
                             <span className="text-xs text-gray-500">
-                              Submitted: {new Date(app.submitted_at).toLocaleDateString()}
+                              Submitted: {formatPacificLocaleDate(app.submitted_at)}
                             </span>
                           )}
                         </div>

@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { ENGAGEMENT_LETTER_TEXT } from "@/lib/constants";
+import { formatPacificLocaleDate, formatPacificLocaleDateTime } from "@/lib/date-utils";
 
 /**
  * Generates a PDF for the engagement letter with the client's signature.
@@ -24,7 +25,7 @@ export const generateEngagementLetterPDF = (clientName: string, signatureDataUrl
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
     doc.text(`Client: ${clientName}`, margin, 45);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 52);
+    doc.text(`Date: ${formatPacificLocaleDate(new Date())}`, margin, 52);
 
     // Content Body
     doc.setFontSize(10);
@@ -63,7 +64,7 @@ export const generateEngagementLetterPDF = (clientName: string, signatureDataUrl
     doc.addImage(signatureDataUrl, 'PNG', margin, signatureY + 15, 60, 25);
     doc.setFontSize(8);
     doc.setFont("helvetica", "italic");
-    doc.text(`Digitally signed by ${clientName} on ${new Date().toLocaleString()}`, margin, signatureY + 45);
+    doc.text(`Digitally signed by ${clientName} on ${formatPacificLocaleDateTime(new Date())}`, margin, signatureY + 45);
 
     // Return base64 string
     return doc.output('datauristring').split(',')[1];

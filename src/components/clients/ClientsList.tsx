@@ -66,6 +66,7 @@ import { type Program } from '@/lib/types';
 import { CLIENT_STATUS_CONFIG } from '@/lib/status-config';
 import { ClientSummaryDrawer } from '@/components/clients/ClientSummaryDrawer';
 import { createClient } from '@/lib/supabase/client';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 interface Client {
   id: string;
@@ -534,7 +535,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                             </div>
 
                             <p className="text-xs text-gray-400">
-                              Added {new Date(client.created_at).toLocaleDateString()}
+                              Added {formatPacificLocaleDate(client.created_at)}
                             </p>
                           </div>
                         </div>

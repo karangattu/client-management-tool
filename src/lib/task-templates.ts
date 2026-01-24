@@ -3,6 +3,8 @@
  * Templates can be used to quickly create standardized tasks
  */
 
+import { getPacificNow } from '@/lib/date-utils';
+
 export interface TaskTemplate {
     id: string;
     name: string;
@@ -262,7 +264,7 @@ export function getCategoryLabel(category: string): string {
  * Calculate due date from template
  */
 export function calculateDueDate(template: TaskTemplate): string {
-    const date = new Date();
+    const date = getPacificNow();
     date.setDate(date.getDate() + template.defaultDueDays);
     return date.toISOString().split('T')[0];
 }

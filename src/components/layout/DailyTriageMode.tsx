@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
+import { getPacificHour, formatPacificFullDate, formatPacificLocaleDate, getPacificNow } from '@/lib/date-utils';
 
 interface TriageTask {
     id: string;
@@ -63,7 +64,7 @@ export function DailyTriageMode({
     const [triageStep, setTriageStep] = useState<'overview' | 'tasks' | 'ready'>('overview');
 
     const greeting = () => {
-        const hour = new Date().getHours();
+        const hour = getPacificHour();
         if (hour < 12) return 'Good morning';
         if (hour < 17) return 'Good afternoon';
         return 'Good evening';
@@ -111,12 +112,7 @@ export function DailyTriageMode({
                             {greeting()}, {userName.split(' ')[0]}!
                         </h1>
                         <p className="text-gray-600 dark:text-gray-300 mt-2">
-                            {new Date().toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
-                            })}
+                            {formatPacificFullDate()}
                         </p>
                     </div>
 
@@ -250,7 +246,7 @@ export function DailyTriageMode({
                                                 {task.dueDate && (
                                                     <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
                                                         <Clock className="h-3 w-3" />
-                                                        Due: {new Date(task.dueDate).toLocaleDateString()}
+                                                        Due: {formatPacificLocaleDate(task.dueDate)}
                                                     </p>
                                                 )}
                                             </div>
@@ -336,10 +332,10 @@ export function useDailyTriageMode() {
 
     useEffect(() => {
         const lastTriage = localStorage.getItem(TRIAGE_KEY);
-        const today = new Date().toDateString();
+        const today = getPacificNow().toDateString();
         
         // Show triage if not done today and it's before noon
-        const hour = new Date().getHours();
+        const hour = getPacificHour();
         if (lastTriage !== today && hour < 12) {
             // Small delay to let dashboard load first
             const timer = setTimeout(() => setShowTriage(true), 500);
@@ -348,7 +344,7 @@ export function useDailyTriageMode() {
     }, []);
 
     const completeTriage = () => {
-        localStorage.setItem(TRIAGE_KEY, new Date().toDateString());
+        localStorage.setItem(TRIAGE_KEY, getPacificNow().toDateString());
         setShowTriage(false);
     };
 

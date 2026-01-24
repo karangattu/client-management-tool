@@ -52,6 +52,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { Textarea } from '@/components/ui/textarea';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 interface Document {
   id: string;
@@ -547,7 +548,7 @@ export default function DocumentsClient() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : 'N/A'}
+                        {doc.created_at ? formatPacificLocaleDate(doc.created_at) : 'N/A'}
                       </span>
                       <span>{doc.size || 'N/A'}</span>
                       <Badge variant="outline" className="text-xs">

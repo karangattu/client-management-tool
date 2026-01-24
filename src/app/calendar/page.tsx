@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
+import { PACIFIC_TIMEZONE, formatPacificLocaleDate, formatPacificLocaleTime, toPacificDate, pacificToUTCISO } from '@/lib/date-utils';
 
 interface CalendarEvent {
   id: string;
@@ -236,7 +237,8 @@ export default function CalendarPage() {
     }
 
     try {
-      const startTime = newEvent.time ? `${newEvent.date}T${newEvent.time}` : `${newEvent.date}T00:00`;
+      // Convert the user's Pacific time input to UTC for database storage
+      const startTime = pacificToUTCISO(newEvent.date, newEvent.time || '00:00');
 
       const { error } = await supabase
         .from('calendar_events')
@@ -302,7 +304,7 @@ export default function CalendarPage() {
 
   const getEventsForDate = (date: Date) => {
     return events.filter(event => {
-      const eventDate = new Date(event.start_time);
+      const eventDate = toPacificDate(event.start_time);
       return (
         eventDate.getDate() === date.getDate() &&
         eventDate.getMonth() === date.getMonth() &&
@@ -351,8 +353,8 @@ export default function CalendarPage() {
 
   // Get upcoming events for the sidebar
   const upcomingEvents = events
-    .filter((event: CalendarEvent) => new Date(event.start_time) >= new Date())
-    .sort((a: CalendarEvent, b: CalendarEvent) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+    .filter((event: CalendarEvent) => toPacificDate(event.start_time) >= toPacificDate(new Date()))
+    .sort((a: CalendarEvent, b: CalendarEvent) => toPacificDate(a.start_time).getTime() - toPacificDate(b.start_time).getTime())
     .slice(0, 5);
 
   if (authLoading || loading) {
@@ -670,7 +672,7 @@ export default function CalendarPage() {
                             >
                               <p className="text-xs font-bold truncate">{event.title}</p>
                               <p className="text-[10px] opacity-70 mt-0.5">
-                                {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {formatPacificLocaleTime(event.start_time, { hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
                           ))}
@@ -710,7 +712,7 @@ export default function CalendarPage() {
                           onClick={() => setSelectedEvent(event)}
                         >
                           <div className="min-w-[80px] font-bold text-sm pt-1">
-                            {new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatPacificLocaleTime(event.start_time, { hour: '2-digit', minute: '2-digit' })}
                           </div>
                           <div className="flex-1">
                             <h4 className="font-bold text-lg mb-1">{event.title}</h4>
@@ -760,7 +762,7 @@ export default function CalendarPage() {
                         <p className="font-medium text-sm">{event.title}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
                           <Clock className="h-3 w-3" />
-                          {new Date(event.start_time).toLocaleDateString('en-US', {
+                          {formatPacificLocaleDate(event.start_time, {
                             month: 'short',
                             day: 'numeric',
                             hour: 'numeric',
@@ -890,14 +892,14 @@ export default function CalendarPage() {
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date</p>
                     <div className="flex items-center gap-2 text-gray-900 font-bold">
                       <CalendarIcon className="h-4 w-4 text-blue-500" />
-                      {new Date(selectedEvent.start_time).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                      {formatPacificLocaleDate(selectedEvent.start_time, { month: 'long', day: 'numeric', year: 'numeric' })}
                     </div>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Time</p>
                     <div className="flex items-center gap-2 text-gray-900 font-bold">
                       <Clock className="h-4 w-4 text-blue-500" />
-                      {new Date(selectedEvent.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatPacificLocaleTime(selectedEvent.start_time, { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                 </div>

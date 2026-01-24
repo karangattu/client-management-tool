@@ -1,4 +1,5 @@
 import { ClientIntakeForm } from "./schemas/validation";
+import { getPacificNow } from "./date-utils";
 
 export interface EligibilityResult {
     programId: number;
@@ -45,7 +46,7 @@ const getIncome = (income: number | string | null | undefined): number => {
 const getAge = (dob: string | undefined): number => {
     if (!dob) return 0;
     const birthDate = new Date(dob);
-    const today = new Date();
+    const today = getPacificNow();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {

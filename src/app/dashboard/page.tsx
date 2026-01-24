@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime } from '@/lib/date-utils';
+import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime, getPacificNow, toPacificDate } from '@/lib/date-utils';
 import { DailyTriageMode, useDailyTriageMode } from '@/components/layout/DailyTriageMode';
 import {
   Users,
@@ -467,7 +467,7 @@ export default function DashboardPage() {
       if (focusTasks.data) {
         (focusTasks.data as Array<{ id: string; title: string; description?: string | null; due_date?: string | null; priority?: string | null; status?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((task) => {
           const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
-          const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+          const isOverdue = task.due_date && toPacificDate(task.due_date) < getPacificNow();
           focus.push({
             id: task.id,
             type: 'task',
@@ -1505,7 +1505,7 @@ export default function DashboardPage() {
                           <div className="flex items-center gap-2 mb-1">
                             {getPriorityBadge(task.priority)}
                             {task.due_date && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${new Date(task.due_date) < new Date() ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${toPacificDate(task.due_date) < getPacificNow() ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>
                                 {formatPacificDueDate(task.due_date)}
                               </span>
                             )}

@@ -18,6 +18,7 @@ import { ENGAGEMENT_LETTER_TEXT } from "@/lib/constants";
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
 import { signEngagementLetter } from "@/app/actions/signature";
 import { Label } from "@/components/ui/label";
+import { formatPacificLocaleDate } from "@/lib/date-utils";
 
 interface SignEngagementLetterDialogProps {
     clientId: string;
@@ -76,7 +77,7 @@ export function SignEngagementLetterDialog({
         return (
             <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Signed on {signedAt ? new Date(signedAt).toLocaleDateString() : 'N/A'}</span>
+                <span>Signed on {signedAt ? formatPacificLocaleDate(signedAt) : 'N/A'}</span>
             </div>
         );
     }

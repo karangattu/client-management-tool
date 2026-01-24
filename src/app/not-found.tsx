@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Button } from '@/components/ui/button';
 import { Home, Search } from 'lucide-react';
+import { getPacificYear } from '@/lib/date-utils';
 
 export default function NotFound() {
     return (
@@ -45,7 +46,7 @@ export default function NotFound() {
             </main>
 
             <footer className="py-6 text-center text-sm text-gray-500">
-                &copy; {new Date().getFullYear()} ClientHub. All rights reserved.
+                &copy; {getPacificYear()} ClientHub. All rights reserved.
             </footer>
         </div>
     );

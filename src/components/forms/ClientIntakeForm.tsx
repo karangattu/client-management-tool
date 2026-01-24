@@ -47,6 +47,7 @@ import {
   Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatPacificLocaleDate, formatPacificLocaleTime } from "@/lib/date-utils";
 import {
   Dialog,
   DialogContent,
@@ -447,7 +448,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
               <div className="flex items-center gap-2 text-blue-800">
                 <Sparkles className="h-4 w-4" />
                 <span className="text-sm font-medium">
-                  Continuing from your saved draft from {lastSaved.toLocaleDateString()} at {lastSaved.toLocaleTimeString()}
+                  Continuing from your saved draft from {formatPacificLocaleDate(lastSaved)} at {formatPacificLocaleTime(lastSaved)}
                 </span>
               </div>
               <Button

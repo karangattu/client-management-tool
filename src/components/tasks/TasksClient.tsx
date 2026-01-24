@@ -53,6 +53,7 @@ import { assignTask } from '@/app/actions/tasks';
 import { getAllUsers } from '@/app/actions/users';
 import { TaskTemplateSelector } from '@/components/tasks/TaskTemplateSelector';
 import type { TaskTemplate } from '@/lib/task-templates';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 interface Task {
   id: string;
@@ -782,7 +783,7 @@ function TasksContent() {
                         {task.due_date && (
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            Due: {new Date(task.due_date).toLocaleDateString()}
+                            Due: {formatPacificLocaleDate(task.due_date)}
                           </span>
                         )}
                         {task.completed_at && task.status === 'completed' && (

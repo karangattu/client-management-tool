@@ -42,6 +42,7 @@ import {
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 // Simple header for public self-service page - NO client search
 function SelfServiceHeader() {
@@ -525,7 +526,7 @@ export default function SelfServiceIntakePage() {
                       <Image src={signature} alt="Your signature" width={300} height={96} className="max-h-24 object-contain" />
                     </div>
                     <div className="flex justify-between items-center mt-4">
-                      <p className="text-xs text-gray-500 italic">Signed on {new Date().toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-500 italic">Signed on {formatPacificLocaleDate(new Date())}</p>
                       <Button
                         variant="ghost"
                         size="sm"

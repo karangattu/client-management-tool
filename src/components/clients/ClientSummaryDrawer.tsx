@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { getClientStatusConfig } from '@/lib/status-config';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 import {
   Sheet,
   SheetContent,
@@ -260,7 +261,7 @@ export function ClientSummaryDrawer({ clientId, isOpen, onClose }: ClientSummary
             {/* Client Since */}
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <Calendar className="h-3 w-3" />
-              Client since {new Date(client.created_at).toLocaleDateString()}
+              Client since {formatPacificLocaleDate(client.created_at)}
             </div>
 
             <Separator />

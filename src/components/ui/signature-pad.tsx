@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { RotateCcw, Check, PenLine, BadgeCheck } from 'lucide-react';
 import Image from 'next/image';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 
 interface SignaturePadProps {
     open: boolean;
@@ -196,7 +197,7 @@ export function SignatureDisplay({
                 <div className="flex justify-between items-center mt-4">
                     <p className="text-xs text-gray-500 italic">
                         {signerName ? `Signed by ${signerName} on ` : 'Signed on '}
-                        {new Date().toLocaleDateString()}
+                        {formatPacificLocaleDate(new Date())}
                     </p>
                     <Button
                         variant="ghost"

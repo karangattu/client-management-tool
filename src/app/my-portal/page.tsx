@@ -48,6 +48,7 @@ import {
 import { uploadClientDocument, ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES, MAX_FILE_SIZES } from '@/lib/supabase/storage';
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
 import { signEngagementLetter } from '@/app/actions/signature';
+import { formatPacificLocaleDate } from '@/lib/date-utils';
 import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
@@ -712,7 +713,7 @@ export default function MyPortalPage() {
                                             {task.due_date && (
                                                 <span className="text-xs text-gray-500 flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />
-                                                    {new Date(task.due_date).toLocaleDateString()}
+                                                    {formatPacificLocaleDate(task.due_date)}
                                                 </span>
                                             )}
                                         </div>
@@ -810,7 +811,7 @@ export default function MyPortalPage() {
                                                 {doc.file_name}
                                             </p>
                                             <p className="text-xs text-gray-500">
-                                                {doc.document_type.replace(/_/g, ' ').toUpperCase()} • {new Date(doc.created_at).toLocaleDateString()}
+                                                {doc.document_type.replace(/_/g, ' ').toUpperCase()} • {formatPacificLocaleDate(doc.created_at)}
                                             </p>
                                         </div>
                                     </div>

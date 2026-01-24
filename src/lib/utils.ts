@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getPacificNow } from "@/lib/date-utils";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -33,7 +34,7 @@ export function formatZipCode(value: string): string {
 }
 
 export function calculateAge(dateOfBirth: Date): number {
-  const today = new Date();
+  const today = getPacificNow();
   let age = today.getFullYear() - dateOfBirth.getFullYear();
   const monthDiff = today.getMonth() - dateOfBirth.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
