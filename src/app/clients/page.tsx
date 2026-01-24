@@ -110,12 +110,19 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch clients with pagination (limit 50) and their program enrollments and case management info
-      const { data: clientsData, error: clientsError } = await supabase
+      // Build query with server-side filters
+      let query = supabase
         .from('clients')
         .select('*, program_enrollments(*), case_management(*)')
         .order('created_at', { ascending: false })
         .limit(50); // Add pagination limit
+
+      // Apply status filter on server-side for better performance
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      const { data: clientsData, error: clientsError } = await query;
 
       if (clientsError) throw clientsError;
 
@@ -129,20 +136,19 @@ export default function ClientsPage() {
       if (programsError) throw programsError;
 
       setClients(clientsData || []);
-      setFilteredClients(clientsData || []);
       setPrograms(programsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, statusFilter]);
 
   useEffect(() => {
     if (profile) {
       fetchClients();
     }
-  }, [fetchClients, profile]);
+  }, [fetchClients, profile, statusFilter]); // Re-fetch when status filter changes
 
   const fuse = useMemo(() => {
     return new Fuse<Client>(clients, {
@@ -187,12 +193,9 @@ export default function ClientsPage() {
       filtered = results.map(({ item }) => item);
     }
 
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((client) => client.status === statusFilter);
-    }
+    // Status filter is now applied server-side, no need for client-side filtering
 
-    // Apply program filter
+    // Apply program filter (client-side due to join complexity)
     if (programFilter !== 'all') {
       filtered = filtered.filter((client) =>
         client.program_enrollments?.some(enrollment => enrollment.program_id === programFilter)
@@ -200,7 +203,7 @@ export default function ClientsPage() {
     }
 
     setFilteredClients(filtered);
-  }, [debouncedSearchQuery, statusFilter, programFilter, clients, fuse]);
+  }, [debouncedSearchQuery, programFilter, clients, fuse]);
 
   const handleArchive = async () => {
     if (!clientToArchive) return;
@@ -320,7 +323,7 @@ export default function ClientsPage() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">

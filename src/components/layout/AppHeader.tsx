@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/lib/auth-context';
 import { SearchCommand } from './SearchCommand';
+import { getOptimizedAvatarUrl } from '@/lib/image-utils';
 
 interface AppHeaderProps {
   title?: string;
@@ -197,10 +198,13 @@ export function AppHeader({
                 <div className="relative h-8 w-8 rounded-full overflow-hidden bg-gray-200">
                   {avatarUrl ? (
                     <Image
-                      src={avatarUrl}
+                      src={getOptimizedAvatarUrl(avatarUrl, 32)}
                       alt={displayName}
-                      fill
-                      className="object-cover"
+                      width={32}
+                      height={32}
+                      className="object-cover rounded-full"
+                      sizes="32px"
+                      priority={false}
                     />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center">
