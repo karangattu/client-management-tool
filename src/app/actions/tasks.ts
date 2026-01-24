@@ -414,3 +414,136 @@ export async function dismissAlert(alertId: string) {
         return { success: false, error: error instanceof Error ? error.message : "Failed to dismiss alert" };
     }
 }
+
+/**
+ * Fetch tasks with cursor-based pagination
+ */
+export async function getTasksWithCursor(options: {
+  limit?: number;
+  cursor?: string; // ISO timestamp
+  statusFilter?: string;
+  assignedToFilter?: string;
+}) {
+  try {
+    const supabase = await createClient();
+    const limit = options.limit || 50;
+    
+    let query = supabase
+      .from('tasks')
+      .select(`
+        id,
+        title,
+        description,
+        client_id,
+        assigned_to,
+        assigned_by,
+        status,
+        priority,
+        due_date,
+        completed_at,
+        completed_by,
+        completed_by_role,
+        category,
+        tags,
+        created_at,
+        updated_at,
+        client:clients(first_name, last_name),
+        assignee:profiles!tasks_assigned_to_fkey(first_name, last_name)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit + 1);
+
+    if (options.cursor) {
+      query = query.lt('created_at', options.cursor);
+    }
+
+    if (options.statusFilter && options.statusFilter !== 'all') {
+      query = query.eq('status', options.statusFilter);
+    }
+
+    if (options.assignedToFilter && options.assignedToFilter !== 'all') {
+      query = query.eq('assigned_to', options.assignedToFilter);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return { success: false, error: error.message, data: [], hasMore: false };
+    }
+
+    const hasMore = (data?.length || 0) > limit;
+    const tasks = data?.slice(0, limit) || [];
+    const nextCursor = tasks.length > 0 ? tasks[tasks.length - 1].created_at : null;
+
+    return {
+      success: true,
+      data: tasks,
+      hasMore,
+      nextCursor,
+    };
+  } catch (error) {
+    console.error("Error fetching tasks with cursor:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch tasks",
+      data: [],
+      hasMore: false,
+    };
+  }
+}
+
+/**
+ * Get all staff members for assignment dropdown
+ */
+export async function getAllStaff() {
+  try {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, role')
+      .in('role', ['admin', 'case_manager'])
+      .order('first_name', { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error("Error fetching staff:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch staff",
+      data: [],
+    };
+  }
+}
+
+/**
+ * Get all clients for task assignment
+ */
+export async function getAllClientsForTasks() {
+  try {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, first_name, last_name, status')
+      .in('status', ['active', 'pending'])
+      .order('first_name', { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error("Error fetching clients:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch clients",
+      data: [],
+    };
+  }
+}
