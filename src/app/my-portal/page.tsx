@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import confetti from 'canvas-confetti';
+import { celebrateSuccess } from '@/lib/confetti-utils';
 import { useToast } from "@/components/ui/use-toast";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -402,12 +402,8 @@ export default function MyPortalPage() {
             const result = await signEngagementLetter(client.id, pdfData, signature, clientName);
 
             if (result.success) {
-                // Trigger confetti
-                confetti({
-                    particleCount: 150,
-                    spread: 80,
-                    origin: { y: 0.6 }
-                });
+                // Trigger confetti (lazy-loaded)
+                celebrateSuccess();
 
                 // Update client state immediately
                 setClient(prev => prev ? { ...prev, signed_engagement_letter_at: new Date().toISOString() } : null);
