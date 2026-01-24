@@ -622,3 +622,92 @@ export async function getClientByUserId(userId: string) {
     };
   }
 }
+
+/**
+ * Fetch clients with cursor-based pagination for better scalability
+ * Uses created_at timestamp as cursor for efficient pagination
+ */
+export async function getClientsWithCursor(options: {
+  limit?: number;
+  cursor?: string; // ISO timestamp of last item from previous page
+  statusFilter?: string;
+  programFilter?: string;
+}) {
+  try {
+    const supabase = await createClient();
+    const limit = options.limit || 50;
+    
+    // Build query with cursor-based pagination
+    let query = supabase
+      .from('clients')
+      .select('*, program_enrollments(*), case_management(*)')
+      .order('created_at', { ascending: false })
+      .limit(limit + 1); // Fetch one extra to determine if there are more pages
+
+    // Apply cursor (fetch records older than cursor timestamp)
+    if (options.cursor) {
+      query = query.lt('created_at', options.cursor);
+    }
+
+    // Apply status filter server-side
+    if (options.statusFilter && options.statusFilter !== 'all') {
+      query = query.eq('status', options.statusFilter);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return { success: false, error: error.message, data: [], hasMore: false };
+    }
+
+    // Check if there are more pages
+    const hasMore = (data?.length || 0) > limit;
+    const clients = data?.slice(0, limit) || [];
+    
+    // Get next cursor (created_at of last item)
+    const nextCursor = clients.length > 0 ? clients[clients.length - 1].created_at : null;
+
+    return {
+      success: true,
+      data: clients,
+      hasMore,
+      nextCursor,
+    };
+  } catch (error) {
+    console.error("Error fetching clients with cursor:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch clients",
+      data: [],
+      hasMore: false,
+    };
+  }
+}
+
+/**
+ * Fetch programs for filter dropdown
+ */
+export async function getActivePrograms() {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('programs')
+      .select('*')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message, data: [] };
+    }
+
+    return { success: true, data: data || [] };
+  } catch (error) {
+    console.error("Error fetching programs:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch programs",
+      data: [],
+    };
+  }
+}

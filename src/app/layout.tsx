@@ -7,6 +7,7 @@ import { LanguageProvider } from "@/lib/language-context";
 import { Toaster } from "@/components/ui/toaster";
 import { CommandMenu } from "@/components/layout/CommandMenu";
 import { AutoLogout } from "@/components/layout/AutoLogout";
+import { ServiceWorkerInit } from "@/components/ServiceWorkerInit";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} font-sans antialiased`}
       >
+        <ServiceWorkerInit />
         <LanguageProvider>
           <AuthProvider>
             <TooltipProvider>
