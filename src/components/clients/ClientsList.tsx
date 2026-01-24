@@ -58,6 +58,8 @@ import {
   Loader2,
   AlertCircle,
   ChevronDown,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
@@ -67,6 +69,8 @@ import { CLIENT_STATUS_CONFIG } from '@/lib/status-config';
 import { ClientSummaryDrawer } from '@/components/clients/ClientSummaryDrawer';
 import { createClient } from '@/lib/supabase/client';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
+import { useRealtimeClients, type RealtimeClient } from '@/lib/hooks/use-realtime';
+import { useToast } from '@/components/ui/use-toast';
 
 interface Client {
   id: string;
@@ -97,6 +101,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 
 export function ClientsList({ initialClients, initialPrograms, initialHasMore, initialCursor }: ClientsListProps) {
   const { profile } = useAuth();
+  const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [filteredClients, setFilteredClients] = useState<Client[]>(initialClients);
   const [programs] = useState<Program[]>(initialPrograms);
@@ -121,6 +126,36 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
 
   const supabase = createClient();
   const observerTarget = useRef<HTMLDivElement>(null);
+
+  // Realtime subscription for clients - enables multi-user sync
+  const { isSubscribed: isRealtimeConnected } = useRealtimeClients(
+    initialClients as unknown as RealtimeClient[],
+    {
+      onInsert: (newClient) => {
+        setClients((prev) => {
+          if (prev.some((c) => c.id === newClient.id)) return prev;
+          return [newClient as unknown as Client, ...prev];
+        });
+        toast({
+          title: 'New Client Added',
+          description: `${newClient.first_name} ${newClient.last_name} was added by another user`,
+        });
+      },
+      onUpdate: (updatedClient) => {
+        setClients((prev) =>
+          prev.map((c) => (c.id === updatedClient.id ? { ...c, ...updatedClient } as Client : c))
+        );
+      },
+      onDelete: (deletedId) => {
+        setClients((prev) => prev.filter((c) => c.id !== deletedId));
+        toast({
+          title: 'Client Removed',
+          description: 'A client was removed by another user',
+          variant: 'destructive',
+        });
+      },
+    }
+  );
 
   // Debounce search input
   useEffect(() => {
@@ -346,7 +381,35 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
           {/* Header Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold">Client Directory</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold">Client Directory</h1>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                      isRealtimeConnected 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {isRealtimeConnected ? (
+                        <>
+                          <Wifi className="h-3 w-3" />
+                          <span>Live</span>
+                        </>
+                      ) : (
+                        <>
+                          <WifiOff className="h-3 w-3" />
+                          <span>Connecting...</span>
+                        </>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isRealtimeConnected 
+                      ? 'Real-time sync active - changes from other users will appear automatically' 
+                      : 'Connecting to real-time updates...'}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <p className="text-gray-500">Manage client records and information</p>
             </div>
             <div className="flex gap-2">

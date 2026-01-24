@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense, useMemo } from 'react';
+import { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Fuse from 'fuse.js';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -31,6 +31,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Plus,
@@ -46,6 +52,8 @@ import {
   Archive,
   Loader2,
   Sparkles,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -54,6 +62,8 @@ import { getAllUsers } from '@/app/actions/users';
 import { TaskTemplateSelector } from '@/components/tasks/TaskTemplateSelector';
 import type { TaskTemplate } from '@/lib/task-templates';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
+import { useRealtimeAllTasks, type RealtimeTask } from '@/lib/hooks/use-realtime';
+import { useToast } from '@/components/ui/use-toast';
 
 interface Task {
   id: string;
@@ -81,6 +91,7 @@ interface Client {
 
 function TasksContent() {
   const { user, profile } = useAuth();
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get('filter') || (profile?.role === 'admin' ? 'open' : 'all');
 
@@ -109,6 +120,38 @@ function TasksContent() {
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
 
   const supabase = createClient();
+
+  // Realtime subscription for tasks - enables multi-user sync
+  const { isSubscribed: isRealtimeConnected } = useRealtimeAllTasks(
+    tasks as unknown as RealtimeTask[],
+    {
+      onInsert: useCallback((newTask: RealtimeTask) => {
+        setTasks((prev) => {
+          if (prev.some((t) => t.id === newTask.id)) return prev;
+          return [newTask as unknown as Task, ...prev];
+        });
+        toast({
+          title: 'New Task Created',
+          description: `"${newTask.title}" was added`,
+        });
+      }, [toast]),
+      onUpdate: useCallback((updatedTask: RealtimeTask) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } as Task : t))
+        );
+        // Show toast for status changes
+        if (updatedTask.status === 'completed') {
+          toast({
+            title: 'Task Completed',
+            description: `"${updatedTask.title}" was marked complete`,
+          });
+        }
+      }, [toast]),
+      onDelete: useCallback((deletedId: string) => {
+        setTasks((prev) => prev.filter((t) => t.id !== deletedId));
+      }, []),
+    }
+  );
 
   useEffect(() => {
     if (profile) {
@@ -410,10 +453,44 @@ function TasksContent() {
   const canClaimTasks = ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '');
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Tasks" showBackButton />
 
       <main className="container px-4 py-6">
+        {/* Header with realtime status */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Tasks</h1>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                  isRealtimeConnected 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {isRealtimeConnected ? (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span>Live</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3" />
+                      <span>Connecting...</span>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isRealtimeConnected 
+                  ? 'Real-time sync active - task updates appear automatically' 
+                  : 'Connecting to real-time updates...'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+        
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <Card>
@@ -901,6 +978,7 @@ function TasksContent() {
         </Card>
       </main>
     </div>
+    </TooltipProvider>
   );
 }
 

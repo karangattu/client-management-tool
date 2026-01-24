@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import NextLink from 'next/link';
 import dynamic from 'next/dynamic';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime, getPacificNow, toPacificDate } from '@/lib/date-utils';
@@ -32,6 +33,8 @@ import {
   CheckCircle,
   Plus,
   Sun,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { celebrateSuccess } from '@/lib/confetti-utils';
 import { useToast } from "@/components/ui/use-toast";
@@ -163,6 +166,7 @@ export default function DashboardPage() {
   const [focusLoading, setFocusLoading] = useState(true);
   const [staffMembers, setStaffMembers] = useState<{ id: string; name: string }[]>([]);
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const { t } = useLanguage();
   const { toast } = useToast();
   
@@ -216,10 +220,13 @@ export default function DashboardPage() {
     if (!user || authLoading) return;
 
     const supabase = createClient();
-    let channel: RealtimeChannel | null = null;
+    let taskChannel: RealtimeChannel | null = null;
+    let clientChannel: RealtimeChannel | null = null;
+    let alertChannel: RealtimeChannel | null = null;
 
     const setupRealtimeSubscription = () => {
-      channel = supabase
+      // Tasks realtime subscription
+      taskChannel = supabase
         .channel('dashboard-tasks-realtime')
         .on(
           'postgres_changes',
@@ -294,16 +301,69 @@ export default function DashboardPage() {
         .subscribe((status: string) => {
           if (status === 'SUBSCRIBED') {
             console.log('[Realtime] Subscribed to tasks channel');
+            setIsRealtimeConnected(true);
           }
         });
+
+      // Clients realtime subscription for stats updates
+      clientChannel = supabase
+        .channel('dashboard-clients-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'clients' },
+          (payload: { eventType: string; new: { id: string; first_name: string; last_name: string; created_at: string; onboarding_status?: string; status?: string } }) => {
+            console.log('[Realtime] Client change detected:', payload.eventType);
+            if (payload.eventType === 'INSERT') {
+              const newClient = payload.new;
+              setStats(prev => ({ ...prev, totalClients: prev.totalClients + 1, activeClients: prev.activeClients + 1 }));
+              if (newClient.onboarding_status === 'registered') {
+                setNewSelfRegistrations(prev => [{ id: newClient.id, first_name: newClient.first_name, last_name: newClient.last_name, created_at: newClient.created_at }, ...prev].slice(0, 5));
+                setOnboardingCounts(prev => ({ ...prev, registered: prev.registered + 1 }));
+              }
+              toast({ title: "New Client", description: `${newClient.first_name} ${newClient.last_name} was added` });
+            } else if (payload.eventType === 'UPDATE') {
+              // Refresh stats on client updates
+              const updatedClient = payload.new;
+              if (updatedClient.status === 'inactive') {
+                setStats(prev => ({ ...prev, activeClients: Math.max(0, prev.activeClients - 1) }));
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      // Alerts realtime subscription
+      alertChannel = supabase
+        .channel('dashboard-alerts-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'alerts', filter: `user_id=eq.${user.id}` },
+          (payload: { eventType: string; new: { id: string; title: string; is_read: boolean } }) => {
+            console.log('[Realtime] Alert change detected:', payload.eventType);
+            if (payload.eventType === 'INSERT') {
+              const newAlert = payload.new;
+              if (!newAlert.is_read) {
+                setStats(prev => ({ ...prev, unreadAlerts: prev.unreadAlerts + 1 }));
+              }
+              toast({ title: "New Alert", description: newAlert.title });
+            } else if (payload.eventType === 'UPDATE') {
+              const updatedAlert = payload.new;
+              if (updatedAlert.is_read) {
+                setStats(prev => ({ ...prev, unreadAlerts: Math.max(0, prev.unreadAlerts - 1) }));
+              }
+            }
+          }
+        )
+        .subscribe();
     };
 
     setupRealtimeSubscription();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      setIsRealtimeConnected(false);
+      if (taskChannel) supabase.removeChannel(taskChannel);
+      if (clientChannel) supabase.removeChannel(clientChannel);
+      if (alertChannel) supabase.removeChannel(alertChannel);
     };
   }, [user, authLoading, toast]);
 
@@ -790,6 +850,7 @@ export default function DashboardPage() {
   };
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       {/* Daily Triage Mode Overlay */}
       <DailyTriageMode
@@ -836,9 +897,26 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              {t('auth.welcomeBack')}, {profile.first_name}!
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+                {t('auth.welcomeBack')}, {profile.first_name}!
+              </h1>
+              {/* Live indicator */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge 
+                    variant="outline" 
+                    className={`${isRealtimeConnected ? 'border-green-500 text-green-600 bg-green-50' : 'border-gray-300 text-gray-400'}`}
+                  >
+                    {isRealtimeConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+                    Live
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isRealtimeConnected ? 'Realtime sync active - changes from other users appear automatically' : 'Connecting to realtime...'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <p className="text-gray-600 mt-1">
               {isClient
                 ? t('dashboard.clientWelcome')
@@ -1561,5 +1639,6 @@ export default function DashboardPage() {
         )}
       </main>
     </div>
+    </TooltipProvider>
   );
 }

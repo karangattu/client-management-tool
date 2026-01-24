@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { NavigationTile, NavigationTileGrid } from '@/components/layout/NavigationTile';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Home,
   FileText,
@@ -22,6 +23,8 @@ import {
   Building,
   ClipboardList,
   TrendingUp,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -34,6 +37,8 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
+import { useRealtimeHousingApplications, RealtimeHousingApplication } from '@/lib/hooks/use-realtime';
+import { useToast } from '@/components/ui/use-toast';
 
 interface HousingApplication {
   id: string;
@@ -74,8 +79,47 @@ export default function HousingPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('overview');
+  const { toast } = useToast();
 
   const supabase = createClient();
+
+  // Realtime subscription for housing applications (no client filter - get all)
+  const { isSubscribed: isRealtimeConnected } = useRealtimeHousingApplications(
+    undefined, // No client filter - subscribe to all housing applications
+    applications as unknown as RealtimeHousingApplication[],
+    {
+      onInsert: useCallback((newApp: RealtimeHousingApplication) => {
+        // Refetch to get joined data (client name, program name)
+        setApplications((prev) => {
+          if (prev.some((a) => a.id === newApp.id)) return prev;
+          return [{
+            id: newApp.id,
+            client_name: 'New Application',
+            program: 'Loading...',
+            status: newApp.status || 'draft',
+            submitted_at: newApp.submitted_at || null,
+            checklist_progress: 100,
+            waitlist_position: newApp.waitlist_position ?? null,
+            move_in_date: newApp.move_in_date || undefined,
+          }, ...prev];
+        });
+        toast({ title: 'New Housing Application', description: 'A new housing application was submitted' });
+      }, [toast]),
+      onUpdate: useCallback((updatedApp: RealtimeHousingApplication) => {
+        setApplications((prev) =>
+          prev.map((a) => (a.id === updatedApp.id ? { ...a, status: updatedApp.status || a.status, waitlist_position: updatedApp.waitlist_position ?? null, move_in_date: updatedApp.move_in_date || undefined } : a))
+        );
+        if (updatedApp.status === 'approved') {
+          toast({ title: 'Application Approved', description: 'A housing application was approved' });
+        } else if (updatedApp.status === 'housed') {
+          toast({ title: 'Client Housed!', description: 'A client has been successfully housed' });
+        }
+      }, [toast]),
+      onDelete: useCallback((deletedId: string) => {
+        setApplications((prev) => prev.filter((a) => a.id !== deletedId));
+      }, []),
+    }
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -198,10 +242,30 @@ export default function HousingPage() {
   }
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Housing" />
 
       <main className="container px-4 py-6 max-w-7xl mx-auto">
+        {/* Live Indicator Header */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-700">Housing Management</h2>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge 
+                variant="outline" 
+                className={`${isRealtimeConnected ? 'border-green-500 text-green-600 bg-green-50' : 'border-gray-300 text-gray-400'}`}
+              >
+                {isRealtimeConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+                Live
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isRealtimeConnected ? 'Realtime updates active' : 'Connecting to realtime...'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -553,5 +617,6 @@ export default function HousingPage() {
         </Tabs>
       </main>
     </div>
+    </TooltipProvider>
   );
 }

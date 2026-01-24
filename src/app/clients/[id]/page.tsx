@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -52,6 +52,8 @@ import {
   UserPlus,
   Archive,
   Trash2,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -64,6 +66,7 @@ import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementL
 import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { updateTaskStatus } from '@/app/actions/tasks';
 import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
+import { useRealtimeTasks, useRealtimeDocuments, useRealtimeInteractions, useRealtimeProgramEnrollments, type RealtimeTask, type RealtimeDocument, type RealtimeInteraction, type RealtimeProgramEnrollment } from '@/lib/hooks/use-realtime';
 
 interface ClientDetail {
   id: string;
@@ -293,6 +296,65 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [volunteers, setVolunteers] = useState<{ id: string; name: string }[]>([]);
 
   const supabase = createClient();
+
+  // Realtime subscriptions for client-specific data
+  const { isSubscribed: isTasksRealtimeConnected } = useRealtimeTasks(
+    undefined, // No user filter - we filter by client_id below
+    tasks as unknown as RealtimeTask[],
+    {
+      onInsert: useCallback((newTask: RealtimeTask) => {
+        if (newTask.client_id === clientId) {
+          setTasks((prev) => {
+            if (prev.some((t) => t.id === newTask.id)) return prev;
+            return [newTask as unknown as Task, ...prev];
+          });
+          toast({ title: 'New Task', description: `"${newTask.title}" was added` });
+        }
+      }, [clientId, toast]),
+      onUpdate: useCallback((updatedTask: RealtimeTask) => {
+        if (updatedTask.client_id === clientId) {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } as Task : t))
+          );
+        }
+      }, [clientId]),
+      onDelete: useCallback((deletedId: string) => {
+        setTasks((prev) => prev.filter((t) => t.id !== deletedId));
+      }, []),
+    }
+  );
+
+  const { isSubscribed: isDocsRealtimeConnected } = useRealtimeDocuments(
+    clientId,
+    documents as unknown as RealtimeDocument[],
+    {
+      onInsert: useCallback((newDoc: RealtimeDocument) => {
+        setDocuments((prev) => {
+          if (prev.some((d) => d.id === newDoc.id)) return prev;
+          return [{
+            id: newDoc.id,
+            file_name: newDoc.file_name,
+            file_path: newDoc.file_path || '',
+            document_type: newDoc.document_type,
+            created_at: newDoc.created_at,
+            is_verified: newDoc.is_verified || false,
+          }, ...prev];
+        });
+        toast({ title: 'New Document', description: `"${newDoc.file_name}" was uploaded` });
+      }, [toast]),
+      onUpdate: useCallback((updatedDoc: RealtimeDocument) => {
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === updatedDoc.id ? { ...d, is_verified: updatedDoc.is_verified || false } : d))
+        );
+      }, []),
+      onDelete: useCallback((deletedId: string) => {
+        setDocuments((prev) => prev.filter((d) => d.id !== deletedId));
+      }, []),
+    }
+  );
+
+  // Combined realtime status
+  const isRealtimeConnected = isTasksRealtimeConnected || isDocsRealtimeConnected;
 
   useEffect(() => {
     // Log view on mount
@@ -1002,6 +1064,36 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         <AppHeader title={`${client.first_name} ${client.last_name}`} showBackButton />
 
         <main className="container px-4 py-6 max-w-7xl mx-auto">
+          {/* Realtime Status Indicator */}
+          <div className="flex items-center gap-2 mb-4">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                  isRealtimeConnected 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {isRealtimeConnected ? (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span>Live Updates</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3" />
+                      <span>Connecting...</span>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isRealtimeConnected 
+                  ? 'Real-time sync active - changes appear automatically' 
+                  : 'Connecting to real-time updates...'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          
           {/* Client Header Card */}
           <Card className="mb-6">
             <CardContent className="pt-6">

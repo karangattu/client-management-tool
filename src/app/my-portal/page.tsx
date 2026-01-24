@@ -29,6 +29,12 @@ import {
     DialogFooter,
 } from '@/components/ui/dialog';
 import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
     User,
     FileText,
     Upload,
@@ -44,6 +50,8 @@ import {
     X,
     AlertTriangle,
     ShieldCheck,
+    Wifi,
+    WifiOff,
 } from 'lucide-react';
 import { uploadClientDocument, ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES, MAX_FILE_SIZES } from '@/lib/supabase/storage';
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
@@ -52,6 +60,7 @@ import { formatPacificLocaleDate } from '@/lib/date-utils';
 import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
+import { useRealtimeTasks, useRealtimeDocuments, useRealtimeAlerts, type RealtimeTask, type RealtimeDocument, type RealtimeAlert } from '@/lib/hooks/use-realtime';
 
 interface ClientInfo {
     id: string;
@@ -132,6 +141,84 @@ export default function MyPortalPage() {
 
     // Task completion dialog state
     const [taskToComplete, setTaskToComplete] = useState<Task | null>(null);
+
+    // Realtime subscriptions for client portal data
+    const { isSubscribed: isTasksRealtimeConnected } = useRealtimeTasks(
+        userId || undefined,
+        tasks as unknown as RealtimeTask[],
+        {
+            onInsert: useCallback((newTask: RealtimeTask) => {
+                setTasks((prev) => {
+                    if (prev.some((t) => t.id === newTask.id)) return prev;
+                    return [newTask as unknown as Task, ...prev];
+                });
+                toast({ title: 'New Task Assigned', description: `"${newTask.title}" was assigned to you` });
+            }, [toast]),
+            onUpdate: useCallback((updatedTask: RealtimeTask) => {
+                setTasks((prev) =>
+                    prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } as Task : t))
+                );
+            }, []),
+            onDelete: useCallback((deletedId: string) => {
+                setTasks((prev) => prev.filter((t) => t.id !== deletedId));
+            }, []),
+        }
+    );
+
+    const { isSubscribed: isDocsRealtimeConnected } = useRealtimeDocuments(
+        client?.id,
+        documents as unknown as RealtimeDocument[],
+        {
+            onInsert: useCallback((newDoc: RealtimeDocument) => {
+                setDocuments((prev) => {
+                    if (prev.some((d) => d.id === newDoc.id)) return prev;
+                    return [{
+                        id: newDoc.id,
+                        file_name: newDoc.file_name,
+                        document_type: newDoc.document_type,
+                        created_at: newDoc.created_at,
+                        is_verified: newDoc.is_verified || false,
+                    }, ...prev];
+                });
+            }, []),
+            onUpdate: useCallback((updatedDoc: RealtimeDocument) => {
+                setDocuments((prev) =>
+                    prev.map((d) => (d.id === updatedDoc.id ? { ...d, is_verified: updatedDoc.is_verified || false } : d))
+                );
+                if (updatedDoc.status === 'verified') {
+                    toast({ title: 'Document Verified', description: 'One of your documents has been verified!' });
+                }
+            }, [toast]),
+            onDelete: useCallback((deletedId: string) => {
+                setDocuments((prev) => prev.filter((d) => d.id !== deletedId));
+            }, []),
+        }
+    );
+
+    const { isSubscribed: isAlertsRealtimeConnected } = useRealtimeAlerts(
+        userId || undefined,
+        alerts as unknown as RealtimeAlert[],
+        {
+            onInsert: useCallback((newAlert: RealtimeAlert) => {
+                setAlerts((prev) => {
+                    if (prev.some((a) => a.id === newAlert.id)) return prev;
+                    return [newAlert as unknown as AlertItem, ...prev];
+                });
+                toast({ title: 'New Notification', description: newAlert.title });
+            }, [toast]),
+            onUpdate: useCallback((updatedAlert: RealtimeAlert) => {
+                setAlerts((prev) =>
+                    prev.map((a) => (a.id === updatedAlert.id ? { ...a, ...updatedAlert } as AlertItem : a))
+                );
+            }, []),
+            onDelete: useCallback((deletedId: string) => {
+                setAlerts((prev) => prev.filter((a) => a.id !== deletedId));
+            }, []),
+        }
+    );
+
+    // Combined realtime status
+    const isRealtimeConnected = isTasksRealtimeConnected || isDocsRealtimeConnected || isAlertsRealtimeConnected;
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -509,6 +596,7 @@ export default function MyPortalPage() {
     const progressPercentage = (completedSteps / steps.length) * 100;
 
     return (
+        <TooltipProvider>
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
             <header className="bg-white border-b shadow-sm sticky top-0 z-10">
@@ -521,6 +609,21 @@ export default function MyPortalPage() {
                             <h1 className="font-bold text-lg">My Portal</h1>
                             <p className="text-sm text-gray-500">Welcome, {client?.first_name}</p>
                         </div>
+                        {/* Live indicator */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Badge 
+                                    variant="outline" 
+                                    className={`ml-2 ${isRealtimeConnected ? 'border-green-500 text-green-600 bg-green-50' : 'border-gray-300 text-gray-400'}`}
+                                >
+                                    {isRealtimeConnected ? <Wifi className="h-3 w-3 mr-1" /> : <WifiOff className="h-3 w-3 mr-1" />}
+                                    Live
+                                </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{isRealtimeConnected ? 'Realtime updates active' : 'Connecting to realtime...'}</p>
+                            </TooltipContent>
+                        </Tooltip>
                     </div>
                     <Button variant="outline" onClick={handleSignOut} size="sm">
                         <LogOut className="h-4 w-4 mr-2" /> Sign Out
@@ -976,5 +1079,6 @@ export default function MyPortalPage() {
                 notePlaceholder="How did you complete this task? (optional)"
             />
         </div>
+        </TooltipProvider>
     );
 }

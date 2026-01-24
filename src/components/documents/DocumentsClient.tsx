@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +30,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   FileText,
   Upload,
   Search,
@@ -48,11 +54,15 @@ import {
   User,
   Calendar,
   Loader2,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { Textarea } from '@/components/ui/textarea';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
+import { useRealtimeAllDocuments, type RealtimeDocument } from '@/lib/hooks/use-realtime';
+import { useToast } from '@/components/ui/use-toast';
 
 interface Document {
   id: string;
@@ -81,6 +91,7 @@ const documentTypes = [
 
 export default function DocumentsClient() {
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [, setLoading] = useState(true);
@@ -96,6 +107,51 @@ export default function DocumentsClient() {
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const supabase = createClient();
+
+  // Realtime subscription for documents - enables multi-user sync
+  const { isSubscribed: isRealtimeConnected } = useRealtimeAllDocuments(
+    documents as unknown as RealtimeDocument[],
+    {
+      onInsert: useCallback((newDoc: RealtimeDocument) => {
+        setDocuments((prev) => {
+          if (prev.some((d) => d.id === newDoc.id)) return prev;
+          return [{
+            id: newDoc.id,
+            name: newDoc.file_name,
+            type: newDoc.document_type || 'other',
+            status: newDoc.status || 'pending',
+            client_id: newDoc.client_id,
+            created_at: newDoc.created_at,
+            file_path: newDoc.file_path,
+          }, ...prev];
+        });
+        toast({
+          title: 'New Document Uploaded',
+          description: `"${newDoc.file_name}" was added`,
+        });
+      }, [toast]),
+      onUpdate: useCallback((updatedDoc: RealtimeDocument) => {
+        setDocuments((prev) =>
+          prev.map((d) => d.id === updatedDoc.id ? {
+            ...d,
+            status: updatedDoc.status,
+            verified_by: updatedDoc.verified_by,
+            verified_at: updatedDoc.verified_at,
+            rejection_reason: updatedDoc.rejection_reason,
+          } : d)
+        );
+        if (updatedDoc.status === 'verified') {
+          toast({
+            title: 'Document Verified',
+            description: `A document was verified`,
+          });
+        }
+      }, [toast]),
+      onDelete: useCallback((deletedId: string) => {
+        setDocuments((prev) => prev.filter((d) => d.id !== deletedId));
+      }, []),
+    }
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -353,10 +409,44 @@ export default function DocumentsClient() {
   };
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Documents" showBackButton />
 
       <main className="container px-4 py-6">
+        {/* Header with realtime status */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Documents</h1>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                  isRealtimeConnected 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {isRealtimeConnected ? (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span>Live</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3" />
+                      <span>Connecting...</span>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isRealtimeConnected 
+                  ? 'Real-time sync active - document updates appear automatically' 
+                  : 'Connecting to real-time updates...'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+        
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -665,5 +755,6 @@ export default function DocumentsClient() {
         </Dialog>
       </main>
     </div>
+    </TooltipProvider>
   );
 }

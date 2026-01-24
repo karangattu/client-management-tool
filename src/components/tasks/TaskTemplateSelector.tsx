@@ -87,10 +87,10 @@ export function TaskTemplateSelector({
 
     const getPriorityColor = (priority: string) => {
         switch (priority) {
-            case 'urgent': return 'destructive';
-            case 'high': return 'default';
-            case 'medium': return 'secondary';
-            default: return 'outline';
+            case 'urgent': return 'bg-red-500 text-white hover:bg-red-600';
+            case 'high': return 'bg-orange-500 text-white hover:bg-orange-600';
+            case 'medium': return 'bg-blue-500 text-white hover:bg-blue-600';
+            default: return 'bg-gray-500 text-white hover:bg-gray-600';
         }
     };
 
@@ -175,11 +175,11 @@ export function TaskTemplateSelector({
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap mb-1">
                                                         <p className="font-medium">{template.name}</p>
-                                                        <Badge variant={getPriorityColor(template.defaultPriority) as "default" | "destructive" | "outline" | "secondary"}>
+                                                        <Badge className={getPriorityColor(template.defaultPriority)}>
                                                             {template.defaultPriority}
                                                         </Badge>
                                                         {template.requiresClient && (
-                                                            <Badge variant="outline" className="text-xs">
+                                                            <Badge variant="outline" className="text-xs border-gray-400 text-gray-700 dark:text-gray-300">
                                                                 Requires client
                                                             </Badge>
                                                         )}
@@ -192,7 +192,7 @@ export function TaskTemplateSelector({
                                                         {template.tags && template.tags.length > 0 && (
                                                             <span className="flex items-center gap-1">
                                                                 {template.tags.slice(0, 2).map(tag => (
-                                                                    <span key={tag} className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                    <span key={tag} className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded text-xs font-medium">
                                                                         {tag}
                                                                     </span>
                                                                 ))}

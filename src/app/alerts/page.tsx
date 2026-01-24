@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -31,10 +37,13 @@ import {
   CheckCheck,
   MailOpen,
   Save,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useRealtimeAlerts, type RealtimeAlert } from '@/lib/hooks/use-realtime';
 
 interface Alert {
   id: string;
@@ -77,6 +86,32 @@ export default function AlertsPage() {
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
   const [savingSettings, setSavingSettings] = useState(false);
   const supabase = createClient();
+
+  // Realtime subscription for alerts - enables multi-user sync
+  const { isSubscribed: isRealtimeConnected } = useRealtimeAlerts(
+    user?.id,
+    alerts as unknown as RealtimeAlert[],
+    {
+      onInsert: useCallback((newAlert: RealtimeAlert) => {
+        setAlerts((prev) => {
+          if (prev.some((a) => a.id === newAlert.id)) return prev;
+          return [newAlert as unknown as Alert, ...prev];
+        });
+        toast({
+          title: 'New Alert',
+          description: newAlert.title,
+        });
+      }, [toast]),
+      onUpdate: useCallback((updatedAlert: RealtimeAlert) => {
+        setAlerts((prev) =>
+          prev.map((a) => (a.id === updatedAlert.id ? { ...a, ...updatedAlert } as Alert : a))
+        );
+      }, []),
+      onDelete: useCallback((deletedId: string) => {
+        setAlerts((prev) => prev.filter((a) => a.id !== deletedId));
+      }, []),
+    }
+  );
 
   useEffect(() => {
     fetchAlerts();
@@ -236,10 +271,44 @@ export default function AlertsPage() {
   };
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Alerts & Notifications" showBackButton />
 
       <main className="container px-4 py-6">
+        {/* Header with realtime status */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Alerts & Notifications</h1>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                  isRealtimeConnected 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {isRealtimeConnected ? (
+                    <>
+                      <Wifi className="h-3 w-3" />
+                      <span>Live</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3" />
+                      <span>Connecting...</span>
+                    </>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isRealtimeConnected 
+                  ? 'Real-time sync active - new alerts appear automatically' 
+                  : 'Connecting to real-time updates...'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+        
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -548,5 +617,6 @@ export default function AlertsPage() {
 
       </main>
     </div>
+    </TooltipProvider>
   );
 }

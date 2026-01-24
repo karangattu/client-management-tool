@@ -210,10 +210,13 @@ export async function archiveUser(userId: string): Promise<{ success: boolean; e
 }
 
 const getAllUsersCached = cacheReadOnly(async () => {
-  const supabase = await createClient();
+  // Use service client to bypass RLS and get all staff members
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, first_name, last_name, role, is_active, created_at")
+    .neq("role", "client")  // Only get staff, not clients
+    .eq("is_active", true)  // Only active users
     .order("first_name");
 
   if (error) throw error;

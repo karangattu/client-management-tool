@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Fuse from 'fuse.js';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -14,6 +14,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,10 +32,14 @@ import {
   Clock,
   User,
   Bell,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { PACIFIC_TIMEZONE, formatPacificLocaleDate, formatPacificLocaleTime, toPacificDate, pacificToUTCISO } from '@/lib/date-utils';
+import { useRealtimeAllCalendarEvents, type RealtimeCalendarEvent } from '@/lib/hooks/use-realtime';
+import { useToast } from '@/components/ui/use-toast';
 
 interface CalendarEvent {
   id: string;
@@ -71,6 +81,7 @@ const eventTypeColors: Record<string, string> = {
 
 export default function CalendarPage() {
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -92,6 +103,40 @@ export default function CalendarPage() {
   });
 
   const supabase = createClient();
+
+  // Realtime subscription for calendar events - enables multi-user sync
+  const { isSubscribed: isRealtimeConnected } = useRealtimeAllCalendarEvents(
+    events as unknown as RealtimeCalendarEvent[],
+    {
+      onInsert: useCallback((newEventData: RealtimeCalendarEvent) => {
+        setEvents((prev) => {
+          if (prev.some((e) => e.id === newEventData.id)) return prev;
+          return [...prev, {
+            id: newEventData.id,
+            title: newEventData.title,
+            start_time: newEventData.start_time,
+            end_time: newEventData.end_time,
+            event_type: newEventData.event_type,
+            client_id: newEventData.client_id,
+            all_day: newEventData.all_day,
+            description: newEventData.description,
+          }];
+        });
+        toast({
+          title: 'New Event Added',
+          description: `"${newEventData.title}" was added to the calendar`,
+        });
+      }, [toast]),
+      onUpdate: useCallback((updatedEvent: RealtimeCalendarEvent) => {
+        setEvents((prev) =>
+          prev.map((e) => (e.id === updatedEvent.id ? { ...e, ...updatedEvent } as CalendarEvent : e))
+        );
+      }, []),
+      onDelete: useCallback((deletedId: string) => {
+        setEvents((prev) => prev.filter((e) => e.id !== deletedId));
+      }, []),
+    }
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -372,10 +417,42 @@ export default function CalendarPage() {
   }
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Calendar" />
 
       <main className="container px-4 py-6 max-w-7xl mx-auto">
+        {/* Header with realtime status */}
+        <div className="flex items-center gap-2 mb-4">
+          <h1 className="text-2xl font-bold">Calendar</h1>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                isRealtimeConnected 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-yellow-100 text-yellow-700'
+              }`}>
+                {isRealtimeConnected ? (
+                  <>
+                    <Wifi className="h-3 w-3" />
+                    <span>Live</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-3 w-3" />
+                    <span>Connecting...</span>
+                  </>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isRealtimeConnected 
+                ? 'Real-time sync active - calendar updates appear automatically' 
+                : 'Connecting to real-time updates...'}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        
         {/* Header with navigation */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
@@ -938,5 +1015,6 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
