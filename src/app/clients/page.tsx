@@ -110,11 +110,12 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch clients with their program enrollments and case management info
+      // Fetch clients with pagination (limit 50) and their program enrollments and case management info
       const { data: clientsData, error: clientsError } = await supabase
         .from('clients')
         .select('*, program_enrollments(*), case_management(*)')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Add pagination limit
 
       if (clientsError) throw clientsError;
 
@@ -165,12 +166,24 @@ export default function ClientsPage() {
     return options;
   }, [programs]);
 
+  // Debounced search query state
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   useEffect(() => {
     let filtered = clients;
 
-    // Apply search filter with fuzzy matching
-    if (searchQuery) {
-      const results = fuse.search(searchQuery);
+    // Apply search filter with fuzzy matching (debounced)
+    if (debouncedSearchQuery) {
+      const results = fuse.search(debouncedSearchQuery);
       filtered = results.map(({ item }) => item);
     }
 
@@ -187,7 +200,7 @@ export default function ClientsPage() {
     }
 
     setFilteredClients(filtered);
-  }, [searchQuery, statusFilter, programFilter, clients, fuse]);
+  }, [debouncedSearchQuery, statusFilter, programFilter, clients, fuse]);
 
   const handleArchive = async () => {
     if (!clientToArchive) return;

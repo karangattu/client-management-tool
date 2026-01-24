@@ -154,7 +154,8 @@ function TasksContent() {
           client:clients(first_name, last_name),
           assignee:profiles!tasks_assigned_to_fkey(first_name, last_name)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Add pagination limit
 
       if (error) throw error;
       // Flatten the nested relationship structure

@@ -125,7 +125,8 @@ export default function DocumentsPage() {
           rejection_reason,
           clients (first_name, last_name)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50); // Add pagination limit
 
       if (error) throw error;
 
