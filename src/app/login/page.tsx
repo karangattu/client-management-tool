@@ -303,6 +303,10 @@ function LoginForm() {
               <strong>Staff:</strong> Contact your administrator if you need an account.
             </p>
           </div>
+
+          <p className="mt-4 text-xs text-gray-400 text-center">
+            v1.0.5
+          </p>
         </CardContent>
       </Card>
     </div>

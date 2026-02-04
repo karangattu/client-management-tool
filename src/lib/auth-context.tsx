@@ -392,7 +392,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Periodic session refresh every 10 minutes to keep tokens fresh
+    // Periodic session refresh every 4 minutes to keep tokens fresh and prevent early logout
     const refreshInterval = setInterval(async () => {
       // Check if we have a session before trying to refresh
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -400,7 +400,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[Auth] Periodic session refresh');
         refreshSession();
       }
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 4 * 60 * 1000); // 4 minutes
 
     return () => {
       clearTimeout(safetyTimeout);

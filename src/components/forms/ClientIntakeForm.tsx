@@ -170,7 +170,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
   }, [formData, dirtyFields, isSubmitting]);
 
   useEffect(() => {
-    const timer = setInterval(saveDraft, 30000); // Auto-save every 30 seconds
+    const timer = setInterval(saveDraft, 10000); // Auto-save every 10 seconds
     return () => clearInterval(timer);
   }, [saveDraft]);
 

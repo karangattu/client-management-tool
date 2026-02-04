@@ -386,11 +386,11 @@ export default function DashboardPage() {
       // 2. Fetch Lists (Parallel)
       const listsPromise = Promise.all([
         supabase.from('tasks').select(`
-            id, title, due_date, priority, clients (first_name, last_name)
-          `).not('due_date', 'is', null).gte('due_date', nowIso).order('due_date', { ascending: true }).limit(5),
+            id, title, due_date, priority, clients (first_name, last_name, status)
+          `).not('due_date', 'is', null).gte('due_date', nowIso).order('due_date', { ascending: true }).limit(20),
         supabase.from('tasks').select(`
-            id, title, description, priority, due_date, clients (first_name, last_name)
-          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(10),
+            id, title, description, priority, due_date, clients (first_name, last_name, status)
+          `).is('assigned_to', null).eq('status', 'pending').order('created_at', { ascending: false }).limit(20),
         // Fetch staff
         supabase.from('profiles').select('id, first_name, last_name').neq('role', 'client').order('first_name'),
         // Recent self-registrations
@@ -407,13 +407,13 @@ export default function DashboardPage() {
 
       const focusPromise = Promise.all([
         supabase.from('tasks').select(`
-            id, title, description, priority, due_date, status, clients (*)
-          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).order('due_date', { ascending: true }).limit(10),
+            id, title, description, priority, due_date, status, clients (*, status)
+          `).eq('assigned_to', user?.id).in('status', ['pending', 'in_progress']).order('due_date', { ascending: true }).limit(20),
         supabase.from('calendar_events').select(`
-            id, title, start_time, description, clients (*)
+            id, title, start_time, description, clients (*, status)
           `).gte('start_time', todayISO).lt('start_time', tomorrowISO).order('start_time', { ascending: true }).limit(5),
         supabase.from('alerts').select(`
-            id, title, message, alert_type, created_at, clients (*)
+            id, title, message, alert_type, created_at, clients (*, status)
           `).eq('user_id', user?.id).eq('is_read', false).order('created_at', { ascending: false }).limit(5)
       ]);
 
@@ -484,8 +484,13 @@ export default function DashboardPage() {
       ] = listsResults;
 
       if (deadlineData) {
-        type DeadlineRow = { id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null };
-        setDeadlines((deadlineData as unknown as DeadlineRow[]).map((d) => {
+        type DeadlineRow = { id: string; title: string; due_date: string; priority: string; clients?: { first_name: string; last_name: string; status?: string } | { first_name: string; last_name: string; status?: string }[] | null };
+        // Filter out tasks for archived clients
+        const filteredDeadlines = (deadlineData as unknown as DeadlineRow[]).filter((d) => {
+          const client = Array.isArray(d.clients) ? d.clients[0] : d.clients;
+          return !client || client.status !== 'archived';
+        });
+        setDeadlines(filteredDeadlines.slice(0, 5).map((d) => {
           const client = Array.isArray(d.clients) ? d.clients[0] : d.clients;
           return {
             id: d.id,
@@ -498,7 +503,13 @@ export default function DashboardPage() {
       }
 
       if (openTasksData) {
-        setOpenTasksToClaim((openTasksData as Array<{ id: string; title: string; description?: string | null; priority: string; due_date: string; client_id?: string | null; assigned_to?: string | null; status?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).map((task) => ({
+        // Filter out tasks for archived clients
+        const filteredOpenTasks = (openTasksData as Array<{ id: string; title: string; description?: string | null; priority: string; due_date: string; client_id?: string | null; assigned_to?: string | null; status?: string | null; clients?: { first_name: string; last_name: string; status?: string } | { first_name: string; last_name: string; status?: string }[] | null }>)
+          .filter((task) => {
+            const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
+            return !client || client.status !== 'archived';
+          });
+        setOpenTasksToClaim(filteredOpenTasks.slice(0, 10).map((task) => ({
           ...task,
           clients: Array.isArray(task.clients) ? task.clients[0] : task.clients
         })) as OpenTask[]);
@@ -525,7 +536,14 @@ export default function DashboardPage() {
       const focus: FocusItem[] = [];
 
       if (focusTasks.data) {
-        (focusTasks.data as Array<{ id: string; title: string; description?: string | null; due_date?: string | null; priority?: string | null; status?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((task) => {
+        (focusTasks.data as Array<{ id: string; title: string; description?: string | null; due_date?: string | null; priority?: string | null; status?: string | null; clients?: { first_name: string; last_name: string; status?: string } | { first_name: string; last_name: string; status?: string }[] | null }>)
+          .filter((task) => {
+            // Filter out tasks for archived clients
+            const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
+            return !client || client.status !== 'archived';
+          })
+          .slice(0, 10)
+          .forEach((task) => {
           const client = Array.isArray(task.clients) ? task.clients[0] : task.clients;
           const isOverdue = task.due_date && toPacificDate(task.due_date) < getPacificNow();
           focus.push({
@@ -542,7 +560,13 @@ export default function DashboardPage() {
       }
 
       if (focusEvents.data) {
-        (focusEvents.data as Array<{ id: string; title: string; description?: string | null; start_time: string; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((event) => {
+        (focusEvents.data as Array<{ id: string; title: string; description?: string | null; start_time: string; clients?: { first_name: string; last_name: string; status?: string } | { first_name: string; last_name: string; status?: string }[] | null }>)
+          .filter((event) => {
+            // Filter out events for archived clients
+            const client = Array.isArray(event.clients) ? event.clients[0] : event.clients;
+            return !client || client.status !== 'archived';
+          })
+          .forEach((event) => {
           const client = Array.isArray(event.clients) ? event.clients[0] : event.clients;
           focus.push({
             id: event.id,
@@ -557,7 +581,13 @@ export default function DashboardPage() {
       }
 
       if (focusAlerts.data) {
-        (focusAlerts.data as Array<{ id: string; title: string; message?: string | null; created_at: string; alert_type?: string | null; clients?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }>).forEach((alert) => {
+        (focusAlerts.data as Array<{ id: string; title: string; message?: string | null; created_at: string; alert_type?: string | null; clients?: { first_name: string; last_name: string; status?: string } | { first_name: string; last_name: string; status?: string }[] | null }>)
+          .filter((alert) => {
+            // Filter out alerts for archived clients
+            const client = Array.isArray(alert.clients) ? alert.clients[0] : alert.clients;
+            return !client || client.status !== 'archived';
+          })
+          .forEach((alert) => {
           const client = Array.isArray(alert.clients) ? alert.clients[0] : alert.clients;
           focus.push({
             id: alert.id,

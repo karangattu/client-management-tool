@@ -303,9 +303,10 @@ function TasksContent() {
 
   const handleArchiveTask = async (taskId: string) => {
     try {
+      // Use 'cancelled' status since 'archived' is not a valid task_status enum value
       const { error } = await supabase
         .from('tasks')
-        .update({ status: 'archived' })
+        .update({ status: 'cancelled' })
         .eq('id', taskId);
 
       if (error) throw error;

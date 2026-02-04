@@ -379,7 +379,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           programsData
         ] = await Promise.all([
           supabase.from('clients').select('*').eq('id', clientId).single(),
-          supabase.from('tasks').select('id, title, due_date, status, priority, program_id, programs(id, name, category)').eq('client_id', clientId).order('due_date', { ascending: true }).limit(10),
+          supabase.from('tasks').select('id, title, due_date, status, priority, program_id, programs(id, name, category)').eq('client_id', clientId).order('due_date', { ascending: true }),
           supabase.from('documents').select('id, file_name, file_path, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
           profile?.role === 'admin'
             ? supabase.from('audit_log').select('id, action, created_at, new_values, old_values').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
@@ -1560,40 +1560,122 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </CardHeader>
                 <CardContent>
                   {tasks.length > 0 ? (
-                    <div className="space-y-3">
-                      {tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className={`flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors ${task.status === 'completed' ? 'bg-gray-50 opacity-75' : ''}`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <input
-                              type="checkbox"
-                              className="h-5 w-5 rounded border-gray-300 cursor-pointer"
-                              checked={task.status === 'completed'}
-                              onChange={() => handleToggleTask(task.id, task.status)}
-                              disabled={taskUpdating === task.id}
-                            />
-                            <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{task.title}</p>
-                                {task.programs && (
-                                  <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-                                    {task.programs.name}
-                                  </Badge>
-                                )}
+                    <div className="space-y-6">
+                      {/* Group tasks by program */}
+                      {(() => {
+                        // Separate tasks into program-grouped and general tasks
+                        const programTasksMap = new Map<string, { program: { id: string; name: string; category: string }; tasks: Task[] }>();
+                        const generalTasks: Task[] = [];
+                        
+                        tasks.forEach(task => {
+                          if (task.programs && task.program_id) {
+                            const existing = programTasksMap.get(task.program_id);
+                            if (existing) {
+                              existing.tasks.push(task);
+                            } else {
+                              programTasksMap.set(task.program_id, {
+                                program: task.programs,
+                                tasks: [task]
+                              });
+                            }
+                          } else {
+                            generalTasks.push(task);
+                          }
+                        });
+                        
+                        return (
+                          <>
+                            {/* General Tasks (not associated with any program) */}
+                            {generalTasks.length > 0 && (
+                              <div className="border rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h4 className="font-semibold text-lg flex items-center gap-2">
+                                    <CheckSquare className="h-5 w-5 text-gray-600" />
+                                    General Tasks
+                                    <Badge variant="outline" className="ml-2">
+                                      {generalTasks.filter(t => t.status === 'completed').length}/{generalTasks.length} completed
+                                    </Badge>
+                                  </h4>
+                                </div>
+                                <div className="space-y-3">
+                                  {generalTasks.map((task) => (
+                                    <div
+                                      key={task.id}
+                                      className={`flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors ${task.status === 'completed' ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}
+                                    >
+                                      <div className="flex items-center gap-4">
+                                        <input
+                                          type="checkbox"
+                                          className="h-5 w-5 rounded border-gray-300 cursor-pointer"
+                                          checked={task.status === 'completed'}
+                                          onChange={() => handleToggleTask(task.id, task.status)}
+                                          disabled={taskUpdating === task.id}
+                                        />
+                                        <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
+                                          <p className="font-medium">{task.title}</p>
+                                          <p className="text-sm text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        {getPriorityBadge(task.priority)}
+                                        <Badge className={taskStatusColors[task.status] || 'bg-gray-100 text-gray-800'}>
+                                          {task.status.replace('_', ' ')}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                              <p className="text-sm text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {getPriorityBadge(task.priority)}
-                            <Badge className={taskStatusColors[task.status] || 'bg-gray-100 text-gray-800'}>
-                              {task.status.replace('_', ' ')}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
+                            )}
+                            
+                            {/* Program-specific Tasks */}
+                            {Array.from(programTasksMap.values()).map(({ program, tasks: programTasks }) => (
+                              <div key={program.id} className="border rounded-lg p-4 border-purple-200 bg-purple-50/30">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h4 className="font-semibold text-lg flex items-center gap-2">
+                                    <CheckSquare className="h-5 w-5 text-purple-600" />
+                                    {program.name}
+                                    <Badge variant="outline" className="ml-2 bg-purple-100 text-purple-700 border-purple-300">
+                                      {programTasks.filter(t => t.status === 'completed').length}/{programTasks.length} completed
+                                    </Badge>
+                                  </h4>
+                                  <Badge variant="outline" className="text-xs text-gray-500">
+                                    {program.category}
+                                  </Badge>
+                                </div>
+                                <div className="space-y-3">
+                                  {programTasks.map((task) => (
+                                    <div
+                                      key={task.id}
+                                      className={`flex items-center justify-between p-3 border rounded-lg hover:bg-white transition-colors ${task.status === 'completed' ? 'bg-green-50 border-green-200' : 'bg-white'}`}
+                                    >
+                                      <div className="flex items-center gap-4">
+                                        <input
+                                          type="checkbox"
+                                          className="h-5 w-5 rounded border-gray-300 cursor-pointer"
+                                          checked={task.status === 'completed'}
+                                          onChange={() => handleToggleTask(task.id, task.status)}
+                                          disabled={taskUpdating === task.id}
+                                        />
+                                        <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
+                                          <p className="font-medium">{task.title}</p>
+                                          <p className="text-sm text-gray-500">Due: {new Date(task.due_date).toLocaleDateString()}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        {getPriorityBadge(task.priority)}
+                                        <Badge className={taskStatusColors[task.status] || 'bg-gray-100 text-gray-800'}>
+                                          {task.status.replace('_', ' ')}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="text-center py-12">
@@ -1675,8 +1757,14 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                 </CardHeader>
                 <CardContent>
                   {enrollments.length > 0 ? (
-                    <div className="space-y-4">
-                      {enrollments.map((enrollment) => (
+                    <div className="space-y-6">
+                      {enrollments.map((enrollment) => {
+                        // Filter tasks that belong to this program
+                        const programTasks = tasks.filter(t => t.program_id === enrollment.programs.id);
+                        const completedTasks = programTasks.filter(t => t.status === 'completed').length;
+                        const totalTasks = programTasks.length;
+                        
+                        return (
                         <Card key={enrollment.id} className="border">
                           <CardContent className="pt-4">
                             <div className="flex justify-between items-start mb-4">
@@ -1746,6 +1834,62 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             {enrollment.notes && (
                               <p className="mt-3 text-sm italic text-gray-500 border-t pt-2">{enrollment.notes}</p>
                             )}
+                            
+                            {/* Program Tasks Section */}
+                            <div className="mt-4 border-t pt-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <h5 className="font-semibold text-sm flex items-center gap-2">
+                                  <CheckSquare className="h-4 w-4 text-purple-600" />
+                                  Program Tasks
+                                  {totalTasks > 0 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {completedTasks}/{totalTasks} completed
+                                    </Badge>
+                                  )}
+                                </h5>
+                              </div>
+                              
+                              {programTasks.length > 0 ? (
+                                <div className="space-y-2">
+                                  {programTasks.map((task) => (
+                                    <div
+                                      key={task.id}
+                                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                                        task.status === 'completed' 
+                                          ? 'bg-green-50 border-green-200' 
+                                          : 'bg-gray-50 border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                                          checked={task.status === 'completed'}
+                                          onChange={() => handleToggleTask(task.id, task.status)}
+                                          disabled={taskUpdating === task.id}
+                                        />
+                                        <div className={task.status === 'completed' ? 'line-through text-gray-400' : ''}>
+                                          <p className="font-medium text-sm">{task.title}</p>
+                                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                                            <Clock className="h-3 w-3" />
+                                            Due: {new Date(task.due_date).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {getPriorityBadge(task.priority)}
+                                        <Badge className={`text-xs ${taskStatusColors[task.status] || 'bg-gray-100 text-gray-800'}`}>
+                                          {task.status.replace('_', ' ')}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-400 italic py-2">No tasks assigned to this program yet</p>
+                              )}
+                            </div>
+                            
                             {/* Activity Log Section */}
                             <details className="mt-4 border-t pt-3">
                               <summary className="text-sm font-medium cursor-pointer text-blue-600 hover:underline">
@@ -1755,7 +1899,8 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             </details>
                           </CardContent>
                         </Card>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-12">

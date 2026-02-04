@@ -58,7 +58,7 @@ export async function saveClientIntake(
     if (id) {
       const { data: existingClient } = await supabase
         .from('clients')
-        .select('first_name, middle_name, last_name, date_of_birth, email, phone, alternate_phone, street_address, city, state, zip_code, ssn_last_four, referral_source, referral_source_details')
+        .select('first_name, middle_name, last_name, date_of_birth, email, phone, alternate_phone, street_address, city, state, zip_code, ssn_last_four, referral_source, referral_source_details, status, assigned_case_manager')
         .eq('id', id)
         .single();
 
@@ -78,6 +78,10 @@ export async function saveClientIntake(
         ssn_last_four: validatedData.caseManagement.ssnLastFour || null,
         referral_source: validatedData.participantDetails.referralSource || null,
         referral_source_details: validatedData.participantDetails.referralSourceDetails || null,
+        status: (validatedData.caseManagement.clientStatus && ['active', 'inactive', 'pending', 'archived'].includes(validatedData.caseManagement.clientStatus))
+          ? validatedData.caseManagement.clientStatus
+          : undefined,
+        assigned_case_manager: validatedData.caseManagement.clientManager || null,
         updated_at: now,
       };
 
@@ -233,12 +237,14 @@ export async function saveClientIntake(
       employment_status: validatedData.demographics.employmentStatus || null,
       monthly_income: validatedData.demographics.monthlyIncome || 0,
       income_source: validatedData.demographics.incomeSource || null,
+      veteran_status: validatedData.demographics.veteranStatus || false,
+      disability_status: validatedData.demographics.disabilityStatus || false,
       updated_at: now,
     };
 
     const { data: existingDemo } = await supabase
       .from('demographics')
-      .select('id, gender, ethnicity, race, marital_status, education_level, employment_status, monthly_income, income_source')
+      .select('id, gender, ethnicity, race, marital_status, education_level, employment_status, monthly_income, income_source, veteran_status, disability_status')
       .eq('client_id', savedClientId)
       .maybeSingle();
 
@@ -466,7 +472,7 @@ export async function getClientFullData(clientId: string) {
         calFreshMediCalId: "",
         calFreshMediCalPartnerMonth: "",
         race: client.case_management?.race || [],
-        healthInsurance: client.case_management?.health_insurance || false,
+        healthInsurance: client.case_management?.health_insurance ? "yes" : "no",
         healthInsuranceType: client.case_management?.health_insurance_type || "",
         nonCashBenefits: client.case_management?.non_cash_benefits || [],
         healthStatus: client.case_management?.health_status || "",

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/use-toast';
 
-const INACTIVITY_LIMIT_MS = 60 * 1000; // 60 seconds
+const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
 
 export function AutoLogout() {
     const { user, signOut } = useAuth();

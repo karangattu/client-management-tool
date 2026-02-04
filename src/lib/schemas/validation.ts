@@ -8,7 +8,7 @@ export const participantDetailsSchema = z.object({
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   ssn: z.string().optional(),
   email: z.string().email("Please enter a valid email address"),
-  primaryPhone: z.string().min(10, "Please enter a valid phone number"),
+  primaryPhone: z.string().min(10, "Please enter a valid phone number").optional().or(z.literal("")),
   secondaryPhone: z.string().optional(),
   streetAddress: z.string().min(1, "Street address is required"),
   city: z.string().min(1, "City is required").max(50),
