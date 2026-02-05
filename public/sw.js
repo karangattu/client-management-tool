@@ -1,11 +1,7 @@
-/// <reference lib="webworker" />
-
 /**
  * Service Worker for ClientHub
  * Provides offline support and background sync capabilities
  */
-
-declare const self: ServiceWorkerGlobalScope;
 
 const CACHE_NAME = 'clienthub-v1';
 const STATIC_CACHE = 'clienthub-static-v1';
@@ -21,7 +17,7 @@ const STATIC_ASSETS = [
 ];
 
 // Install event - cache static assets
-self.addEventListener('install', (event: ExtendableEvent) => {
+self.addEventListener('install', (event) => {
   console.log('[Service Worker] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
@@ -35,7 +31,7 @@ self.addEventListener('install', (event: ExtendableEvent) => {
 });
 
 // Activate event - clean up old caches
-self.addEventListener('activate', (event: ExtendableEvent) => {
+self.addEventListener('activate', (event) => {
   console.log('[Service Worker] Activating...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -53,7 +49,7 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
 });
 
 // Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event: FetchEvent) => {
+self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
@@ -128,7 +124,7 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 });
 
 // Background Sync - for offline form submissions
-self.addEventListener('sync', (event: any) => {
+self.addEventListener('sync', (event) => {
   console.log('[Service Worker] Background sync triggered:', event.tag);
   
   if (event.tag === 'sync-clients') {
@@ -139,20 +135,20 @@ self.addEventListener('sync', (event: any) => {
 });
 
 // Sync functions
-async function syncClients(): Promise<void> {
+async function syncClients() {
   console.log('[Service Worker] Syncing clients...');
   // Implement client sync logic here
   // This would retrieve queued client updates from IndexedDB
   // and POST them to the server
 }
 
-async function syncTasks(): Promise<void> {
+async function syncTasks() {
   console.log('[Service Worker] Syncing tasks...');
   // Implement task sync logic here
 }
 
 // Push notifications (for future use)
-self.addEventListener('push', (event: any) => {
+self.addEventListener('push', (event) => {
   console.log('[Service Worker] Push notification received');
   
   const options = {
@@ -169,7 +165,7 @@ self.addEventListener('push', (event: any) => {
 });
 
 // Notification click handler
-self.addEventListener('notificationclick', (event: any) => {
+self.addEventListener('notificationclick', (event) => {
   console.log('[Service Worker] Notification clicked');
   event.notification.close();
   
@@ -179,7 +175,7 @@ self.addEventListener('notificationclick', (event: any) => {
 });
 
 // Message handler - communicate with main thread
-self.addEventListener('message', (event: ExtendableMessageEvent) => {
+self.addEventListener('message', (event) => {
   console.log('[Service Worker] Message received:', event.data);
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -204,5 +200,3 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     );
   }
 });
-
-export {};

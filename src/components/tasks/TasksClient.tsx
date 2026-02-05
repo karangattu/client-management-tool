@@ -118,6 +118,12 @@ function TasksContent() {
   
   // Task template selector state
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
+  
+  // Task detail/edit dialog state
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false);
+  const [completionNote, setCompletionNote] = useState('');
+  const [updatingTask, setUpdatingTask] = useState(false);
 
   const supabase = createClient();
 
@@ -275,7 +281,11 @@ function TasksContent() {
 
   const handleCompleteTask = async (taskId: string) => {
     try {
-      const { error } = await supabase
+      // Allow admins and case managers to complete any task
+      // Regular staff/volunteers can only complete tasks assigned to them
+      const canCompleteAny = profile?.role === 'admin' || profile?.role === 'case_manager';
+      
+      let query = supabase
         .from('tasks')
         .update({
           status: 'completed',
@@ -283,8 +293,14 @@ function TasksContent() {
           completed_by: user?.id || null,
           completed_by_role: ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '') ? (profile?.role as any) : 'system'
         })
-        .eq('id', taskId)
-        .eq('assigned_to', user?.id || null);
+        .eq('id', taskId);
+      
+      // Only restrict by assigned_to for non-admin/case_manager roles
+      if (!canCompleteAny) {
+        query = query.eq('assigned_to', user?.id || null);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
 
@@ -334,6 +350,53 @@ function TasksContent() {
       }
     } catch (err) {
       console.error('Error assigning task:', err);
+    }
+  };
+
+  // Open task detail dialog
+  const handleOpenTaskDetail = (task: Task) => {
+    setSelectedTask(task);
+    setCompletionNote('');
+    setTaskDetailOpen(true);
+  };
+
+  // Complete task with optional note
+  const handleCompleteWithNote = async () => {
+    if (!selectedTask) return;
+    
+    setUpdatingTask(true);
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          completed_by: user?.id || null,
+          completed_by_role: ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '') ? (profile?.role as 'admin' | 'case_manager' | 'staff' | 'volunteer') : 'case_manager',
+          completion_note: completionNote || null
+        })
+        .eq('id', selectedTask.id);
+
+      if (error) throw error;
+
+      await supabase.from('audit_log').insert({
+        user_id: user?.id,
+        action: 'task_completed',
+        entity_type: 'task',
+        entity_id: selectedTask.id,
+        details: completionNote ? { note: completionNote } : null
+      });
+
+      toast({ title: 'Task Completed', description: `"${selectedTask.title}" marked as complete` });
+      setTaskDetailOpen(false);
+      setSelectedTask(null);
+      setCompletionNote('');
+      fetchTasks();
+    } catch (err) {
+      console.error('Error completing task:', err);
+      toast({ title: 'Error', description: 'Failed to complete task', variant: 'destructive' });
+    } finally {
+      setUpdatingTask(false);
     }
   };
 
@@ -834,10 +897,11 @@ function TasksContent() {
                 {filteredTasks.map(task => (
                   <div
                     key={task.id}
-                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${task.assigned_to === null && task.status === 'pending'
+                    className={`flex items-start gap-4 p-4 border rounded-lg transition-colors cursor-pointer ${task.assigned_to === null && task.status === 'pending'
                       ? 'border-purple-200 bg-purple-50 hover:bg-purple-100'
                       : 'hover:bg-gray-50'
                       }`}
+                    onClick={() => handleOpenTaskDetail(task)}
                   >
                     <div className="mt-1">
                       {getStatusIcon(task.status)}
@@ -890,11 +954,11 @@ function TasksContent() {
                     <div className="flex items-center gap-2">
                       {/* Claim and Assign buttons for open tasks */}
                       {canClaimTasks && !task.assigned_to && task.status === 'pending' && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <Button
                             size="sm"
                             className="bg-purple-600 hover:bg-purple-700"
-                            onClick={() => handleClaimTask(task.id)}
+                            onClick={(e) => { e.stopPropagation(); handleClaimTask(task.id); }}
                           >
                             <Hand className="h-4 w-4 mr-1" />
                             Claim
@@ -920,7 +984,7 @@ function TasksContent() {
                           size="sm"
                           variant="outline"
                           className="text-green-600 border-green-600 hover:bg-green-50"
-                          onClick={() => handleCompleteTask(task.id)}
+                          onClick={(e) => { e.stopPropagation(); handleCompleteTask(task.id); }}
                         >
                           <CheckCircle className="h-4 w-4 mr-1" />
                           Complete
@@ -929,7 +993,7 @@ function TasksContent() {
 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -982,6 +1046,101 @@ function TasksContent() {
             )}
           </CardContent>
         </Card>
+
+        {/* Task Detail Dialog */}
+        <Dialog open={taskDetailOpen} onOpenChange={setTaskDetailOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Task Details</DialogTitle>
+            </DialogHeader>
+            {selectedTask && (
+              <div className="space-y-4 pt-2">
+                <div>
+                  <h3 className="font-semibold text-lg">{selectedTask.title}</h3>
+                  {selectedTask.description && (
+                    <p className="text-gray-600 mt-1">{selectedTask.description}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Status:</span>
+                    <span className="ml-2 capitalize">{selectedTask.status.replace('_', ' ')}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Priority:</span>
+                    <span className="ml-2 capitalize">{selectedTask.priority}</span>
+                  </div>
+                  {selectedTask.due_date && (
+                    <div>
+                      <span className="text-gray-500">Due:</span>
+                      <span className="ml-2">{formatPacificLocaleDate(selectedTask.due_date)}</span>
+                    </div>
+                  )}
+                  {selectedTask.client && (
+                    <div>
+                      <span className="text-gray-500">Client:</span>
+                      <span className="ml-2">{selectedTask.client.first_name} {selectedTask.client.last_name}</span>
+                    </div>
+                  )}
+                  {selectedTask.assignee && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">Assigned to:</span>
+                      <span className="ml-2">{selectedTask.assignee.first_name} {selectedTask.assignee.last_name}</span>
+                    </div>
+                  )}
+                </div>
+
+                {selectedTask.status !== 'completed' && (
+                  <div className="border-t pt-4">
+                    <Label htmlFor="completion-note" className="text-sm font-medium">
+                      Completion Note (optional)
+                    </Label>
+                    <Textarea
+                      id="completion-note"
+                      placeholder="Add any notes about completing this task..."
+                      value={completionNote}
+                      onChange={(e) => setCompletionNote(e.target.value)}
+                      rows={3}
+                      className="mt-2"
+                    />
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="outline" onClick={() => setTaskDetailOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={handleCompleteWithNote}
+                        disabled={updatingTask}
+                      >
+                        {updatingTask ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Completing...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Mark Complete
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {selectedTask.status === 'completed' && (
+                  <div className="border-t pt-4 text-sm text-gray-600">
+                    <p className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Completed {selectedTask.completed_at ? `on ${formatPacificLocaleDate(selectedTask.completed_at)}` : ''}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
     </TooltipProvider>

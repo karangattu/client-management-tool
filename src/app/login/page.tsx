@@ -305,7 +305,7 @@ function LoginForm() {
           </div>
 
           <p className="mt-4 text-xs text-gray-400 text-center">
-            v1.0.5
+            v1.0.6
           </p>
         </CardContent>
       </Card>

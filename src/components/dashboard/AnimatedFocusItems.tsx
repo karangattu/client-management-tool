@@ -76,7 +76,7 @@ export function AnimatedFocusItems({ items, formatTime, getPriorityBadge }: Anim
                   size="sm"
                   variant="outline"
                   className="h-8"
-                  onClick={() => router.push(`/tasks?filter=open`)}
+                  onClick={() => router.push(`/tasks`)}
                 >
                   View
                 </Button>
