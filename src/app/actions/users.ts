@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 import { cacheReadOnly } from "@/app/actions/cache";
 import type { UserRole } from "@/lib/auth-context";
 
@@ -54,6 +55,7 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
           data: {
             first_name: data.first_name,
             last_name: data.last_name,
+            role: data.role,
           },
         },
       });
@@ -92,6 +94,7 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
         new_values: { email: data.email, role: data.role },
       });
 
+      revalidatePath('/admin');
       return { success: true, userId: authData.user.id };
     }
 
@@ -103,6 +106,7 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
       user_metadata: {
         first_name: data.first_name,
         last_name: data.last_name,
+        role: data.role,
       },
     });
 
@@ -152,6 +156,7 @@ export async function createUser(data: CreateUserData): Promise<CreateUserResult
       new_values: { email: data.email, role: data.role },
     });
 
+    revalidatePath('/admin');
     return { success: true, userId: authData.user.id };
   } catch (error) {
     console.error("Error creating user:", error);
@@ -199,6 +204,7 @@ export async function archiveUser(userId: string): Promise<{ success: boolean; e
       record_id: userId,
     });
 
+    revalidatePath('/admin');
     return { success: true };
   } catch (error) {
     console.error("Error archiving user:", error);

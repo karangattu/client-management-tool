@@ -25,14 +25,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  FileText,
   CheckCircle,
   PenLine,
-  Upload,
   ArrowRight,
   ArrowLeft,
   Info,
-  AlertTriangle,
   Loader2,
   AlertCircle,
   RotateCcw,
@@ -560,7 +557,7 @@ export default function SelfServiceIntakePage() {
                     <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
                     <div className="text-sm text-green-800">
                       <p className="font-medium">Ready to submit!</p>
-                      <p className="mt-1">Your signature has been captured. Click "Create Account" to finish.</p>
+                      <p className="mt-1">Your signature has been captured. Click Create Account to finish.</p>
                     </div>
                   </div>
                 )}

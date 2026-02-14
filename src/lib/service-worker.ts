@@ -1,7 +1,15 @@
+import React from 'react';
+
 /**
  * Service Worker Registration Utility
  * Handles registration and lifecycle management of the service worker
  */
+
+type ServiceWorkerRegistrationWithSync = ServiceWorkerRegistration & {
+  sync: {
+    register: (tag: string) => Promise<void>;
+  };
+};
 
 /**
  * Register the service worker
@@ -109,7 +117,8 @@ export async function requestBackgroundSync(tag: string): Promise<void> {
   // Check if Background Sync is supported
   if ('sync' in registration) {
     try {
-      await (registration as any).sync.register(tag);
+      const syncRegistration = registration as ServiceWorkerRegistrationWithSync;
+      await syncRegistration.sync.register(tag);
       console.log('Background sync registered:', tag);
     } catch (error) {
       console.error('Background sync registration failed:', error);
@@ -124,7 +133,7 @@ export async function requestBackgroundSync(tag: string): Promise<void> {
 /**
  * Send a message to the service worker
  */
-export async function sendMessageToSW(message: any): Promise<void> {
+export async function sendMessageToSW(message: unknown): Promise<void> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return;
   }
@@ -156,13 +165,15 @@ export async function clearAllCaches(): Promise<void> {
  * Hook to use in React components for online/offline status
  */
 export function useOnlineStatus() {
-  if (typeof window === 'undefined') {
-    return true;
-  }
-
-  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [isOnline, setIsOnline] = React.useState(() =>
+    typeof window === 'undefined' ? true : navigator.onLine
+  );
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
@@ -177,6 +188,3 @@ export function useOnlineStatus() {
 
   return isOnline;
 }
-
-// React import for the hook
-import React from 'react';

@@ -36,7 +36,6 @@ import {
   Archive,
   CheckCheck,
   MailOpen,
-  Save,
   Wifi,
   WifiOff,
 } from 'lucide-react';

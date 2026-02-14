@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -11,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 import { completeTask } from '@/app/actions/tasks';
@@ -53,12 +53,13 @@ interface ClientGroup {
 
 export default function CommandCenterPage() {
     const { user, profile, loading: authLoading } = useAuth();
-    const router = useRouter();
     const [items, setItems] = useState<CommandItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCompleted, setShowCompleted] = useState(false);
     const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
     const [activeTab, setActiveTab] = useState('all');
+    const [taskToComplete, setTaskToComplete] = useState<CommandItem | null>(null);
+    const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!profile) return;
@@ -221,10 +222,13 @@ export default function CommandCenterPage() {
     }, [filteredItems]);
 
     const { toast } = useToast();
+    const canAddCompletionNotes = profile?.role === 'admin' || profile?.role === 'case_manager';
 
     // ... (rest of the component)
 
-    const handleCompleteTask = async (taskId: string) => {
+    const handleCompleteTask = async (taskId: string, completionNote?: string): Promise<boolean> => {
+        setCompletingTaskId(taskId);
+
         // Optimistic update
         setItems(prev => prev.map(item =>
             item.id === taskId ? { ...item, is_completed: true, status: 'completed' } : item
@@ -237,7 +241,7 @@ export default function CommandCenterPage() {
         });
 
         try {
-            const result = await completeTask(taskId);
+            const result = await completeTask(taskId, completionNote);
             if (!result.success) {
                 // Revert on failure
                 setItems(prev => prev.map(item =>
@@ -248,7 +252,9 @@ export default function CommandCenterPage() {
                     description: "Failed to complete task. Please try again.",
                     variant: "destructive",
                 });
+                return false;
             }
+            return true;
         } catch (error) {
             console.error('Error completing task:', error);
             // Revert on error
@@ -260,6 +266,9 @@ export default function CommandCenterPage() {
                 description: "An unexpected error occurred.",
                 variant: "destructive",
             });
+            return false;
+        } finally {
+            setCompletingTaskId(null);
         }
     };
 
@@ -565,6 +574,10 @@ export default function CommandCenterPage() {
                                                                         className="h-8 w-8 p-0 text-gray-400 hover:text-green-600"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
+                                                                            if (canAddCompletionNotes) {
+                                                                                setTaskToComplete(item);
+                                                                                return;
+                                                                            }
                                                                             handleCompleteTask(item.id);
                                                                         }}
                                                                     >
@@ -597,6 +610,22 @@ export default function CommandCenterPage() {
                     )}
                 </div>
             </main>
+
+            <TaskCompleteDialog
+                isOpen={!!taskToComplete}
+                onClose={() => setTaskToComplete(null)}
+                onConfirm={async (note?: string) => {
+                    if (!taskToComplete) return;
+                    const completed = await handleCompleteTask(taskToComplete.id, note);
+                    if (completed) {
+                        setTaskToComplete(null);
+                    }
+                }}
+                taskTitle={taskToComplete?.title || ''}
+                isLoading={completingTaskId !== null}
+                showNoteField
+                notePlaceholder="Add completion notes for this task (optional)"
+            />
         </div>
     );
 }

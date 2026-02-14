@@ -134,23 +134,25 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus, clien
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
 
+        // task_completion_role enum only allows: 'client', 'staff', 'system'
         const updateData: { 
             status: TaskStatus; 
             completed_at: string | null; 
             completed_by?: string | null; 
-            completed_by_role?: 'client' | 'case_manager' | 'admin' | 'system' | null;
+            completed_by_role?: 'client' | 'staff' | 'system' | null;
             completion_note?: string | null;
         } = { status, completed_at: null };
         if (status === 'completed') {
             updateData.completed_at = new Date().toISOString();
             updateData.completed_by = user?.id || null;
-            updateData.completed_by_role = user?.id ? 'case_manager' : null;
-            updateData.completion_note = completionNote || null;
+            updateData.completed_by_role = user?.id ? 'staff' : null;
+            if (completionNote !== undefined) {
+                updateData.completion_note = completionNote.trim() ? completionNote : null;
+            }
         } else {
             updateData.completed_at = null;
             updateData.completed_by = null;
             updateData.completed_by_role = null;
-            updateData.completion_note = null;
         }
 
         const { error } = await supabase

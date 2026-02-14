@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { CheckSquare, Calendar, AlertCircle, Clock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 

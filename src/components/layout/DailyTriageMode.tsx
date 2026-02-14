@@ -8,7 +8,6 @@ import {
     Clock, 
     Users, 
     Calendar,
-    ArrowRight,
     ChevronRight,
     ListChecks,
     Bell

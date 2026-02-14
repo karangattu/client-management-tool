@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { PACIFIC_TIMEZONE, formatPacificLocaleDate, formatPacificLocaleTime, toPacificDate, pacificToUTCISO } from '@/lib/date-utils';
+import { formatPacificLocaleDate, formatPacificLocaleTime, toPacificDate, pacificToUTCISO } from '@/lib/date-utils';
 import { useRealtimeAllCalendarEvents, type RealtimeCalendarEvent } from '@/lib/hooks/use-realtime';
 import { useToast } from '@/components/ui/use-toast';
 

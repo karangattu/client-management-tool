@@ -32,8 +32,8 @@ export async function triggerConfetti(options?: ConfettiOptions): Promise<null |
   // Lazy load canvas-confetti only when triggered
   if (!confettiModule) {
     try {
-      const module = await import('canvas-confetti');
-      confettiModule = (module.default || module) as ConfettiFunction;
+      const confettiImport = await import('canvas-confetti');
+      confettiModule = (confettiImport.default || confettiImport) as ConfettiFunction;
       
       if (typeof confettiModule !== 'function') {
         console.error('Failed to load confetti module correctly');

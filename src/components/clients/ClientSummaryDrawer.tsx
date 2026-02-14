@@ -18,7 +18,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import {
-  User,
   Phone,
   Mail,
   MapPin,

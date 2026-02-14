@@ -66,7 +66,7 @@ import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementL
 import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { updateTaskStatus } from '@/app/actions/tasks';
 import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
-import { useRealtimeTasks, useRealtimeDocuments, useRealtimeInteractions, useRealtimeProgramEnrollments, type RealtimeTask, type RealtimeDocument, type RealtimeInteraction, type RealtimeProgramEnrollment } from '@/lib/hooks/use-realtime';
+import { useRealtimeTasks, useRealtimeDocuments, type RealtimeTask, type RealtimeDocument } from '@/lib/hooks/use-realtime';
 
 interface ClientDetail {
   id: string;

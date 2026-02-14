@@ -79,14 +79,15 @@ export function useRealtimeSubscription<T extends { id: string }>(
         [table]
     );
 
+    const filterColumn = filter?.column;
+    const filterValue = filter?.value;
+    const filterString = filterColumn && filterValue ? `${filterColumn}=eq.${filterValue}` : undefined;
+
     useEffect(() => {
         const supabase = createClient();
 
-        // Build filter string if provided
-        const filterString = filter ? `${filter.column}=eq.${filter.value}` : undefined;
-
         const channel = supabase
-            .channel(`${table}-changes-${filter?.value || "all"}-${Date.now()}`)
+            .channel(`${table}-changes-${filterValue || "all"}-${Date.now()}`)
             .on(
                 "postgres_changes",
                 {
@@ -116,7 +117,7 @@ export function useRealtimeSubscription<T extends { id: string }>(
                 setIsSubscribed(false);
             }
         };
-    }, [table, filter?.column, filter?.value, handleChange]);
+    }, [table, filterValue, filterString, handleChange]);
 
     // Sync initial data when it changes
     useEffect(() => {
@@ -219,7 +220,7 @@ export function useMultiTableRealtime(
             channelsRef.current = [];
             setIsSubscribed(false);
         };
-    }, [tables.join(','), onAnyChange]);
+    }, [tables, onAnyChange]);
 
     return { isSubscribed };
 }

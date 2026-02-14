@@ -3,7 +3,6 @@
  * Provides offline support and background sync capabilities
  */
 
-const CACHE_NAME = 'clienthub-v1';
 const STATIC_CACHE = 'clienthub-static-v1';
 const DYNAMIC_CACHE = 'clienthub-dynamic-v1';
 

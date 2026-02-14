@@ -79,6 +79,7 @@ interface Task {
   completed_at?: string | null;
   completed_by?: string | null;
   completed_by_role?: 'client' | 'case_manager' | 'admin' | 'system' | null;
+  completion_note?: string | null;
   client?: { first_name: string; last_name: string };
   assignee?: { first_name: string; last_name: string };
 }
@@ -197,6 +198,7 @@ function TasksContent() {
           completed_at,
           completed_by,
           completed_by_role,
+          completion_note,
           category,
           tags,
           created_at,
@@ -269,8 +271,8 @@ function TasksContent() {
       await supabase.from('audit_log').insert({
         user_id: user?.id,
         action: 'task_claimed',
-        entity_type: 'task',
-        entity_id: taskId,
+        table_name: 'tasks',
+        record_id: taskId,
       });
 
       fetchTasks();
@@ -285,13 +287,23 @@ function TasksContent() {
       // Regular staff/volunteers can only complete tasks assigned to them
       const canCompleteAny = profile?.role === 'admin' || profile?.role === 'case_manager';
       
+      // Map user roles to valid task_completion_role enum: 'client' | 'staff' | 'system'
+      const roleMapping: Record<string, string> = {
+        admin: 'staff',
+        case_manager: 'staff',
+        staff: 'staff',
+        volunteer: 'staff',
+        client: 'client',
+      };
+      const completionRole = roleMapping[profile?.role || ''] || 'system';
+      
       let query = supabase
         .from('tasks')
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
           completed_by: user?.id || null,
-          completed_by_role: ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '') ? (profile?.role as any) : 'system'
+          completed_by_role: completionRole
         })
         .eq('id', taskId);
       
@@ -307,8 +319,8 @@ function TasksContent() {
       await supabase.from('audit_log').insert({
         user_id: user?.id,
         action: 'task_completed',
-        entity_type: 'task',
-        entity_id: taskId,
+        table_name: 'tasks',
+        record_id: taskId,
       });
 
       fetchTasks();
@@ -330,8 +342,8 @@ function TasksContent() {
       await supabase.from('audit_log').insert({
         user_id: user?.id,
         action: 'task_archived',
-        entity_type: 'task',
-        entity_id: taskId,
+        table_name: 'tasks',
+        record_id: taskId,
       });
 
       fetchTasks();
@@ -356,8 +368,41 @@ function TasksContent() {
   // Open task detail dialog
   const handleOpenTaskDetail = (task: Task) => {
     setSelectedTask(task);
-    setCompletionNote('');
+    setCompletionNote(task.completion_note || '');
     setTaskDetailOpen(true);
+  };
+
+  const handleSaveTaskNote = async () => {
+    if (!selectedTask) return;
+
+    setUpdatingTask(true);
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          completion_note: completionNote.trim() ? completionNote : null,
+        })
+        .eq('id', selectedTask.id);
+
+      if (error) throw error;
+
+      await supabase.from('audit_log').insert({
+        user_id: user?.id,
+        action: 'task_note_updated',
+        table_name: 'tasks',
+        record_id: selectedTask.id,
+        new_values: { completion_note: completionNote.trim() ? completionNote : null }
+      });
+
+      setSelectedTask((prev) => prev ? { ...prev, completion_note: completionNote.trim() ? completionNote : null } : prev);
+      toast({ title: 'Note Saved', description: 'Task note updated' });
+      fetchTasks();
+    } catch (err) {
+      console.error('Error saving task note:', err);
+      toast({ title: 'Error', description: 'Failed to save note', variant: 'destructive' });
+    } finally {
+      setUpdatingTask(false);
+    }
   };
 
   // Complete task with optional note
@@ -366,13 +411,23 @@ function TasksContent() {
     
     setUpdatingTask(true);
     try {
+      // Map user roles to valid task_completion_role enum: 'client' | 'staff' | 'system'
+      const roleMapping: Record<string, string> = {
+        admin: 'staff',
+        case_manager: 'staff',
+        staff: 'staff',
+        volunteer: 'staff',
+        client: 'client',
+      };
+      const completionRole = roleMapping[profile?.role || ''] || 'system';
+
       const { error } = await supabase
         .from('tasks')
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
           completed_by: user?.id || null,
-          completed_by_role: ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '') ? (profile?.role as 'admin' | 'case_manager' | 'staff' | 'volunteer') : 'case_manager',
+          completed_by_role: completionRole,
           completion_note: completionNote || null
         })
         .eq('id', selectedTask.id);
@@ -382,9 +437,9 @@ function TasksContent() {
       await supabase.from('audit_log').insert({
         user_id: user?.id,
         action: 'task_completed',
-        entity_type: 'task',
-        entity_id: selectedTask.id,
-        details: completionNote ? { note: completionNote } : null
+        table_name: 'tasks',
+        record_id: selectedTask.id,
+        new_values: completionNote ? { completion_note: completionNote } : null
       });
 
       toast({ title: 'Task Completed', description: `"${selectedTask.title}" marked as complete` });
@@ -439,8 +494,8 @@ function TasksContent() {
       await supabase.from('audit_log').insert({
         user_id: user?.id,
         action: 'task_created',
-        entity_type: 'task',
-        details: { title: newTask.title },
+        table_name: 'tasks',
+        new_values: { title: newTask.title },
       });
 
       setCreateOpen(false);
@@ -515,6 +570,10 @@ function TasksContent() {
 
   const canCreateTasks = canAccessFeature(profile?.role || 'client', 'case_manager');
   const canClaimTasks = ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '');
+  const canEditTaskNotes =
+    profile?.role === 'admin' ||
+    profile?.role === 'case_manager' ||
+    selectedTask?.assigned_to === user?.id;
 
   return (
     <TooltipProvider>
@@ -1094,20 +1153,37 @@ function TasksContent() {
                 {selectedTask.status !== 'completed' && (
                   <div className="border-t pt-4">
                     <Label htmlFor="completion-note" className="text-sm font-medium">
-                      Completion Note (optional)
+                      Task Note (optional)
                     </Label>
                     <Textarea
                       id="completion-note"
-                      placeholder="Add any notes about completing this task..."
+                      placeholder="Add or update notes for this task..."
                       value={completionNote}
                       onChange={(e) => setCompletionNote(e.target.value)}
                       rows={3}
                       className="mt-2"
+                      disabled={!canEditTaskNotes || updatingTask}
                     />
                     <div className="flex justify-end gap-2 mt-4">
                       <Button variant="outline" onClick={() => setTaskDetailOpen(false)}>
                         Cancel
                       </Button>
+                      {canEditTaskNotes && (
+                        <Button
+                          variant="outline"
+                          onClick={handleSaveTaskNote}
+                          disabled={updatingTask}
+                        >
+                          {updatingTask ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save Note'
+                          )}
+                        </Button>
+                      )}
                       <Button
                         className="bg-green-600 hover:bg-green-700"
                         onClick={handleCompleteWithNote}
@@ -1135,6 +1211,11 @@ function TasksContent() {
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       Completed {selectedTask.completed_at ? `on ${formatPacificLocaleDate(selectedTask.completed_at)}` : ''}
                     </p>
+                    {selectedTask.completion_note && (
+                      <p className="mt-2 whitespace-pre-wrap text-gray-700">
+                        Note: {selectedTask.completion_note}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
