@@ -206,6 +206,7 @@ function TasksContent() {
           client:clients(first_name, last_name),
           assignee:profiles!tasks_assigned_to_fkey(first_name, last_name)
         `)
+        .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
         .limit(50); // Add pagination limit
 
@@ -517,6 +518,10 @@ function TasksContent() {
   };
 
   const filteredTasks = tasks.filter(task => {
+    if (task.status === 'cancelled') {
+      return false;
+    }
+
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.description?.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -535,7 +540,7 @@ function TasksContent() {
   });
 
   const stats = {
-    total: tasks.length,
+    total: tasks.filter(t => t.status !== 'cancelled').length,
     pending: tasks.filter(t => t.status === 'pending').length,
     inProgress: tasks.filter(t => t.status === 'in_progress').length,
     completed: tasks.filter(t => t.status === 'completed').length,
