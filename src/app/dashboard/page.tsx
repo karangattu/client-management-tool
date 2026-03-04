@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NextLink from 'next/link';
 import dynamic from 'next/dynamic';
@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime, getPacificNow, toPacificDate } from '@/lib/date-utils';
+import { formatPacificFriendly, formatPacificDueDate, getPacificNow, toPacificDate } from '@/lib/date-utils';
 import { DailyTriageMode, useDailyTriageMode } from '@/components/layout/DailyTriageMode';
 import {
   Users,
@@ -854,12 +854,7 @@ export default function DashboardPage() {
   const isAdmin = profile.role === 'admin';
   const isCaseManager = profile.role === 'case_manager';
   const isClient = profile.role === 'client';
-  const canViewClients = canAccessFeature(profile.role, 'case_manager');
   const canCreateIntake = canAccessFeature(profile.role, 'case_manager');
-  const canViewCalendar = canAccessFeature(profile.role, 'case_manager');
-  const canViewTasks = canAccessFeature(profile.role, 'case_manager');
-  const canViewDocuments = canAccessFeature(profile.role, 'case_manager');
-  const canViewAdmin = isAdmin;
 
   const getPriorityBadge = (priority: string, status?: string) => {
     if (status === 'in_progress') {

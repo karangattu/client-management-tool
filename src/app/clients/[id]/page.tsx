@@ -70,7 +70,7 @@ import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, 
 import { getEmploymentSupportIntake } from '@/app/actions/employment-support';
 import { EmploymentSupportIntakeForm } from '@/components/forms/EmploymentSupportIntakeForm';
 import { dbRowToFormData, type EmploymentSupportIntakeForm as ESIFormType } from '@/lib/schemas/employment-support';
-import { useRealtimeTasks, useRealtimeDocuments, useRealtimeInteractions, useRealtimeProgramEnrollments, type RealtimeTask, type RealtimeDocument, type RealtimeInteraction, type RealtimeProgramEnrollment } from '@/lib/hooks/use-realtime';
+import { useRealtimeTasks, useRealtimeDocuments, type RealtimeTask, type RealtimeDocument } from '@/lib/hooks/use-realtime';
 
 interface ClientDetail {
   id: string;
