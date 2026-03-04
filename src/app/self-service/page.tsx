@@ -34,7 +34,8 @@ import {
   AlertCircle,
   RotateCcw,
   BadgeCheck,
-  Users
+  Users,
+  Home,
 } from 'lucide-react';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
@@ -72,6 +73,7 @@ export default function SelfServiceIntakePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isHomeless, setIsHomeless] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [formData, setFormData] = useState({
@@ -87,6 +89,7 @@ export default function SelfServiceIntakePage() {
     city: '',
     state: '',
     zipCode: '',
+    mailingAddress: '',
   });
 
   const totalSteps = 2;
@@ -224,6 +227,7 @@ export default function SelfServiceIntakePage() {
 
       const result = await submitSelfServiceApplication({
         ...formData,
+        isHomeless,
         signature: signature || undefined,
         pdfData
       });
@@ -379,51 +383,92 @@ export default function SelfServiceIntakePage() {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="street">Street Address</Label>
-                    <Input
-                      id="street"
-                      name="street"
-                      value={formData.street}
-                      onChange={handleInputChange}
-                      placeholder="Street address"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      placeholder="City"
-                    />
+                {/* Homeless / no fixed address checkbox */}
+                <div className="flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                  <Checkbox
+                    id="isHomeless"
+                    checked={isHomeless}
+                    onCheckedChange={(checked) => {
+                      setIsHomeless(!!checked);
+                      if (checked) {
+                        setFormData(prev => ({ ...prev, street: '', city: '', state: '', zipCode: '' }));
+                      }
+                    }}
+                    className="border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Home className="h-4 w-4 text-orange-600 flex-shrink-0" />
+                    <label htmlFor="isHomeless" className="text-sm font-medium text-orange-800 cursor-pointer leading-snug">
+                      I&apos;m currently experiencing homelessness or don&apos;t have a fixed address
+                    </label>
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="state">State</Label>
-                    <Input
-                      id="state"
-                      name="state"
-                      value={formData.state}
-                      onChange={handleInputChange}
-                      placeholder="State"
-                    />
+                {isHomeless ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 text-sm text-orange-800">
+                      No permanent address needed. You can optionally provide a shelter, care-of, or mailing address below.
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="mailingAddress">Shelter / Mailing Address (optional)</Label>
+                      <Input
+                        id="mailingAddress"
+                        name="mailingAddress"
+                        value={formData.mailingAddress}
+                        onChange={handleInputChange}
+                        placeholder="e.g. City Shelter, 123 Main St"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="zipCode">ZIP Code</Label>
-                    <Input
-                      id="zipCode"
-                      name="zipCode"
-                      value={formData.zipCode}
-                      onChange={handleInputChange}
-                      placeholder="ZIP code"
-                    />
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="street">Street Address</Label>
+                        <Input
+                          id="street"
+                          name="street"
+                          value={formData.street}
+                          onChange={handleInputChange}
+                          placeholder="Street address"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="city">City</Label>
+                        <Input
+                          id="city"
+                          name="city"
+                          value={formData.city}
+                          onChange={handleInputChange}
+                          placeholder="City"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="state">State</Label>
+                        <Input
+                          id="state"
+                          name="state"
+                          value={formData.state}
+                          onChange={handleInputChange}
+                          placeholder="State"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="zipCode">ZIP Code</Label>
+                        <Input
+                          id="zipCode"
+                          name="zipCode"
+                          value={formData.zipCode}
+                          onChange={handleInputChange}
+                          placeholder="ZIP code"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">

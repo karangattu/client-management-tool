@@ -3,6 +3,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { cacheReadOnly } from "@/app/actions/cache";
+import { createDraftEmploymentSupportIntake } from "@/app/actions/employment-support";
 
 export interface Program {
     id: string;
@@ -196,6 +197,29 @@ export async function upsertEnrollment(params: {
             }
         } else {
             console.log(`[upsertEnrollment] No task templates found for program ${params.programId}`);
+        }
+
+        // AUTO-CREATE EMPLOYMENT SUPPORT INTAKE DRAFT
+        // Check if this is an employment-related program
+        const { data: programInfo } = await supabase
+            .from('programs')
+            .select('name')
+            .eq('id', params.programId)
+            .single();
+
+        if (programInfo?.name === 'Employment Support') {
+            try {
+                const intakeResult = await createDraftEmploymentSupportIntake(
+                    params.clientId,
+                    data.id
+                );
+                if (intakeResult.success && !intakeResult.alreadyExists) {
+                    console.log(`[upsertEnrollment] Created draft Employment Support Intake for client ${params.clientId}`);
+                }
+            } catch (intakeError) {
+                console.error("Failed to auto-create employment support intake:", intakeError);
+                // Don't block enrollment if intake creation fails
+            }
         }
 
         revalidatePath(`/clients/${params.clientId}`);

@@ -146,13 +146,12 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus, clien
             updateData.completed_at = new Date().toISOString();
             updateData.completed_by = user?.id || null;
             updateData.completed_by_role = user?.id ? 'staff' : null;
-            if (completionNote !== undefined) {
-                updateData.completion_note = completionNote.trim() ? completionNote : null;
-            }
+            updateData.completion_note = completionNote || null;
         } else {
             updateData.completed_at = null;
             updateData.completed_by = null;
             updateData.completed_by_role = null;
+            updateData.completion_note = null;
         }
 
         const { error } = await supabase

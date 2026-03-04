@@ -167,9 +167,9 @@ export async function saveClientIntake(
     // 2. Save Case Management (check if exists first)
     const caseManagementData = {
       client_id: savedClientId,
-      housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'unhoused', 'at_risk', 'transitional', 'unknown'].includes(validatedData.caseManagement.housingStatus))
+      housing_status: (validatedData.caseManagement.housingStatus && ['housed', 'homeless', 'at_risk', 'transitional', 'shelter', 'couch_surfing', 'unknown'].includes(validatedData.caseManagement.housingStatus))
         ? validatedData.caseManagement.housingStatus
-        : 'unknown',
+        : validatedData.participantDetails.noFixedAddress ? 'homeless' : 'unknown',
       primary_language: validatedData.caseManagement.primaryLanguage || 'English',
       secondary_language: validatedData.caseManagement.secondaryLanguage || null,
       needs_interpreter: false,

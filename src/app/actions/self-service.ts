@@ -14,6 +14,8 @@ interface SelfServiceFormData {
   city?: string;
   state?: string;
   zipCode?: string;
+  isHomeless?: boolean;
+  mailingAddress?: string;
   preferredLanguage?: string;
   signature?: string;
   pdfData?: string;
@@ -138,7 +140,7 @@ export async function submitSelfServiceApplication(
     const { error: caseError } = await db.from("case_management").insert({
       client_id: clientData.id,
       primary_language: formData.preferredLanguage || "English",
-      housing_status: "unknown",
+      housing_status: formData.isHomeless ? 'homeless' : 'unknown',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });

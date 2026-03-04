@@ -10,11 +10,13 @@ export const participantDetailsSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   primaryPhone: z.string().min(10, "Please enter a valid phone number").optional().or(z.literal("")),
   secondaryPhone: z.string().optional(),
-  streetAddress: z.string().min(1, "Street address is required"),
-  city: z.string().min(1, "City is required").max(50),
-  state: z.string().min(1, "State is required"),
+  noFixedAddress: z.boolean().optional(),
+  streetAddress: z.string().optional().or(z.literal("")),
+  city: z.string().max(50).optional().or(z.literal("")),
+  state: z.string().optional().or(z.literal("")),
   county: z.string().optional(),
-  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, "Please enter a valid ZIP code"),
+  zipCode: z.string().optional().or(z.literal("")),
+  mailingAddress: z.string().max(200).optional(),  // shelter / care-of address when homeless
   // How did you hear about us?
   referralSource: z.string().optional(),
   referralSourceDetails: z.string().max(500).optional(),
@@ -82,6 +84,9 @@ export const householdSchema = z.object({
   members: z.array(householdMemberSchema).optional(),
 });
 
+// Housing statuses that indicate no fixed address
+const NO_FIXED_ADDRESS_STATUSES = ['homeless', 'shelter', 'couch_surfing'];
+
 // Complete Client Intake Form Schema
 export const clientIntakeSchema = z.object({
   participantDetails: participantDetailsSchema,
@@ -89,6 +94,26 @@ export const clientIntakeSchema = z.object({
   caseManagement: caseManagementSchema,
   demographics: demographicsSchema,
   household: householdSchema,
+}).superRefine((data, ctx) => {
+  const noFixed =
+    data.participantDetails.noFixedAddress === true ||
+    NO_FIXED_ADDRESS_STATUSES.includes(data.caseManagement.housingStatus ?? '');
+  if (!noFixed) {
+    if (!data.participantDetails.streetAddress) {
+      ctx.addIssue({ code: 'custom', message: 'Street address is required', path: ['participantDetails', 'streetAddress'] });
+    }
+    if (!data.participantDetails.city) {
+      ctx.addIssue({ code: 'custom', message: 'City is required', path: ['participantDetails', 'city'] });
+    }
+    if (!data.participantDetails.state) {
+      ctx.addIssue({ code: 'custom', message: 'State is required', path: ['participantDetails', 'state'] });
+    }
+    if (data.participantDetails.zipCode && !/^\d{5}(-\d{4})?$/.test(data.participantDetails.zipCode)) {
+      ctx.addIssue({ code: 'custom', message: 'Please enter a valid ZIP code', path: ['participantDetails', 'zipCode'] });
+    } else if (!data.participantDetails.zipCode) {
+      ctx.addIssue({ code: 'custom', message: 'ZIP code is required', path: ['participantDetails', 'zipCode'] });
+    }
+  }
 });
 
 // Types derived from schemas
@@ -110,11 +135,13 @@ export const defaultParticipantDetails: ParticipantDetails = {
   email: "",
   primaryPhone: "",
   secondaryPhone: "",
+  noFixedAddress: false,
   streetAddress: "",
   city: "",
   state: "CA",
   county: "",
   zipCode: "",
+  mailingAddress: "",
   referralSource: "",
   referralSourceDetails: "",
 };

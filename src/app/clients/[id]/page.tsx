@@ -54,6 +54,7 @@ import {
   Trash2,
   Wifi,
   WifiOff,
+  Briefcase,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -66,7 +67,10 @@ import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementL
 import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { updateTaskStatus } from '@/app/actions/tasks';
 import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
-import { useRealtimeTasks, useRealtimeDocuments, type RealtimeTask, type RealtimeDocument } from '@/lib/hooks/use-realtime';
+import { getEmploymentSupportIntake } from '@/app/actions/employment-support';
+import { EmploymentSupportIntakeForm } from '@/components/forms/EmploymentSupportIntakeForm';
+import { dbRowToFormData, type EmploymentSupportIntakeForm as ESIFormType } from '@/lib/schemas/employment-support';
+import { useRealtimeTasks, useRealtimeDocuments, useRealtimeInteractions, useRealtimeProgramEnrollments, type RealtimeTask, type RealtimeDocument, type RealtimeInteraction, type RealtimeProgramEnrollment } from '@/lib/hooks/use-realtime';
 
 interface ClientDetail {
   id: string;
@@ -294,8 +298,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     notes: ''
   });
   const [volunteers, setVolunteers] = useState<{ id: string; name: string }[]>([]);
+  const [employmentIntake, setEmploymentIntake] = useState<{ id: string; data: ESIFormType; status: string; submittedInfo: { by: string; at: string } | null; enrollmentId?: string } | null>(null);
+  const [showEmploymentIntakeForm, setShowEmploymentIntakeForm] = useState(false);
 
   const supabase = createClient();
+
+  // Refresh only the employment support intake (used after form save in the ESI tab)
+  const refreshEmploymentIntake = useCallback(async () => {
+    try {
+      const esiResult = await getEmploymentSupportIntake(clientId);
+      if (esiResult.success && esiResult.data) {
+        const row = esiResult.data as Record<string, unknown>;
+        const submittedByProfile = row.submitted_by_profile as { first_name: string; last_name: string } | null;
+        setEmploymentIntake({
+          id: row.id as string,
+          data: dbRowToFormData(row),
+          status: row.status as string,
+          enrollmentId: (row.program_enrollment_id as string) || undefined,
+          submittedInfo: submittedByProfile && row.submitted_at
+            ? { by: `${submittedByProfile.first_name} ${submittedByProfile.last_name}`, at: new Date(row.submitted_at as string).toLocaleDateString() }
+            : null,
+        });
+      }
+    } catch (err) {
+      console.error('Error refreshing employment intake:', err);
+    }
+  }, [clientId]);  // supabase is stable; getEmploymentSupportIntake is a server action
 
   // Realtime subscriptions for client-specific data
   const { isSubscribed: isTasksRealtimeConnected } = useRealtimeTasks(
@@ -416,6 +444,26 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
         setEnrollments((enrollmentsData?.success ? enrollmentsData.data : []) as Enrollment[]);
         setAvailablePrograms((programsData?.success ? programsData.data : []) as Program[]);
         setInteractions((historyData?.success ? historyData.data : []) as Interaction[]);
+
+        // Fetch Employment Support Intake
+        try {
+          const esiResult = await getEmploymentSupportIntake(clientId);
+          if (esiResult.success && esiResult.data) {
+            const row = esiResult.data as Record<string, unknown>;
+            const submittedByProfile = row.submitted_by_profile as { first_name: string; last_name: string } | null;
+            setEmploymentIntake({
+              id: row.id as string,
+              data: dbRowToFormData(row),
+              status: row.status as string,
+              enrollmentId: (row.program_enrollment_id as string) || undefined,
+              submittedInfo: submittedByProfile && row.submitted_at
+                ? { by: `${submittedByProfile.first_name} ${submittedByProfile.last_name}`, at: new Date(row.submitted_at as string).toLocaleDateString() }
+                : null,
+            });
+          }
+        } catch (esiErr) {
+          console.error('Error fetching employment support intake:', esiErr);
+        }
 
         const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string; new_values?: Record<string, unknown> | null; old_values?: Record<string, unknown> | null }> })?.data || [];
         setActivities(activityData.map((a) => ({
@@ -1330,6 +1378,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="programs">Programs</TabsTrigger>
+              <TabsTrigger value="employment-support">Employment Support</TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
             </TabsList>
 
@@ -1907,6 +1956,67 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                       <TrendingUp className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold">No Enrollments</h3>
                       <p className="text-gray-500 mt-1">Enroll this client in programs to track their progress</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Employment Support Tab */}
+            <TabsContent value="employment-support" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Employment Support Intake</CardTitle>
+                      {employmentIntake && (
+                        <Badge
+                          className="mt-1"
+                          variant={employmentIntake.status === 'submitted' ? 'default' : employmentIntake.status === 'reviewed' ? 'secondary' : 'outline'}
+                        >
+                          {employmentIntake.status.charAt(0).toUpperCase() + employmentIntake.status.slice(1)}
+                        </Badge>
+                      )}
+                    </div>
+                    {!showEmploymentIntakeForm && (
+                      <Button onClick={() => setShowEmploymentIntakeForm(true)}>
+                        {employmentIntake ? (
+                          <><Edit className="h-4 w-4 mr-2" /> Edit Intake</>
+                        ) : (
+                          <><Plus className="h-4 w-4 mr-2" /> Start Intake</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {showEmploymentIntakeForm ? (
+                    <EmploymentSupportIntakeForm
+                      clientId={clientId}
+                      intakeId={employmentIntake?.id}
+                      enrollmentId={employmentIntake?.enrollmentId}
+                      initialData={employmentIntake?.data}
+                      existingStatus={employmentIntake?.status}
+                      submittedInfo={employmentIntake?.submittedInfo}
+                      onSuccess={() => {
+                        setShowEmploymentIntakeForm(false);
+                        refreshEmploymentIntake();
+                      }}
+                    />
+                  ) : employmentIntake ? (
+                    <div className="space-y-4">
+                      {employmentIntake.submittedInfo && (
+                        <p className="text-sm text-muted-foreground">
+                          Submitted by {employmentIntake.submittedInfo.by} on {employmentIntake.submittedInfo.at}
+                        </p>
+                      )}
+                      <p className="text-sm text-muted-foreground">Click &quot;Edit Intake&quot; to view or update the full questionnaire.</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Briefcase className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold">No Employment Support Intake</h3>
+                      <p className="text-gray-500 mt-1">Start the Employment Support intake questionnaire for this client</p>
                     </div>
                   )}
                 </CardContent>

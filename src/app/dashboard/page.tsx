@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import NextLink from 'next/link';
 import dynamic from 'next/dynamic';
@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
-import { formatPacificFriendly, formatPacificDueDate, getPacificNow, toPacificDate } from '@/lib/date-utils';
+import { formatPacificFriendly, formatPacificTime, formatPacificDueDate, formatPacificDateTime, getPacificNow, toPacificDate } from '@/lib/date-utils';
 import { DailyTriageMode, useDailyTriageMode } from '@/components/layout/DailyTriageMode';
 import {
   Users,
@@ -44,7 +44,6 @@ import { completeTask, claimTask, assignTask } from '@/app/actions/tasks';
 import { InteractionType } from '@/app/actions/history';
 import { ClientHistory } from '@/components/clients/ClientHistory';
 import { PrintableCaseHistory } from '@/components/clients/PrintableCaseHistory';
-import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
 import {
   Select,
   SelectContent,
@@ -168,8 +167,6 @@ export default function DashboardPage() {
   const [staffMembers, setStaffMembers] = useState<{ id: string; name: string }[]>([]);
   const [focusItems, setFocusItems] = useState<FocusItem[]>([]);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
-  const [taskToComplete, setTaskToComplete] = useState<{ id: string; title: string } | null>(null);
-  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const { t } = useLanguage();
   const { toast } = useToast();
   
@@ -623,9 +620,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleCompleteTask = async (taskId: string, completionNote?: string): Promise<boolean> => {
-    setCompletingTaskId(taskId);
-
+  const handleCompleteTask = async (taskId: string) => {
     // Optimistic update - immediately remove from UI
     const previousDeadlines = [...deadlines];
     const previousFocusItems = [...focusItems];
@@ -635,7 +630,7 @@ export default function DashboardPage() {
     setStats(prev => ({ ...prev, pendingTasks: Math.max(0, prev.pendingTasks - 1) }));
 
     try {
-      const result = await completeTask(taskId, completionNote);
+      const result = await completeTask(taskId);
       if (result.success) {
         // Trigger confetti (lazy-loaded)
         celebrateSuccess();
@@ -644,7 +639,6 @@ export default function DashboardPage() {
           title: "Task Completed",
           description: "Good job! Task marked as done.",
         });
-        return true;
       } else {
         // Rollback on failure
         setDeadlines(previousDeadlines);
@@ -656,7 +650,6 @@ export default function DashboardPage() {
           description: result.error || "Failed to complete task",
           variant: "destructive"
         });
-        return false;
       }
     } catch (error) {
       // Rollback on error
@@ -670,9 +663,6 @@ export default function DashboardPage() {
         description: "An unexpected error occurred",
         variant: "destructive"
       });
-      return false;
-    } finally {
-      setCompletingTaskId(null);
     }
   };
 
@@ -864,8 +854,12 @@ export default function DashboardPage() {
   const isAdmin = profile.role === 'admin';
   const isCaseManager = profile.role === 'case_manager';
   const isClient = profile.role === 'client';
-  const canAddCompletionNotes = isAdmin || isCaseManager;
+  const canViewClients = canAccessFeature(profile.role, 'case_manager');
   const canCreateIntake = canAccessFeature(profile.role, 'case_manager');
+  const canViewCalendar = canAccessFeature(profile.role, 'case_manager');
+  const canViewTasks = canAccessFeature(profile.role, 'case_manager');
+  const canViewDocuments = canAccessFeature(profile.role, 'case_manager');
+  const canViewAdmin = isAdmin;
 
   const getPriorityBadge = (priority: string, status?: string) => {
     if (status === 'in_progress') {
@@ -1415,13 +1409,7 @@ export default function DashboardPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-gray-400 hover:text-green-600"
-                            onClick={() => {
-                              if (canAddCompletionNotes) {
-                                setTaskToComplete({ id: task.id, title: task.title });
-                                return;
-                              }
-                              handleCompleteTask(task.id);
-                            }}
+                            onClick={() => handleCompleteTask(task.id)}
                           >
                             <Check className="h-4 w-4" />
                           </Button>
@@ -1567,9 +1555,6 @@ export default function DashboardPage() {
                   <Clock className="h-5 w-5 text-red-500" />
                   {t('dashboard.upcomingDeadlines')}
                 </CardTitle>
-                {canAddCompletionNotes && (
-                  <p className="text-xs text-gray-500">Click to complete</p>
-                )}
               </CardHeader>
               <CardContent>
                 {listsLoading ? (
@@ -1583,20 +1568,7 @@ export default function DashboardPage() {
                     {deadlines.map((deadline) => (
                       <div
                         key={deadline.id}
-                        className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg ${canAddCompletionNotes ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''}`}
-                        onClick={() => {
-                          if (!canAddCompletionNotes) return;
-                          setTaskToComplete({ id: deadline.id, title: deadline.title });
-                        }}
-                        onKeyDown={(e) => {
-                          if (!canAddCompletionNotes) return;
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setTaskToComplete({ id: deadline.id, title: deadline.title });
-                          }
-                        }}
-                        role={canAddCompletionNotes ? 'button' : undefined}
-                        tabIndex={canAddCompletionNotes ? 0 : undefined}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                       >
                         <div>
                           <p className="font-medium text-gray-900 text-sm">{deadline.title}</p>
@@ -1696,22 +1668,6 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
-
-      <TaskCompleteDialog
-        isOpen={!!taskToComplete}
-        onClose={() => setTaskToComplete(null)}
-        onConfirm={async (note?: string) => {
-          if (!taskToComplete) return;
-          const completed = await handleCompleteTask(taskToComplete.id, note);
-          if (completed) {
-            setTaskToComplete(null);
-          }
-        }}
-        taskTitle={taskToComplete?.title || ''}
-        isLoading={completingTaskId !== null}
-        showNoteField
-        notePlaceholder="Add completion notes for this task (optional)"
-      />
     </div>
     </TooltipProvider>
   );

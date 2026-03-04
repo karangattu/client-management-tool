@@ -3,16 +3,42 @@
 import { useFormContext } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FormField } from "@/components/forms/FormField";
+import { Checkbox } from "@/components/ui/checkbox";
 import { US_STATES, REFERRAL_SOURCE_OPTIONS } from "@/lib/constants";
 import { formatPhoneNumber, formatSSN, formatZipCode, calculateAge } from "@/lib/utils";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { Home } from "lucide-react";
 import type { ClientIntakeForm } from "@/lib/schemas/validation";
 
 export function ParticipantDetailsSection() {
   const { watch, setValue } = useFormContext<ClientIntakeForm>();
   const dateOfBirth = watch("participantDetails.dateOfBirth");
   const referralSource = watch("participantDetails.referralSource");
+  const noFixedAddress = watch("participantDetails.noFixedAddress");
+  const housingStatus = watch("caseManagement.housingStatus");
   const age = dateOfBirth ? calculateAge(new Date(dateOfBirth)) : null;
+
+  const NO_FIXED_ADDRESS_STATUSES = ['homeless', 'shelter', 'couch_surfing'];
+  const isHomeless = noFixedAddress === true || NO_FIXED_ADDRESS_STATUSES.includes(housingStatus ?? '');
+
+  // If housing status changes to a no-fixed-address status, auto-tick the checkbox
+  useEffect(() => {
+    if (NO_FIXED_ADDRESS_STATUSES.includes(housingStatus ?? '') && !noFixedAddress) {
+      setValue("participantDetails.noFixedAddress", true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [housingStatus]);
+
+  // When address is cleared due to homeless toggle, wipe fields
+  useEffect(() => {
+    if (noFixedAddress) {
+      setValue("participantDetails.streetAddress", "");
+      setValue("participantDetails.city", "");
+      setValue("participantDetails.state", "");
+      setValue("participantDetails.zipCode", "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noFixedAddress]);
 
   const handlePhoneChange = useCallback(
     (field: "participantDetails.primaryPhone" | "participantDetails.secondaryPhone") => {
@@ -148,52 +174,90 @@ export function ParticipantDetailsSection() {
 
         {/* Address Information */}
         <div className="space-y-4">
-          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-            Address Information
-          </h4>
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+              Address Information
+            </h4>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <Checkbox
+                id="noFixedAddress"
+                checked={noFixedAddress ?? false}
+                onCheckedChange={(checked) =>
+                  setValue("participantDetails.noFixedAddress", checked as boolean, { shouldValidate: true })
+                }
+              />
+              <span className="text-sm font-medium text-orange-700 flex items-center gap-1">
+                <Home className="h-3.5 w-3.5" />
+                No fixed address / Experiencing homelessness
+              </span>
+            </label>
+          </div>
 
+          {isHomeless ? (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800 flex items-start gap-2">
+              <Home className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium">No permanent address on file</p>
+                <p className="text-orange-700 mt-0.5">
+                  You can optionally provide a shelter address, case manager address, or mail drop
+                  where the client can receive correspondence.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
-          <FormField
-            name="participantDetails.streetAddress"
-            label="Street Address"
-            placeholder="123 Main Street, Apt 4B"
-            required
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <FormField
-              name="participantDetails.city"
-              label="City"
-              placeholder="City"
-              required
-            />
-            <FormField
-              name="participantDetails.state"
-              label="State"
-              type="select"
-              options={US_STATES}
-              placeholder="Select state"
-              required
-            />
-            <FormField
-              name="participantDetails.county"
-              label="County"
-              placeholder="County"
-            />
-            <div className="space-y-2">
+          {!isHomeless && (
+            <>
               <FormField
-                name="participantDetails.zipCode"
-                label="ZIP Code"
-                placeholder="12345"
+                name="participantDetails.streetAddress"
+                label="Street Address"
+                placeholder="123 Main Street, Apt 4B"
                 required
               />
-              <input
-                type="hidden"
-                {...{ onChange: handleZipChange }}
-                className="hidden"
-              />
-            </div>
-          </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormField
+                  name="participantDetails.city"
+                  label="City"
+                  placeholder="City"
+                  required
+                />
+                <FormField
+                  name="participantDetails.state"
+                  label="State"
+                  type="select"
+                  options={US_STATES}
+                  placeholder="Select state"
+                  required
+                />
+                <FormField
+                  name="participantDetails.county"
+                  label="County"
+                  placeholder="County"
+                />
+                <div className="space-y-2">
+                  <FormField
+                    name="participantDetails.zipCode"
+                    label="ZIP Code"
+                    placeholder="12345"
+                    required
+                  />
+                  <input
+                    type="hidden"
+                    {...{ onChange: handleZipChange }}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {isHomeless && (
+            <FormField
+              name="participantDetails.mailingAddress"
+              label="Mailing / Shelter Address (optional)"
+              placeholder="e.g. 100 Main Shelter, San Jose CA 95101"
+            />
+          )}
         </div>
 
         {/* How did you hear about us? */}

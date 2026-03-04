@@ -61,6 +61,7 @@ import { completeTaskByTitle } from '@/app/actions/tasks';
 import { ENGAGEMENT_LETTER_TEXT } from '@/lib/constants';
 import { TaskCompleteDialog } from '@/components/tasks/TaskCompleteDialog';
 import { useRealtimeTasks, useRealtimeDocuments, useRealtimeAlerts, type RealtimeTask, type RealtimeDocument, type RealtimeAlert } from '@/lib/hooks/use-realtime';
+import { Briefcase } from 'lucide-react';
 
 interface ClientInfo {
     id: string;
@@ -125,6 +126,13 @@ export default function MyPortalPage() {
     const [error, setError] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [taskCompletingId, setTaskCompletingId] = useState<string | null>(null);
+
+    // Employment Support Intake state
+    const [employmentIntake, setEmploymentIntake] = useState<{
+        id: string;
+        status: string;
+        updatedAt: string | null;
+    } | null>(null);
 
     // Upload state
     const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -302,6 +310,23 @@ export default function MyPortalPage() {
                 .order('created_at', { ascending: false });
 
             setDocuments(docsData || []);
+
+            // Fetch employment support intake (if client is enrolled)
+            const { data: esiData } = await supabase
+                .from('employment_support_intake')
+                .select('id, status, updated_at')
+                .eq('client_id', clientData.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (esiData) {
+                setEmploymentIntake({
+                    id: esiData.id,
+                    status: esiData.status,
+                    updatedAt: esiData.updated_at,
+                });
+            }
         } catch (err) {
             console.error('Error fetching client data:', err);
             setError('An error occurred while loading your information.');
@@ -535,6 +560,9 @@ export default function MyPortalPage() {
     const getTaskAction = (task: Task) => {
         if (task.title.toLowerCase().includes('intake')) {
             return { href: '/client-intake', label: 'Complete Form' };
+        }
+        if (task.title.toLowerCase().includes('employment support')) {
+            return { href: '/my-portal/employment-support', label: 'Open Form' };
         }
         if (task.title.toLowerCase().includes('engagement letter') || task.title.toLowerCase().includes('sign')) {
             return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
@@ -942,6 +970,54 @@ export default function MyPortalPage() {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Employment Support Intake Card */}
+                {employmentIntake && (
+                    <Card className="border-l-4 border-l-emerald-500">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Briefcase className="h-5 w-5 text-emerald-600" />
+                                Employment Support Intake
+                            </CardTitle>
+                            <CardDescription>
+                                {employmentIntake.status === 'draft'
+                                    ? 'Your questionnaire is in progress. Complete it to help us support your job search.'
+                                    : employmentIntake.status === 'submitted'
+                                      ? 'Submitted — your case manager will review it soon.'
+                                      : 'Reviewed by your case manager.'}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Badge
+                                        variant="outline"
+                                        className={
+                                            employmentIntake.status === 'draft'
+                                                ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                                : employmentIntake.status === 'submitted'
+                                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                  : 'bg-green-50 text-green-700 border-green-200'
+                                        }
+                                    >
+                                        {employmentIntake.status === 'draft' ? 'In Progress' : employmentIntake.status === 'submitted' ? 'Submitted' : 'Reviewed'}
+                                    </Badge>
+                                    {employmentIntake.updatedAt && (
+                                        <span className="text-xs text-gray-500">
+                                            Updated {formatPacificLocaleDate(employmentIntake.updatedAt)}
+                                        </span>
+                                    )}
+                                </div>
+                                <Link href="/my-portal/employment-support">
+                                    <Button size="sm" variant={employmentIntake.status === 'draft' ? 'default' : 'outline'}>
+                                        {employmentIntake.status === 'draft' ? 'Continue Form' : 'View / Edit'}
+                                        <ArrowRight className="h-4 w-4 ml-1" />
+                                    </Button>
+                                </Link>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </main>
 
             {/* Upload Dialog */}

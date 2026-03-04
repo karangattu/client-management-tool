@@ -1,0 +1,10 @@
+export { BasicInfoSection } from "./BasicInfoSection";
+export { EducationSection } from "./EducationSection";
+export { SkillsSection } from "./SkillsSection";
+export { WorkHistorySection } from "./WorkHistorySection";
+export { JobPreferencesSection } from "./JobPreferencesSection";
+export { ResumeSection } from "./ResumeSection";
+export { JobSearchSection } from "./JobSearchSection";
+export { BarriersSection } from "./BarriersSection";
+export { CommitmentSection } from "./CommitmentSection";
+export { InternalUseSection } from "./InternalUseSection";

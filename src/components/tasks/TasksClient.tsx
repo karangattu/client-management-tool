@@ -79,7 +79,6 @@ interface Task {
   completed_at?: string | null;
   completed_by?: string | null;
   completed_by_role?: 'client' | 'case_manager' | 'admin' | 'system' | null;
-  completion_note?: string | null;
   client?: { first_name: string; last_name: string };
   assignee?: { first_name: string; last_name: string };
 }
@@ -198,7 +197,6 @@ function TasksContent() {
           completed_at,
           completed_by,
           completed_by_role,
-          completion_note,
           category,
           tags,
           created_at,
@@ -206,7 +204,6 @@ function TasksContent() {
           client:clients(first_name, last_name),
           assignee:profiles!tasks_assigned_to_fkey(first_name, last_name)
         `)
-        .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
         .limit(50); // Add pagination limit
 
@@ -369,41 +366,8 @@ function TasksContent() {
   // Open task detail dialog
   const handleOpenTaskDetail = (task: Task) => {
     setSelectedTask(task);
-    setCompletionNote(task.completion_note || '');
+    setCompletionNote('');
     setTaskDetailOpen(true);
-  };
-
-  const handleSaveTaskNote = async () => {
-    if (!selectedTask) return;
-
-    setUpdatingTask(true);
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          completion_note: completionNote.trim() ? completionNote : null,
-        })
-        .eq('id', selectedTask.id);
-
-      if (error) throw error;
-
-      await supabase.from('audit_log').insert({
-        user_id: user?.id,
-        action: 'task_note_updated',
-        table_name: 'tasks',
-        record_id: selectedTask.id,
-        new_values: { completion_note: completionNote.trim() ? completionNote : null }
-      });
-
-      setSelectedTask((prev) => prev ? { ...prev, completion_note: completionNote.trim() ? completionNote : null } : prev);
-      toast({ title: 'Note Saved', description: 'Task note updated' });
-      fetchTasks();
-    } catch (err) {
-      console.error('Error saving task note:', err);
-      toast({ title: 'Error', description: 'Failed to save note', variant: 'destructive' });
-    } finally {
-      setUpdatingTask(false);
-    }
   };
 
   // Complete task with optional note
@@ -518,10 +482,6 @@ function TasksContent() {
   };
 
   const filteredTasks = tasks.filter(task => {
-    if (task.status === 'cancelled') {
-      return false;
-    }
-
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.description?.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -540,7 +500,7 @@ function TasksContent() {
   });
 
   const stats = {
-    total: tasks.filter(t => t.status !== 'cancelled').length,
+    total: tasks.length,
     pending: tasks.filter(t => t.status === 'pending').length,
     inProgress: tasks.filter(t => t.status === 'in_progress').length,
     completed: tasks.filter(t => t.status === 'completed').length,
@@ -575,10 +535,6 @@ function TasksContent() {
 
   const canCreateTasks = canAccessFeature(profile?.role || 'client', 'case_manager');
   const canClaimTasks = ['admin', 'case_manager', 'staff', 'volunteer'].includes(profile?.role || '');
-  const canEditTaskNotes =
-    profile?.role === 'admin' ||
-    profile?.role === 'case_manager' ||
-    selectedTask?.assigned_to === user?.id;
 
   return (
     <TooltipProvider>
@@ -1158,37 +1114,20 @@ function TasksContent() {
                 {selectedTask.status !== 'completed' && (
                   <div className="border-t pt-4">
                     <Label htmlFor="completion-note" className="text-sm font-medium">
-                      Task Note (optional)
+                      Completion Note (optional)
                     </Label>
                     <Textarea
                       id="completion-note"
-                      placeholder="Add or update notes for this task..."
+                      placeholder="Add any notes about completing this task..."
                       value={completionNote}
                       onChange={(e) => setCompletionNote(e.target.value)}
                       rows={3}
                       className="mt-2"
-                      disabled={!canEditTaskNotes || updatingTask}
                     />
                     <div className="flex justify-end gap-2 mt-4">
                       <Button variant="outline" onClick={() => setTaskDetailOpen(false)}>
                         Cancel
                       </Button>
-                      {canEditTaskNotes && (
-                        <Button
-                          variant="outline"
-                          onClick={handleSaveTaskNote}
-                          disabled={updatingTask}
-                        >
-                          {updatingTask ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            'Save Note'
-                          )}
-                        </Button>
-                      )}
                       <Button
                         className="bg-green-600 hover:bg-green-700"
                         onClick={handleCompleteWithNote}
@@ -1216,11 +1155,6 @@ function TasksContent() {
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       Completed {selectedTask.completed_at ? `on ${formatPacificLocaleDate(selectedTask.completed_at)}` : ''}
                     </p>
-                    {selectedTask.completion_note && (
-                      <p className="mt-2 whitespace-pre-wrap text-gray-700">
-                        Note: {selectedTask.completion_note}
-                      </p>
-                    )}
                   </div>
                 )}
               </div>
