@@ -15,6 +15,8 @@ interface SaveResult {
   error?: string;
 }
 
+type MaybeSingleRelation<T> = T | T[] | null;
+
 export interface EmploymentSupportQueueItem {
   enrollmentId: string;
   enrollmentStatus: string;
@@ -48,7 +50,7 @@ interface QueueQueryResult {
   status: string;
   start_date: string | null;
   updated_at: string | null;
-  clients: Array<{
+  clients: MaybeSingleRelation<{
     id: string;
     first_name: string;
     last_name: string;
@@ -56,10 +58,10 @@ interface QueueQueryResult {
     phone: string | null;
     status: string;
     onboarding_status: string | null;
-  }> | null;
-  programs: Array<{
+  }>;
+  programs: MaybeSingleRelation<{
     name: string;
-  }> | null;
+  }>;
   employment_support_intake: Array<{
     id: string;
     status: string;
@@ -67,11 +69,19 @@ interface QueueQueryResult {
     next_followup_date: string | null;
     submitted_at: string | null;
     updated_at: string | null;
-    assigned_staff: Array<{
+    assigned_staff: MaybeSingleRelation<{
       first_name: string;
       last_name: string;
-    }> | null;
+    }>;
   }> | null;
+}
+
+function normalizeMaybeSingle<T>(value: MaybeSingleRelation<T>): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? value[0] || null : value;
 }
 
 function getMostRecentIntake(
@@ -355,9 +365,9 @@ export async function getEmploymentSupportQueue() {
     }
 
     const queue = ((data || []) as unknown as QueueQueryResult[]).map((row) => {
-      const client = row.clients?.[0] || null;
+      const client = normalizeMaybeSingle(row.clients);
       const latestIntake = getMostRecentIntake(row.employment_support_intake);
-      const assignedStaff = latestIntake?.assigned_staff?.[0] || null;
+      const assignedStaff = normalizeMaybeSingle(latestIntake?.assigned_staff || null);
 
       return {
         enrollmentId: row.id,
