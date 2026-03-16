@@ -233,18 +233,35 @@ export async function assignTask(taskId: string, userId: string) {
  * Create initial onboarding tasks for a newly verified client.
  * Called from auth callback after email verification.
  */
-export async function createClientOnboardingTasks(clientId: string, userId: string) {
+export async function createClientOnboardingTasks(
+    clientId: string,
+    userId: string,
+    options?: {
+        registrationMode?: 'standard' | 'employment-support';
+        hasSignedEngagementLetter?: boolean;
+    }
+) {
     try {
         const supabase = await createClient();
+
+        const registrationMode = options?.registrationMode || 'standard';
+        const hasSignedEngagementLetter = options?.hasSignedEngagementLetter || false;
+        const intakeTaskTitle = registrationMode === 'employment-support'
+            ? 'Complete Employment Support Intake'
+            : 'Complete Intake Form';
 
         // Check if tasks already exist for this client
         const { data: existingTasks } = await supabase
             .from('tasks')
             .select('id, title')
             .eq('client_id', clientId)
-            .in('title', ['Complete Intake Form', 'Sign Engagement Letter']);
+            .in('title', [intakeTaskTitle, 'Sign Engagement Letter']);
 
-        if (existingTasks && existingTasks.length >= 2) {
+        const existingTitles = existingTasks?.map(t => t.title) || [];
+        const intakeTaskExists = existingTitles.includes(intakeTaskTitle);
+        const signTaskExists = existingTitles.includes('Sign Engagement Letter');
+
+        if (intakeTaskExists && (hasSignedEngagementLetter || signTaskExists)) {
             // Tasks already exist, skip creation
             return { success: true, message: 'Tasks already exist' };
         }
@@ -254,13 +271,12 @@ export async function createClientOnboardingTasks(clientId: string, userId: stri
 
         const tasksToCreate = [];
 
-        // Only create tasks that don't already exist
-        const existingTitles = existingTasks?.map(t => t.title) || [];
-
-        if (!existingTitles.includes('Complete Intake Form')) {
+        if (!existingTitles.includes(intakeTaskTitle)) {
             tasksToCreate.push({
-                title: 'Complete Intake Form',
-                description: 'Please complete all sections of the intake form to help us process your case. This is an essential step for receiving support.',
+                title: intakeTaskTitle,
+                description: registrationMode === 'employment-support'
+                    ? 'Please complete the Employment Support questionnaire so we can understand your job goals, experience, and support needs.'
+                    : 'Please complete all sections of the intake form to help us process your case. This is an essential step for receiving support.',
                 client_id: clientId,
                 assigned_to: userId,
                 status: 'pending',
@@ -271,7 +287,7 @@ export async function createClientOnboardingTasks(clientId: string, userId: stri
             });
         }
 
-        if (!existingTitles.includes('Sign Engagement Letter')) {
+        if (!hasSignedEngagementLetter && !existingTitles.includes('Sign Engagement Letter')) {
             tasksToCreate.push({
                 title: 'Sign Engagement Letter',
                 description: 'Please review and sign the engagement letter to formalize our working relationship.',

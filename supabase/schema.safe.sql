@@ -181,7 +181,7 @@ CREATE INDEX IF NOT EXISTS idx_clients_case_manager ON clients(assigned_case_man
 
 CREATE INDEX IF NOT EXISTS idx_clients_referral_source ON clients(referral_source);
 
-CREATE INDEX IF NOT EXISTS idx_clients_portal_user ON clients(portal_user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_portal_user ON clients(portal_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_clients_onboarding_status ON clients(onboarding_status);
 

@@ -77,11 +77,14 @@ export function getClientOnboardingSteps(client: {
   signed_engagement_letter_at?: string | null;
   intake_completed_at?: string | null;
   profile_completed_at?: string | null;
+  onboarding_status?: string | null;
 }): OnboardingStep[] {
   return [
     { label: 'Account Created', completed: true },
     { label: 'Engagement Letter', completed: !!client.signed_engagement_letter_at },
-    { label: 'Intake Form', completed: !!client.intake_completed_at },
+    ...(client.onboarding_status === 'employment_support'
+      ? []
+      : [{ label: 'Intake Form', completed: !!client.intake_completed_at }]),
   ];
 }
 
@@ -92,11 +95,14 @@ export function getExtendedOnboardingSteps(client: {
   signed_engagement_letter_at?: string | null;
   intake_completed_at?: string | null;
   profile_completed_at?: string | null;
+  onboarding_status?: string | null;
 }): OnboardingStep[] {
   return [
     { label: 'Account', completed: true },
     { label: 'Engagement', completed: !!client.signed_engagement_letter_at },
-    { label: 'Intake', completed: !!client.intake_completed_at },
+    ...(client.onboarding_status === 'employment_support'
+      ? []
+      : [{ label: 'Intake', completed: !!client.intake_completed_at }]),
     { label: 'Profile', completed: !!client.profile_completed_at },
   ];
 }

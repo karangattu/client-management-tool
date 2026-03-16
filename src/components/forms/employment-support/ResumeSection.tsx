@@ -12,6 +12,7 @@ import {
 export function ResumeSection() {
   const { watch } = useFormContext<EmploymentSupportIntakeForm>();
   const resumeStatus = watch("resume.resumeStatus");
+  const hasCoverLetter = watch("resume.hasCoverLetter");
 
   return (
     <Card>
@@ -50,6 +51,16 @@ export function ResumeSection() {
           label="Do you have a cover letter template?"
           type="checkbox"
         />
+
+        {hasCoverLetter && (
+          <FormField
+            name="resume.coverLetterLastUpdated"
+            label="When was your cover letter last updated?"
+            type="select"
+            options={RESUME_UPDATED_OPTIONS}
+            placeholder="Select timeframe"
+          />
+        )}
       </CardContent>
     </Card>
   );

@@ -56,7 +56,7 @@ export function AppHeader({
         const supabase = createClient();
         const { data: client, error } = await supabase
           .from('clients')
-          .select('id, intake_completed_at')
+          .select('id, intake_completed_at, onboarding_status')
           .eq('portal_user_id', profile.id)
           .single();
 
@@ -64,7 +64,7 @@ export function AppHeader({
         if (error?.code === '42703') {
           setClientIntakeIncomplete(true);
         } else if (client) {
-          setClientIntakeIncomplete(!client.intake_completed_at);
+          setClientIntakeIncomplete(client.onboarding_status !== 'employment_support' && !client.intake_completed_at);
         } else {
           setClientIntakeIncomplete(true);
         }

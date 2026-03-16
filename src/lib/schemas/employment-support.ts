@@ -60,6 +60,7 @@ export const resumeSchema = z.object({
   resumeStatus: z.string().optional(),
   resumeLastUpdated: z.string().optional(),
   hasCoverLetter: z.boolean().optional(),
+  coverLetterLastUpdated: z.string().optional(),
 });
 
 // ─── Section G: Job Search Activity ────────────────────────
@@ -174,6 +175,7 @@ export const defaultResume: Resume = {
   resumeStatus: "",
   resumeLastUpdated: "",
   hasCoverLetter: false,
+  coverLetterLastUpdated: "",
 };
 
 export const defaultJobSearch: JobSearch = {
@@ -367,6 +369,7 @@ export function dbRowToFormData(
       resumeStatus: (row.resume_status as string) || "",
       resumeLastUpdated: (row.resume_last_updated as string) || "",
       hasCoverLetter: (row.has_cover_letter as boolean) || false,
+      coverLetterLastUpdated: (row.cover_letter_last_updated as string) || "",
     },
     jobSearch: {
       applicationSources: (row.application_sources as string[]) || [],

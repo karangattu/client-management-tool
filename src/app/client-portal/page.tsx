@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { type User } from '@supabase/supabase-js';
@@ -31,6 +31,7 @@ import {
   Loader2,
   AlertCircle,
   Save,
+  Home,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LanguageSelector } from '@/components/ui/language-selector';
@@ -56,8 +57,15 @@ interface DraftData {
   lastSaved?: string;
 }
 
-export default function ClientPortalPage() {
+function ClientPortalContent() {
   const { t } = useLanguage();
+  const searchParams = useSearchParams();
+  const registrationMode = searchParams.get('program') === 'employment-support' ? 'employment-support' : 'standard';
+  const isEmploymentSupportRegistration = registrationMode === 'employment-support';
+  const totalSteps = isEmploymentSupportRegistration ? 3 : 4;
+  const agreementStep = isEmploymentSupportRegistration ? 2 : 3;
+  const signatureStep = isEmploymentSupportRegistration ? 3 : 4;
+  const draftKey = isEmploymentSupportRegistration ? `${DRAFT_KEY}-employment-support` : DRAFT_KEY;
   const [currentStep, setCurrentStep] = useState(1);
   const [agreed, setAgreed] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -67,10 +75,9 @@ export default function ClientPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [isHomeless, setIsHomeless] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isVerified, setIsVerified] = useState(false);
@@ -87,10 +94,10 @@ export default function ClientPortalPage() {
     city: '',
     state: '',
     zipCode: '',
+    mailingAddress: '',
     preferredLanguage: 'english',
   });
 
-  const totalSteps = 4;
   const progress = (currentStep / totalSteps) * 100;
 
   // Save draft to localStorage (debounced)
@@ -113,12 +120,12 @@ export default function ClientPortalPage() {
       lastSaved: new Date().toISOString(),
     };
 
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+    localStorage.setItem(draftKey, JSON.stringify(draftData));
     setDraftSaved(true);
 
     // Hide indicator after 2 seconds
     setTimeout(() => setDraftSaved(false), 2000);
-  }, [formData, currentStep, agreed]);
+  }, [agreed, currentStep, draftKey, formData]);
 
   // Debounced save on form changes
   useEffect(() => {
@@ -144,7 +151,7 @@ export default function ClientPortalPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const savedDraft = localStorage.getItem(DRAFT_KEY);
+    const savedDraft = localStorage.getItem(draftKey);
     if (savedDraft) {
       try {
         const draft: DraftData = JSON.parse(savedDraft);
@@ -161,13 +168,17 @@ export default function ClientPortalPage() {
           zipCode: draft.zipCode || '',
           preferredLanguage: draft.preferredLanguage || 'english',
         }));
-        setCurrentStep(draft.currentStep || 1);
+        setCurrentStep(Math.min(draft.currentStep || 1, totalSteps));
         setAgreed(draft.agreed || false);
       } catch (e) {
         console.error('Error restoring draft:', e);
       }
     }
-  }, []);
+  }, [draftKey, totalSteps]);
+
+  useEffect(() => {
+    setCurrentStep((prev) => Math.min(prev, totalSteps));
+  }, [totalSteps]);
 
   // Initialize canvas
   useEffect(() => {
@@ -301,8 +312,14 @@ export default function ClientPortalPage() {
           formData.password && formData.password === formData.confirmPassword &&
           formData.password.length >= 6;
       case 2:
-        return formData.street && formData.city && formData.state && formData.zipCode;
+        if (isEmploymentSupportRegistration) {
+          return agreed;
+        }
+        return isHomeless || (formData.street && formData.city && formData.state && formData.zipCode);
       case 3:
+        if (isEmploymentSupportRegistration) {
+          return signature !== null;
+        }
         return agreed;
       case 4:
         return signature !== null;
@@ -335,35 +352,62 @@ export default function ClientPortalPage() {
         city: formData.city,
         state: formData.state,
         zipCode: formData.zipCode,
+        isHomeless,
+        mailingAddress: formData.mailingAddress,
         preferredLanguage: formData.preferredLanguage,
         signature: signature || undefined,
         pdfData: pdfData,
+        registrationMode,
       });
 
       if (!result.success) {
         throw new Error(result.error);
       }
 
-      setSuccess(true);
-
       // Clear draft on successful submission
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(draftKey);
       }
 
-      // If the new user is already verified (rare), redirect them to complete profile
-      if (result.userId) {
+      // Sign out locally so the session doesn't linger on a shared computer
+      try {
         const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && user.email_confirmed_at) {
-          router.push('/profile-completion');
-        }
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch {
+        // Non-critical — proceed regardless
       }
+
+      setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetForm = () => {
+    setSuccess(false);
+    setCurrentStep(1);
+    setAgreed(false);
+    setSignature(null);
+    setSignatureOpen(false);
+    setIsHomeless(false);
+    setError(null);
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      dateOfBirth: '',
+      password: '',
+      confirmPassword: '',
+      street: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      mailingAddress: '',
+      preferredLanguage: 'english',
+    });
   };
 
   if (success) {
@@ -376,30 +420,40 @@ export default function ClientPortalPage() {
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold mb-2">Registration Complete!</h2>
+            <h2 className="text-2xl font-bold mb-2">
+              {isEmploymentSupportRegistration ? 'Employment Support Registration Complete!' : 'Registration Complete!'}
+            </h2>
             <p className="text-gray-600 mb-4">
-              Thank you for registering. Please check your email to verify your account.
-              A case manager will review your information and contact you soon.
+              {isEmploymentSupportRegistration
+                ? 'Please check your email to verify your account. Once verified, you can sign in and start your Employment Support questionnaire right away.'
+                : 'Thank you for registering. Please check your email to verify your account. A case manager will review your information and contact you soon.'}
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).
+              {isEmploymentSupportRegistration
+                ? 'Your agreement letter has been saved. After login, your next step will be the Employment Support intake, not the full general intake.'
+                : 'After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).'}
             </p>
 
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Button variant="outline" onClick={resetForm}>
+                Register Another Person
+              </Button>
+
               <Link href="/login">
                 <Button variant="outline">Go to Login</Button>
               </Link>
 
-              {/* Direct link to profile completion - will prompt login if necessary */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link href="/profile-completion">
-                      <Button>Complete Your Profile</Button>
+                    <Link href={isEmploymentSupportRegistration ? '/my-portal/employment-support' : '/profile-completion'}>
+                      <Button>{isEmploymentSupportRegistration ? 'Start Employment Support' : 'Complete Your Profile'}</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.
+                    {isEmploymentSupportRegistration
+                      ? 'You will be prompted to log in if you are not currently signed in, then taken to the Employment Support questionnaire.'
+                      : 'You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.'}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -443,8 +497,14 @@ export default function ClientPortalPage() {
         </div>
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold">{t('clientPortal.title')}</h1>
-          <p className="text-gray-600 mt-1">{t('clientPortal.description')}</p>
+          <h1 className="text-2xl font-bold">
+            {isEmploymentSupportRegistration ? 'Employment Support Registration' : t('clientPortal.title')}
+          </h1>
+          <p className="text-gray-600 mt-1">
+            {isEmploymentSupportRegistration
+              ? 'Create your account, review the agreement letter, and get started with Employment Support without completing the full general intake first.'
+              : t('clientPortal.description')}
+          </p>
 
           {/* CTA for logged-in, verified clients to complete full profile */}
           {currentUser && isVerified && (
@@ -452,12 +512,14 @@ export default function ClientPortalPage() {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link href="/profile-completion">
-                      <Button variant="ghost">Complete your full profile</Button>
+                    <Link href={isEmploymentSupportRegistration ? '/my-portal/employment-support' : '/profile-completion'}>
+                      <Button variant="ghost">{isEmploymentSupportRegistration ? 'Start Employment Support' : 'Complete your full profile'}</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Complete the full intake (demographics, household, finances, and health) to finish your profile.
+                    {isEmploymentSupportRegistration
+                      ? 'Open the Employment Support questionnaire to share your job goals and support needs.'
+                      : 'Complete the full intake (demographics, household, finances, and health) to finish your profile.'}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -477,14 +539,16 @@ export default function ClientPortalPage() {
               Account
             </span>
             <span className={`text-xs ${currentStep >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Address
+              {isEmploymentSupportRegistration ? 'Agreement' : 'Address'}
             </span>
             <span className={`text-xs ${currentStep >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Agreement
+              {isEmploymentSupportRegistration ? 'Sign' : 'Agreement'}
             </span>
-            <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Sign
-            </span>
+            {!isEmploymentSupportRegistration && (
+              <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                Sign
+              </span>
+            )}
           </div>
         </div>
 
@@ -502,8 +566,14 @@ export default function ClientPortalPage() {
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">{t('clientPortal.step1Title')}</h2>
-                  <p className="text-gray-500 mt-1">{t('intake.personalInfo')}</p>
+                  <h2 className="text-xl font-semibold">
+                    {isEmploymentSupportRegistration ? 'Create your account' : t('clientPortal.step1Title')}
+                  </h2>
+                  <p className="text-gray-500 mt-1">
+                    {isEmploymentSupportRegistration
+                      ? 'We only need your basic account details here. You can share additional profile information later if staff need it.'
+                      : t('intake.personalInfo')}
+                  </p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -581,118 +651,175 @@ export default function ClientPortalPage() {
                       placeholder="(555) 123-4567"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')}</Label>
-                    <Input
-                      id="dateOfBirth"
-                      name="dateOfBirth"
-                      type="date"
-                      value={formData.dateOfBirth}
-                      onChange={handleInputChange}
-                    />
-                  </div>
+                  {!isEmploymentSupportRegistration && (
+                    <div className="space-y-2">
+                      <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')}</Label>
+                      <Input
+                        id="dateOfBirth"
+                        name="dateOfBirth"
+                        type="date"
+                        value={formData.dateOfBirth}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Preferred Language</Label>
-                  <Select
-                    value={formData.preferredLanguage}
-                    onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="english">English</SelectItem>
-                      <SelectItem value="spanish">Spanish</SelectItem>
-                      <SelectItem value="chinese">Chinese</SelectItem>
-                      <SelectItem value="vietnamese">Vietnamese</SelectItem>
-                      <SelectItem value="korean">Korean</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isEmploymentSupportRegistration && (
+                  <div className="space-y-2">
+                    <Label>Preferred Language</Label>
+                    <Select
+                      value={formData.preferredLanguage}
+                      onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="english">English</SelectItem>
+                        <SelectItem value="spanish">Spanish</SelectItem>
+                        <SelectItem value="chinese">Chinese</SelectItem>
+                        <SelectItem value="vietnamese">Vietnamese</SelectItem>
+                        <SelectItem value="korean">Korean</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="bg-blue-50 p-4 rounded-lg flex gap-3">
                   <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-blue-800">
-                    <p className="font-medium">Your information is secure</p>
-                    <p className="mt-1">All data is encrypted and stored securely in compliance with privacy regulations.</p>
+                    <p className="font-medium">
+                      {isEmploymentSupportRegistration ? 'You are not filling out the full intake here' : 'Your information is secure'}
+                    </p>
+                    <p className="mt-1">
+                      {isEmploymentSupportRegistration
+                        ? 'This registration only creates your account and saves your signed agreement so you can move straight into the Employment Support questionnaire.'
+                        : 'All data is encrypted and stored securely in compliance with privacy regulations.'}
+                    </p>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Step 2: Address */}
-            {currentStep === 2 && (
+            {!isEmploymentSupportRegistration && currentStep === 2 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
                   <h2 className="text-xl font-semibold">{t('clientPortal.step2Title')}</h2>
                   <p className="text-gray-500 mt-1">{t('intake.addressInfo')}</p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="street">{t('clients.streetAddress')} *</Label>
-                  <Input
-                    id="street"
-                    name="street"
-                    value={formData.street}
-                    onChange={handleInputChange}
-                    placeholder="123 Main Street, Apt 4B"
+                {/* No fixed address checkbox */}
+                <div className="flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                  <Checkbox
+                    id="isHomeless"
+                    checked={isHomeless}
+                    onCheckedChange={(checked) => {
+                      setIsHomeless(!!checked);
+                      if (checked) {
+                        setFormData(prev => ({ ...prev, street: '', city: '', state: '', zipCode: '' }));
+                      }
+                    }}
+                    className="border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
                   />
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="city">{t('clients.city')} *</Label>
-                    <Input
-                      id="city"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      placeholder={t('clients.city')}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="state">{t('clients.state')} *</Label>
-                    <Select
-                      value={formData.state}
-                      onValueChange={(value) => handleSelectChange('state', value)}
-                    >
-                      <SelectTrigger id="state">
-                        <SelectValue placeholder="Select state" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {US_STATES.map((state) => (
-                          <SelectItem key={state.value} value={state.value}>
-                            {state.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex items-center gap-2">
+                    <Home className="h-4 w-4 text-orange-600 flex-shrink-0" />
+                    <label htmlFor="isHomeless" className="text-sm font-medium text-orange-800 cursor-pointer leading-snug">
+                      I&apos;m currently experiencing homelessness or don&apos;t have a fixed address
+                    </label>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="zipCode">{t('clients.zipCode')} *</Label>
-                  <Input
-                    id="zipCode"
-                    name="zipCode"
-                    value={formData.zipCode}
-                    onChange={handleInputChange}
-                    placeholder="12345"
-                    className="max-w-[200px]"
-                  />
-                </div>
+                {isHomeless ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 text-sm text-orange-800">
+                      No permanent address needed. You can optionally provide a shelter, care-of, or mailing address below.
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="mailingAddress">Shelter / Mailing Address (optional)</Label>
+                      <Input
+                        id="mailingAddress"
+                        name="mailingAddress"
+                        value={formData.mailingAddress}
+                        onChange={handleInputChange}
+                        placeholder="e.g. City Shelter, 123 Main St"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="street">{t('clients.streetAddress')} *</Label>
+                      <Input
+                        id="street"
+                        name="street"
+                        value={formData.street}
+                        onChange={handleInputChange}
+                        placeholder="123 Main Street, Apt 4B"
+                      />
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">{t('clients.city')} *</Label>
+                        <Input
+                          id="city"
+                          name="city"
+                          value={formData.city}
+                          onChange={handleInputChange}
+                          placeholder={t('clients.city')}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">{t('clients.state')} *</Label>
+                        <Select
+                          value={formData.state}
+                          onValueChange={(value) => handleSelectChange('state', value)}
+                        >
+                          <SelectTrigger id="state">
+                            <SelectValue placeholder="Select state" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {US_STATES.map((state) => (
+                              <SelectItem key={state.value} value={state.value}>
+                                {state.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="zipCode">{t('clients.zipCode')} *</Label>
+                      <Input
+                        id="zipCode"
+                        name="zipCode"
+                        value={formData.zipCode}
+                        onChange={handleInputChange}
+                        placeholder="12345"
+                        className="max-w-[200px]"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
             {/* Step 3: Engagement Letter */}
-            {currentStep === 3 && (
+            {currentStep === agreementStep && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">{t('clientPortal.step3Title')}</h2>
-                  <p className="text-gray-500 mt-1">{t('clientPortal.agreementText')}</p>
+                  <h2 className="text-xl font-semibold">
+                    {isEmploymentSupportRegistration ? 'Review the agreement letter' : t('clientPortal.step3Title')}
+                  </h2>
+                  <p className="text-gray-500 mt-1">
+                    {isEmploymentSupportRegistration
+                      ? 'This is the only program agreement we need before your account is ready for Employment Support.'
+                      : t('clientPortal.agreementText')}
+                  </p>
                 </div>
 
                 <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto bg-gray-50">
@@ -719,11 +846,17 @@ export default function ClientPortalPage() {
             )}
 
             {/* Step 4: Digital Signature */}
-            {currentStep === 4 && (
+            {currentStep === signatureStep && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">{t('clientPortal.step4Title')}</h2>
-                  <p className="text-gray-500 mt-1">{t('clientPortal.signatureLabel')}</p>
+                  <h2 className="text-xl font-semibold">
+                    {isEmploymentSupportRegistration ? 'Sign to finish registration' : t('clientPortal.step4Title')}
+                  </h2>
+                  <p className="text-gray-500 mt-1">
+                    {isEmploymentSupportRegistration
+                      ? 'Once you sign, your Employment Support account will be created and your next step will be the program questionnaire.'
+                      : t('clientPortal.signatureLabel')}
+                  </p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -864,5 +997,36 @@ export default function ClientPortalPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+function ClientPortalFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-slate-100 flex items-center justify-center px-4 py-10">
+      <Card className="w-full max-w-2xl border-emerald-100 shadow-lg">
+        <CardHeader className="space-y-3">
+          <div className="h-6 w-40 rounded bg-slate-200 animate-pulse" />
+          <div className="h-4 w-64 rounded bg-slate-100 animate-pulse" />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <Progress value={25} className="h-2" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="h-10 rounded bg-slate-100 animate-pulse" />
+            <div className="h-10 rounded bg-slate-100 animate-pulse" />
+            <div className="h-10 rounded bg-slate-100 animate-pulse md:col-span-2" />
+            <div className="h-10 rounded bg-slate-100 animate-pulse" />
+            <div className="h-10 rounded bg-slate-100 animate-pulse" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function ClientPortalPage() {
+  return (
+    <Suspense fallback={<ClientPortalFallback />}>
+      <ClientPortalContent />
+    </Suspense>
   );
 }

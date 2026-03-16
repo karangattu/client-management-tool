@@ -36,6 +36,7 @@ import {
   UserPlus,
   Shield,
   MoreVertical,
+  Briefcase,
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -358,6 +359,22 @@ export default function AdminPage() {
               <CardContent>
                 <p className="text-sm text-gray-500">
                   Manage program definitions and their default tasks. These tasks are automatically created when a client enrolls.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="hover:border-emerald-200 hover:shadow-sm transition-all cursor-pointer" onClick={() => router.push('/employment-support')}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                    <Briefcase className="h-4 w-4" />
+                  </div>
+                  Employment Support Queue
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-500">
+                  Review Employment Support intakes, readiness decisions, and follow-up dates from one staff queue.
                 </p>
               </CardContent>
             </Card>

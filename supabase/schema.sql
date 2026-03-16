@@ -154,7 +154,7 @@ CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(last_name, first_name);
 CREATE INDEX IF NOT EXISTS idx_clients_case_manager ON clients(assigned_case_manager);
 CREATE INDEX IF NOT EXISTS idx_clients_referral_source ON clients(referral_source);
-CREATE INDEX IF NOT EXISTS idx_clients_portal_user ON clients(portal_user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_portal_user ON clients(portal_user_id);
 CREATE INDEX IF NOT EXISTS idx_clients_onboarding_status ON clients(onboarding_status);
 CREATE INDEX IF NOT EXISTS idx_clients_intake_completed ON clients(intake_completed_at);
 

@@ -230,7 +230,7 @@ function LoginForm() {
           </div>
           <CardTitle className="text-2xl">Welcome to ClientHub</CardTitle>
           <CardDescription>
-            Sign in to access your dashboard
+            Sign in to access your account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -289,18 +289,24 @@ function LoginForm() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm">
-            <p className="text-gray-500">
-              Are you a client?{' '}
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg text-center text-sm">
+            <p className="text-gray-700">
+              New client and don&apos;t have an account yet?{' '}
               <Link href="/client-portal" className="text-blue-600 hover:underline font-medium">
-                Self-service registration
+                Register here
+              </Link>
+            </p>
+            <p className="text-gray-600 mt-2">
+              Looking for Employment Support only?{' '}
+              <Link href="/self-service/employment-support" className="text-blue-600 hover:underline font-medium">
+                Start Employment Support registration
               </Link>
             </p>
           </div>
 
-          <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-            <p className="text-xs text-gray-600 text-center">
-              <strong>Staff:</strong> Contact your administrator if you need an account.
+          <div className="mt-3 text-center">
+            <p className="text-xs text-gray-400">
+              Staff without an account? Contact your administrator.
             </p>
           </div>
 

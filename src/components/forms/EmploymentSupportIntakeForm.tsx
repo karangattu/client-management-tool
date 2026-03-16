@@ -86,9 +86,11 @@ export function EmploymentSupportIntakeForm({
   const { profile } = useAuth();
   const isStaff = profile?.role !== "client";
   const hasSubmittedRef = useRef(false);
+  const currentIntakeIdRef = useRef<string | undefined>(intakeId);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraftToDb, setIsSavingDraftToDb] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
   const [staffOptions, setStaffOptions] = useState<{ value: string; label: string }[]>([]);
@@ -277,7 +279,7 @@ export function EmploymentSupportIntakeForm({
           data: submitData,
           clientId,
           enrollmentId,
-          intakeId,
+          intakeId: currentIntakeIdRef.current,
         });
 
         if (result.success) {
@@ -320,6 +322,35 @@ export function EmploymentSupportIntakeForm({
     });
   };
 
+  const saveDraftToDb = async () => {
+    if (isSavingDraftToDb || isSubmitting || hasSubmittedRef.current) return;
+    saveDraft();
+    setIsSavingDraftToDb(true);
+    try {
+      const formData = methods.getValues();
+      const submitData = isStaff
+        ? formData
+        : { ...formData, internalUse: defaultEmploymentSupportIntake.internalUse };
+      const result = await saveEmploymentSupportIntake({
+        data: submitData,
+        clientId,
+        enrollmentId,
+        intakeId: currentIntakeIdRef.current,
+        asDraft: true,
+      });
+      if (result.success) {
+        if (result.intakeId) currentIntakeIdRef.current = result.intakeId;
+        toast({ title: "Draft saved", description: "Your progress has been saved." });
+      } else {
+        toast({ title: "Could not save draft", description: result.error || "Please try again.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Could not save draft", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setIsSavingDraftToDb(false);
+    }
+  };
+
   const hasStepErrors = (stepIndex: number) => {
     const fields = getFieldsForStep(stepIndex);
     return fields.some((field) => {
@@ -360,8 +391,8 @@ export function EmploymentSupportIntakeForm({
                   Last saved: {lastSaved.toLocaleTimeString()}
                 </span>
               )}
-              <Button type="button" variant="outline" size="sm" onClick={saveDraft}>
-                <Save className="h-4 w-4 mr-2" />
+              <Button type="button" variant="outline" size="sm" onClick={saveDraftToDb} disabled={isSavingDraftToDb}>
+                {isSavingDraftToDb ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 <span className="hidden sm:inline">Save Draft</span>
               </Button>
             </div>

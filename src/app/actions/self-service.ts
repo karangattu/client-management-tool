@@ -3,6 +3,10 @@
 import { createClient, createServiceClient, type SupabaseServerClient } from "@/lib/supabase/server";
 import { getAppUrl } from "@/lib/utils";
 
+type RegistrationMode = 'standard' | 'employment-support';
+
+const EMPLOYMENT_SUPPORT_PROGRAM_NAME = 'Employment Support';
+
 interface SelfServiceFormData {
   firstName: string;
   lastName: string;
@@ -19,6 +23,7 @@ interface SelfServiceFormData {
   preferredLanguage?: string;
   signature?: string;
   pdfData?: string;
+  registrationMode?: RegistrationMode;
 }
 
 interface SaveResult {
@@ -33,6 +38,14 @@ export async function submitSelfServiceApplication(
 ): Promise<SaveResult> {
   try {
     const supabase = await createClient();
+    const registrationMode = formData.registrationMode || 'standard';
+
+    if (registrationMode === 'employment-support' && !formData.signature) {
+      return {
+        success: false,
+        error: 'Employment Support registration requires a signed engagement letter.',
+      };
+    }
 
     // Attempt to use service role for admin operations
     let db: SupabaseServerClient;
@@ -75,8 +88,9 @@ export async function submitSelfServiceApplication(
           first_name: formData.firstName,
           last_name: formData.lastName,
           role: 'client', // Important for the trigger
+          registration_mode: registrationMode,
         },
-        emailRedirectTo: `${getAppUrl()}/auth/callback`,
+        emailRedirectTo: `${getAppUrl()}/auth/callback?registration_mode=${registrationMode}`,
       },
     });
 
@@ -124,7 +138,7 @@ export async function submitSelfServiceApplication(
         state: formData.state || null,
         zip_code: formData.zipCode || null,
         status: "pending",
-        onboarding_status: "registered",
+        onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'registered',
         onboarding_progress: 0,
         created_at: new Date().toISOString(),
       })
@@ -149,31 +163,64 @@ export async function submitSelfServiceApplication(
       console.error("Error creating case management:", caseError);
     }
 
-    // Create onboarding task for intake completion
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7);
+    if (registrationMode === 'employment-support') {
+      const { data: employmentProgram, error: employmentProgramError } = await db
+        .from('programs')
+        .select('id')
+        .eq('name', EMPLOYMENT_SUPPORT_PROGRAM_NAME)
+        .maybeSingle();
 
-    const { error: taskError } = await db.from("tasks").insert({
-      title: "Complete Full Intake Form",
-      description: "Please complete all 7 sections of the intake form to help us process your case. This is an essential step for receiving support.",
-      client_id: clientData.id,
-      assigned_to: authData.user.id, // Assign to the client themselves
-      status: "pending",
-      priority: "urgent",
-      due_date: dueDate.toISOString(),
-      created_by: authData.user.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+      if (employmentProgramError) {
+        console.error('Error loading Employment Support program:', employmentProgramError);
+      }
 
-    if (taskError) {
-      console.error("Error creating profile completion task:", taskError);
+      if (employmentProgram?.id) {
+        const { data: enrollmentData, error: enrollmentError } = await db
+          .from('program_enrollments')
+          .upsert({
+            client_id: clientData.id,
+            program_id: employmentProgram.id,
+            status: 'interested',
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'client_id,program_id',
+          })
+          .select('id')
+          .single();
+
+        if (enrollmentError) {
+          console.error('Error creating Employment Support enrollment:', enrollmentError);
+        } else if (enrollmentData?.id) {
+          const { data: existingIntake } = await db
+            .from('employment_support_intake')
+            .select('id')
+            .eq('client_id', clientData.id)
+            .eq('program_enrollment_id', enrollmentData.id)
+            .maybeSingle();
+
+          if (!existingIntake) {
+            const { error: intakeError } = await db
+              .from('employment_support_intake')
+              .insert({
+                client_id: clientData.id,
+                program_enrollment_id: enrollmentData.id,
+                status: 'draft',
+              });
+
+            if (intakeError) {
+              console.error('Error creating Employment Support draft intake:', intakeError);
+            }
+          }
+        }
+      }
     }
 
     // Create a task for STAFF to perform outreach (unassigned so anyone can claim)
     await db.from("tasks").insert({
       title: "Outreach: New Self-Registration",
-      description: `New client ${formData.firstName} ${formData.lastName} has self-registered. Please perform initial outreach and verify their information.`,
+      description: registrationMode === 'employment-support'
+        ? `New client ${formData.firstName} ${formData.lastName} has self-registered for Employment Support. Please perform initial outreach and verify their information.`
+        : `New client ${formData.firstName} ${formData.lastName} has self-registered. Please perform initial outreach and verify their information.`,
       client_id: clientData.id,
       assigned_to: null, // Unassigned
       status: "pending",
@@ -254,7 +301,7 @@ export async function submitSelfServiceApplication(
         .update({
           signed_engagement_letter_at: new Date().toISOString(),
           engagement_letter_version: 'March 2024',
-          onboarding_status: 'engagement',
+          onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'engagement',
           onboarding_progress: 50
         })
         .eq('id', clientData.id);
@@ -272,7 +319,7 @@ export async function submitSelfServiceApplication(
       action: "client_self_registration",
       table_name: "clients",
       record_id: clientData.id,
-      new_values: { email: formData.email, firstName: formData.firstName, lastName: formData.lastName },
+      new_values: { email: formData.email, firstName: formData.firstName, lastName: formData.lastName, registration_mode: registrationMode },
     });
 
     return {

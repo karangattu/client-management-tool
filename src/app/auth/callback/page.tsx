@@ -143,7 +143,7 @@ function AuthCallbackContent() {
                 while (!clientData && clientAttempts < maxClientAttempts) {
                   const { data: fetchedClient } = await supabase
                     .from('clients')
-                    .select('id, signed_engagement_letter_at')
+                    .select('id, signed_engagement_letter_at, onboarding_status')
                     .eq('portal_user_id', userId)
                     .single();
 
@@ -161,7 +161,10 @@ function AuthCallbackContent() {
                 if (clientData) {
                   // Import and call the task creation action
                   const { createClientOnboardingTasks } = await import('@/app/actions/tasks');
-                  await createClientOnboardingTasks(clientData.id, userId);
+                  await createClientOnboardingTasks(clientData.id, userId, {
+                    registrationMode: clientData.onboarding_status === 'employment_support' ? 'employment-support' : 'standard',
+                    hasSignedEngagementLetter: !!clientData.signed_engagement_letter_at,
+                  });
                 } else {
                   console.error('Client record not found after verification for user:', userId);
                   // We continue to redirect; the portal UI will handle the missing tasks/client gracefully now

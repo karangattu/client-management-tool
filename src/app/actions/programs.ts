@@ -30,6 +30,12 @@ export interface Enrollment {
     } | null;
 }
 
+const EMPLOYMENT_SUPPORT_PROGRAM_NAME = 'Employment Support';
+
+function isEmploymentSupportProgram(programName: string | null | undefined) {
+    return programName?.trim().toLowerCase() === EMPLOYMENT_SUPPORT_PROGRAM_NAME.toLowerCase();
+}
+
 /**
  * Fetches all active programs.
  */
@@ -96,6 +102,18 @@ export async function upsertEnrollment(params: {
     try {
         const supabase = await createClient();
 
+        const { data: programInfo, error: programError } = await supabase
+            .from('programs')
+            .select('id, name')
+            .eq('id', params.programId)
+            .single();
+
+        if (programError || !programInfo) {
+            throw new Error('Failed to verify program details');
+        }
+
+        const employmentSupportProgram = isEmploymentSupportProgram(programInfo.name);
+
         // Check if client intake is complete and status is active
         const { data: client, error: clientError } = await supabase
             .from('clients')
@@ -107,17 +125,20 @@ export async function upsertEnrollment(params: {
             throw new Error("Failed to verify client eligibility");
         }
 
-        if (!client.intake_completed_at) {
+        if (!employmentSupportProgram && !client.intake_completed_at) {
             return {
                 success: false,
                 error: "Cannot add program: Client intake form must be completed first"
             };
         }
 
-        if (client.status !== 'active') {
+        const allowedStatuses = employmentSupportProgram ? ['active', 'pending'] : ['active'];
+        if (!allowedStatuses.includes(client.status)) {
             return {
                 success: false,
-                error: `Cannot add program: Client status must be "active" (current status: ${client.status})`
+                error: employmentSupportProgram
+                    ? `Cannot add program: Client status must be "active" or "pending" (current status: ${client.status})`
+                    : `Cannot add program: Client status must be "active" (current status: ${client.status})`
             };
         }
 
@@ -201,13 +222,7 @@ export async function upsertEnrollment(params: {
 
         // AUTO-CREATE EMPLOYMENT SUPPORT INTAKE DRAFT
         // Check if this is an employment-related program
-        const { data: programInfo } = await supabase
-            .from('programs')
-            .select('name')
-            .eq('id', params.programId)
-            .single();
-
-        if (programInfo?.name === 'Employment Support') {
+        if (employmentSupportProgram) {
             try {
                 const intakeResult = await createDraftEmploymentSupportIntake(
                     params.clientId,

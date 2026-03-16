@@ -157,17 +157,14 @@ export default function EmploymentSupportPage() {
     );
   }
 
-  if (!intakeData || !clientId) {
+  if (!clientId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md text-center">
           <CardContent className="pt-8 pb-8">
-            <Briefcase className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Not Enrolled</h2>
-            <p className="text-gray-600 mb-4">
-              You are not currently enrolled in the Employment Support program.
-              Contact your case manager if you&apos;d like to enroll.
-            </p>
+            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">Error</h2>
+            <p className="text-gray-600 mb-4">No client account found.</p>
             <Link href="/my-portal">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4 mr-2" /> Back to Portal
@@ -196,50 +193,69 @@ export default function EmploymentSupportPage() {
               <h1 className="font-bold text-lg">Employment Support Intake</h1>
             </div>
           </div>
-          <Badge
-            variant="outline"
-            className={
-              intakeData.status === "draft"
-                ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+          {intakeData && (
+            <Badge
+              variant="outline"
+              className={
+                intakeData.status === "draft"
+                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                  : intakeData.status === "submitted"
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-green-50 text-green-700 border-green-200"
+              }
+            >
+              {intakeData.status === "draft"
+                ? "Draft"
                 : intakeData.status === "submitted"
-                  ? "bg-blue-50 text-blue-700 border-blue-200"
-                  : "bg-green-50 text-green-700 border-green-200"
-            }
-          >
-            {intakeData.status === "draft"
-              ? "Draft"
-              : intakeData.status === "submitted"
-                ? "Submitted"
-                : "Reviewed"}
-          </Badge>
+                  ? "Submitted"
+                  : "Reviewed"}
+            </Badge>
+          )}
         </div>
       </header>
 
       <main className="container px-4 py-6 max-w-4xl mx-auto">
-        {intakeData.status === "reviewed" && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
-            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-green-800">
-                Your questionnaire has been reviewed
-              </p>
-              <p className="text-sm text-green-700 mt-1">
-                Your case manager has reviewed your responses. You can still
-                update your information if anything has changed.
+        {!intakeData ? (
+          <>
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
+              <Briefcase className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-blue-800">
+                Fill out this questionnaire to help your case manager support your job search. Your answers help us understand your goals, experience, and what support you need.
               </p>
             </div>
-          </div>
-        )}
+            <EmploymentSupportIntakeForm
+              clientId={clientId}
+              onSuccess={handleSuccess}
+            />
+          </>
+        ) : (
+          <>
+            {intakeData.status === "reviewed" && (
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-green-800">
+                    Your questionnaire has been reviewed
+                  </p>
+                  <p className="text-sm text-green-700 mt-1">
+                    Your case manager has reviewed your responses. You can still
+                    update your information if anything has changed.
+                  </p>
+                </div>
+              </div>
+            )}
 
-        <EmploymentSupportIntakeForm
-          initialData={intakeData.formData}
-          clientId={clientId}
-          enrollmentId={intakeData.enrollmentId}
-          intakeId={intakeData.id}
-          existingStatus={intakeData.status}
-          submittedInfo={intakeData.submittedInfo}
-          onSuccess={handleSuccess}
-        />
+            <EmploymentSupportIntakeForm
+              initialData={intakeData.formData}
+              clientId={clientId}
+              enrollmentId={intakeData.enrollmentId}
+              intakeId={intakeData.id}
+              existingStatus={intakeData.status}
+              submittedInfo={intakeData.submittedInfo}
+              onSuccess={handleSuccess}
+            />
+          </>
+        )}
       </main>
     </div>
   );

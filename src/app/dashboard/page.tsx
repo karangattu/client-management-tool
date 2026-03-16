@@ -18,6 +18,7 @@ import { DailyTriageMode, useDailyTriageMode } from '@/components/layout/DailyTr
 import {
   Users,
   UserPlus,
+  Briefcase,
   Calendar,
   CheckSquare,
   FileText,
@@ -1328,6 +1329,15 @@ export default function DashboardPage() {
             color="orange"
             badge={stats.pendingTasks > 0 ? stats.pendingTasks : undefined}
             minimumRole="case_manager"
+            userRole={profile.role}
+          />
+          <NavigationTile
+            title="Employment Support"
+            description="Track intakes, readiness, and follow-ups"
+            icon={Briefcase}
+            href="/employment-support"
+            color="green"
+            minimumRole="staff"
             userRole={profile.role}
           />
           {stats.openTasks > 0 && (

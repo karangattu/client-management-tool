@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SearchableSelect, SearchableSelectOption } from '@/components/ui/searchable-select';
 import {
   Dialog,
   DialogContent,
@@ -62,7 +61,8 @@ import {
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { deleteClientRecord } from '@/app/actions/user-deletion';
-import { getClientsWithCursor } from '@/app/actions/client';
+import { createMinimalClient, getClientsWithCursor } from '@/app/actions/client';
+import { upsertEnrollment } from '@/app/actions/programs';
 import { type Program } from '@/lib/types';
 import { CLIENT_STATUS_CONFIG } from '@/lib/status-config';
 import { ClientSummaryDrawer } from '@/components/clients/ClientSummaryDrawer';
@@ -122,11 +122,25 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
+  const [quickAddError, setQuickAddError] = useState<string | null>(null);
+  const [quickAddLoading, setQuickAddLoading] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    enrollEmploymentSupport: true,
+  });
 
   const supabase = createClient();
   const observerTarget = useRef<HTMLDivElement>(null);
   const programNameById = useMemo(
     () => new Map(programs.map((program) => [program.id, program.name])),
+    [programs]
+  );
+  const employmentSupportProgram = useMemo(
+    () => programs.find((program) => program.name.trim().toLowerCase() === 'employment support') || null,
     [programs]
   );
   const hasActiveFilters = statusFilter !== 'all' || programFilter !== 'all' || searchQuery.trim() !== '';
@@ -178,21 +192,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
     });
   }, [clients]);
 
-  const programOptions: SearchableSelectOption[] = useMemo(() => {
-    const options: SearchableSelectOption[] = [
-      { value: 'all', label: 'All Programs' }
-    ];
-    programs.forEach((p) => {
-      options.push({
-        value: p.id,
-        label: p.name,
-        group: p.category || 'Other'
-      });
-    });
-    return options;
-  }, [programs]);
-
-  // Apply client-side filters (search and program)
+  // Apply client-side search on top of server-filtered results
   useEffect(() => {
     let filtered = clients;
 
@@ -202,18 +202,8 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
       filtered = results.map(({ item }) => item);
     }
 
-    // Status filtering is handled server-side in fetchClients(),
-    // so the clients array contains only records matching the selected status filter
-
-    // Apply program filter (client-side due to join complexity)
-    if (programFilter !== 'all') {
-      filtered = filtered.filter((client) =>
-        client.program_enrollments?.some(enrollment => enrollment.program_id === programFilter)
-      );
-    }
-
     setFilteredClients(filtered);
-  }, [debouncedSearchQuery, programFilter, clients, fuse]);
+  }, [debouncedSearchQuery, clients, fuse]);
 
   // Load more clients (cursor-based pagination)
   const loadMore = useCallback(async () => {
@@ -225,6 +215,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
         limit: 50,
         cursor,
         statusFilter: statusFilter !== 'all' ? statusFilter : undefined,
+        programFilter: programFilter !== 'all' ? programFilter : undefined,
       });
 
       if (result.success && result.data) {
@@ -237,7 +228,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
     } finally {
       setIsLoadingMore(false);
     }
-  }, [cursor, hasMore, isLoadingMore, statusFilter]);
+  }, [cursor, hasMore, isLoadingMore, programFilter, statusFilter]);
 
   // Intersection Observer for infinite scroll
   useEffect(() => {
@@ -269,6 +260,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
         const result = await getClientsWithCursor({
           limit: 50,
           statusFilter: statusFilter !== 'all' ? statusFilter : undefined,
+          programFilter: programFilter !== 'all' ? programFilter : undefined,
         });
 
         if (result.success && result.data) {
@@ -281,7 +273,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
         console.error('Error fetching clients:', err);
       }
     });
-  }, [statusFilter]);
+  }, [programFilter, statusFilter]);
 
   useEffect(() => {
     if (profile) {
@@ -372,6 +364,62 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
     setProgramFilter('all');
   };
 
+  const resetQuickAddForm = () => {
+    setQuickAddForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      enrollEmploymentSupport: true,
+    });
+    setQuickAddError(null);
+  };
+
+  const handleQuickAdd = async () => {
+    setQuickAddLoading(true);
+    setQuickAddError(null);
+
+    try {
+      const result = await createMinimalClient({
+        firstName: quickAddForm.firstName,
+        lastName: quickAddForm.lastName,
+        email: quickAddForm.email,
+        phone: quickAddForm.phone,
+      });
+
+      if (!result.success || !result.clientId) {
+        throw new Error(result.error || 'Failed to create client profile');
+      }
+
+      if (quickAddForm.enrollEmploymentSupport && employmentSupportProgram) {
+        const enrollmentResult = await upsertEnrollment({
+          clientId: result.clientId,
+          programId: employmentSupportProgram.id,
+          status: 'interested',
+        });
+
+        if (!enrollmentResult.success) {
+          throw new Error(enrollmentResult.error || 'Client created, but Employment Support enrollment failed');
+        }
+      }
+
+      const shouldEnrollEmploymentSupport = quickAddForm.enrollEmploymentSupport && !!employmentSupportProgram;
+      resetQuickAddForm();
+      setQuickAddDialogOpen(false);
+      toast({
+        title: 'Client created',
+        description: shouldEnrollEmploymentSupport
+          ? 'The client profile was created and enrolled in Employment Support.'
+          : 'The client profile was created.',
+      });
+      window.location.href = `/clients/${result.clientId}`;
+    } catch (err) {
+      setQuickAddError(err instanceof Error ? err.message : 'Failed to create client');
+    } finally {
+      setQuickAddLoading(false);
+    }
+  };
+
   const canCreateClients = canAccessFeature(profile?.role || 'client', 'case_manager');
   const canEditClients = canAccessFeature(profile?.role || 'client', 'case_manager');
 
@@ -428,12 +476,18 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                 Refresh
               </Button>
               {canCreateClients && (
-                <Link href="/client-intake">
-                  <Button>
+                <>
+                  <Button variant="outline" onClick={() => setQuickAddDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
-                    New Client
+                    Quick Add
                   </Button>
-                </Link>
+                  <Link href="/client-intake">
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Full Intake
+                    </Button>
+                  </Link>
+                </>
               )}
             </div>
           </div>
@@ -503,15 +557,19 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                       <SelectItem value="inactive">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
-                  <SearchableSelect
-                    options={programOptions}
-                    value={programFilter}
-                    onValueChange={setProgramFilter}
-                    placeholder="All Programs"
-                    searchPlaceholder="Search programs..."
-                    className="w-full sm:w-[200px]"
-                    grouped
-                  />
+                  <Select value={programFilter} onValueChange={setProgramFilter}>
+                    <SelectTrigger className="w-full sm:w-[200px]">
+                      <SelectValue placeholder="All Programs" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      {programs.map((program) => (
+                        <SelectItem key={program.id} value={program.id}>
+                          {program.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardContent>
@@ -746,6 +804,119 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
               )}
             </>
           )}
+
+          <Dialog
+            open={quickAddDialogOpen}
+            onOpenChange={(open) => {
+              setQuickAddDialogOpen(open);
+              if (!open) {
+                resetQuickAddForm();
+              }
+            }}
+          >
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Create Employment-First Client</DialogTitle>
+                <DialogDescription>
+                  Create a lightweight client profile now. You can upload documents, track interactions, and start Employment Support without completing the full intake first.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {quickAddError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{quickAddError}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-add-first-name">First Name</Label>
+                    <Input
+                      id="quick-add-first-name"
+                      value={quickAddForm.firstName}
+                      onChange={(e) => setQuickAddForm((prev) => ({ ...prev, firstName: e.target.value }))}
+                      disabled={quickAddLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-add-last-name">Last Name</Label>
+                    <Input
+                      id="quick-add-last-name"
+                      value={quickAddForm.lastName}
+                      onChange={(e) => setQuickAddForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                      disabled={quickAddLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-add-email">Email</Label>
+                    <Input
+                      id="quick-add-email"
+                      type="email"
+                      value={quickAddForm.email}
+                      onChange={(e) => setQuickAddForm((prev) => ({ ...prev, email: e.target.value }))}
+                      disabled={quickAddLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quick-add-phone">Phone</Label>
+                    <Input
+                      id="quick-add-phone"
+                      value={quickAddForm.phone}
+                      onChange={(e) => setQuickAddForm((prev) => ({ ...prev, phone: e.target.value }))}
+                      disabled={quickAddLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4 bg-gray-50">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={quickAddForm.enrollEmploymentSupport}
+                      onChange={(e) => setQuickAddForm((prev) => ({ ...prev, enrollEmploymentSupport: e.target.checked }))}
+                      disabled={quickAddLoading || !employmentSupportProgram}
+                      className="mt-1"
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-medium text-gray-900 block">Enroll in Employment Support now</span>
+                      {employmentSupportProgram
+                        ? 'This creates the client shell and immediately opens the Employment Support workflow.'
+                        : 'Employment Support is not currently available in the Programs list.'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setQuickAddDialogOpen(false)} disabled={quickAddLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleQuickAdd}
+                  disabled={
+                    quickAddLoading ||
+                    !quickAddForm.firstName.trim() ||
+                    !quickAddForm.lastName.trim() ||
+                    (!quickAddForm.email.trim() && !quickAddForm.phone.trim())
+                  }
+                >
+                  {quickAddLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Client'
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Archive Confirmation Dialog */}
           <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>

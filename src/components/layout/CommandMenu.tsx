@@ -6,6 +6,7 @@ import {
     User,
     Search,
     CheckSquare,
+    Briefcase,
     Users,
     LayoutDashboard,
     PlusCircle,
@@ -56,7 +57,7 @@ export function CommandMenu() {
 
     return (
         <>
-            <div className="fixed bottom-4 right-4 z-50 md:hidden">
+            <div className="fixed bottom-4 right-4 z-40 md:hidden">
                 <button
                     onClick={() => setOpen(true)}
                     className="bg-primary text-primary-foreground h-12 w-12 rounded-full shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
@@ -81,6 +82,10 @@ export function CommandMenu() {
                         <CommandItem onSelect={() => runCommand(() => router.push('/tasks'))}>
                             <CheckSquare className="mr-2 h-4 w-4" />
                             <span>Tasks</span>
+                        </CommandItem>
+                        <CommandItem onSelect={() => runCommand(() => router.push('/employment-support'))}>
+                            <Briefcase className="mr-2 h-4 w-4" />
+                            <span>Employment Support</span>
                         </CommandItem>
                         <CommandItem onSelect={() => runCommand(() => router.push('/calendar'))}>
                             <Calendar className="mr-2 h-4 w-4" />

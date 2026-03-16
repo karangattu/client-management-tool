@@ -68,6 +68,7 @@ interface ClientInfo {
     first_name: string;
     last_name: string;
     email: string;
+    onboarding_status: string | null;
     signed_engagement_letter_at: string | null;
     date_of_birth: string | null;
     intake_completed_at: string | null;
@@ -261,7 +262,7 @@ export default function MyPortalPage() {
             // Fetch client record
             const { data: clientData, error: clientError } = await supabase
                 .from('clients')
-                .select('id, first_name, last_name, email, signed_engagement_letter_at, date_of_birth, intake_completed_at')
+                .select('id, first_name, last_name, email, onboarding_status, signed_engagement_letter_at, date_of_birth, intake_completed_at')
                 .eq('portal_user_id', user.id)
                 .single();
 
@@ -558,11 +559,11 @@ export default function MyPortalPage() {
     };
 
     const getTaskAction = (task: Task) => {
-        if (task.title.toLowerCase().includes('intake')) {
-            return { href: '/client-intake', label: 'Complete Form' };
-        }
         if (task.title.toLowerCase().includes('employment support')) {
             return { href: '/my-portal/employment-support', label: 'Open Form' };
+        }
+        if (task.title.toLowerCase().includes('intake')) {
+            return { href: '/client-intake', label: 'Complete Form' };
         }
         if (task.title.toLowerCase().includes('engagement letter') || task.title.toLowerCase().includes('sign')) {
             return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
@@ -612,13 +613,20 @@ export default function MyPortalPage() {
 
     const urgentTasks = tasks.filter(t => t.priority === 'urgent' || t.priority === 'high');
     const needsEngagementLetter = !client?.signed_engagement_letter_at;
-    const needsIntakeForm = !client?.intake_completed_at;
+    const hasEmploymentSupportTask = tasks.some((task) => task.title.toLowerCase().includes('employment support'));
+    const hasFullIntakeTask = tasks.some((task) => {
+        const title = task.title.toLowerCase();
+        return title.includes('intake') && !title.includes('employment support');
+    });
+    const needsIntakeForm = hasFullIntakeTask && !client?.intake_completed_at;
+    const employmentIntakeCompleted = !!employmentIntake && employmentIntake.status !== 'draft';
 
     // Calculate onboarding progress
     const steps = [
         { label: 'Account Created', completed: true },
         { label: 'Engagement Letter', completed: !needsEngagementLetter },
-        { label: 'Intake Form', completed: !needsIntakeForm },
+        ...(needsIntakeForm || client?.intake_completed_at ? [{ label: 'Intake Form', completed: !needsIntakeForm }] : []),
+        ...(hasEmploymentSupportTask || !!employmentIntake ? [{ label: 'Employment Intake', completed: employmentIntakeCompleted }] : []),
     ];
     const completedSteps = steps.filter(s => s.completed).length;
     const progressPercentage = (completedSteps / steps.length) * 100;
@@ -769,7 +777,8 @@ export default function MyPortalPage() {
                             {urgentTasks.map((task) => {
                                 // Skip duplicates if manually rendered above
                                 if (task.title.toLowerCase().includes('sign engagement') && needsEngagementLetter) return null;
-                                if (task.title.toLowerCase().includes('intake') && needsIntakeForm) return null;
+                                if (task.title.toLowerCase().includes('employment support') && (hasEmploymentSupportTask || !!employmentIntake)) return null;
+                                if (task.title.toLowerCase().includes('intake') && !task.title.toLowerCase().includes('employment support') && needsIntakeForm) return null;
 
                                 const action = getTaskAction(task);
                                 return (
@@ -972,22 +981,31 @@ export default function MyPortalPage() {
                 </div>
 
                 {/* Employment Support Intake Card */}
-                {employmentIntake && (
-                    <Card className="border-l-4 border-l-emerald-500">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Briefcase className="h-5 w-5 text-emerald-600" />
-                                Employment Support Intake
-                            </CardTitle>
-                            <CardDescription>
-                                {employmentIntake.status === 'draft'
+                <Card className="border-l-4 border-l-emerald-500">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Briefcase className="h-5 w-5 text-emerald-600" />
+                            Employment Support Intake
+                        </CardTitle>
+                        <CardDescription>
+                            {!employmentIntake
+                                ? 'Fill out the Employment Support questionnaire to help your case manager understand your job goals and needs.'
+                                : employmentIntake.status === 'draft'
                                     ? 'Your questionnaire is in progress. Complete it to help us support your job search.'
                                     : employmentIntake.status === 'submitted'
                                       ? 'Submitted — your case manager will review it soon.'
                                       : 'Reviewed by your case manager.'}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {!employmentIntake ? (
+                            <Link href="/my-portal/employment-support">
+                                <Button size="sm">
+                                    Begin Questionnaire
+                                    <ArrowRight className="h-4 w-4 ml-1" />
+                                </Button>
+                            </Link>
+                        ) : (
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Badge
@@ -1015,9 +1033,9 @@ export default function MyPortalPage() {
                                     </Button>
                                 </Link>
                             </div>
-                        </CardContent>
-                    </Card>
-                )}
+                        )}
+                    </CardContent>
+                </Card>
             </main>
 
             {/* Upload Dialog */}

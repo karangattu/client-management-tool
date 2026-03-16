@@ -12,6 +12,13 @@ interface SaveResult {
   error?: string;
 }
 
+interface MinimalClientInput {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+}
+
 export async function saveClientIntake(
   data: ClientIntakeForm,
   clientId?: string
@@ -411,6 +418,86 @@ export async function saveClientIntake(
   }
 }
 
+export async function createMinimalClient(input: MinimalClientInput): Promise<SaveResult> {
+  try {
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    const email = input.email?.trim() || null;
+    const phone = input.phone?.trim() || null;
+
+    if (!firstName || !lastName) {
+      return { success: false, error: 'First and last name are required' };
+    }
+
+    if (!email && !phone) {
+      return { success: false, error: 'Provide either an email address or phone number' };
+    }
+
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    if (email) {
+      const { data: staffProfile } = await supabase
+        .from('profiles')
+        .select('id, role, first_name, last_name')
+        .ilike('email', email)
+        .in('role', ['admin', 'case_manager'])
+        .maybeSingle();
+
+      if (staffProfile) {
+        return {
+          success: false,
+          error: `This email address (${email}) belongs to staff member "${staffProfile.first_name} ${staffProfile.last_name}". Please enter a different email for the client.`,
+        };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .insert({
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        phone,
+        status: 'pending',
+        has_portal_access: false,
+        onboarding_status: 'employment_support',
+        onboarding_progress: 0,
+        created_by: user.id,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+
+    if (clientError || !clientData) {
+      console.error('Error creating minimal client:', clientError);
+      return { success: false, error: clientError?.message || 'Failed to create client' };
+    }
+
+    await supabase.from('audit_log').insert({
+      user_id: user.id,
+      action: 'client_minimal_created',
+      table_name: 'clients',
+      record_id: clientData.id,
+      new_values: { first_name: firstName, last_name: lastName, email, phone },
+    });
+
+    return { success: true, clientId: clientData.id };
+  } catch (error) {
+    console.error('Error creating minimal client:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create client',
+    };
+  }
+}
+
 
 export async function getClientFullData(clientId: string) {
   try {
@@ -642,11 +729,12 @@ export async function getClientsWithCursor(options: {
   try {
     const supabase = await createClient();
     const limit = options.limit || 50;
+    const shouldFilterByProgram = Boolean(options.programFilter && options.programFilter !== 'all');
     
     // Build query with cursor-based pagination
     let query = supabase
       .from('clients')
-      .select('*, program_enrollments(*), case_management(*)')
+      .select(shouldFilterByProgram ? '*, program_enrollments!inner(*), case_management(*)' : '*, program_enrollments(*), case_management(*)')
       .order('created_at', { ascending: false })
       .limit(limit + 1); // Fetch one extra to determine if there are more pages
 
@@ -658,6 +746,10 @@ export async function getClientsWithCursor(options: {
     // Apply status filter server-side
     if (options.statusFilter && options.statusFilter !== 'all') {
       query = query.eq('status', options.statusFilter);
+    }
+
+    if (shouldFilterByProgram) {
+      query = query.eq('program_enrollments.program_id', options.programFilter as string);
     }
 
     const { data, error } = await query;
