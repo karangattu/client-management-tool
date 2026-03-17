@@ -113,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 -- ============================================
 
 DO $$ BEGIN
-    CREATE TYPE client_onboarding_status AS ENUM ('registered', 'profile', 'engagement', 'intake', 'active');
+  CREATE TYPE client_onboarding_status AS ENUM ('registered', 'profile', 'engagement', 'employment_support', 'intake', 'active');
 
 EXCEPTION WHEN duplicate_object THEN NULL;
 

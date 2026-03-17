@@ -141,9 +141,6 @@ export async function saveEmploymentSupportIntake(params: {
 
     // Build the database row from the validated form data
     const row: Record<string, unknown> = {
-      client_id: params.clientId,
-      program_enrollment_id: params.enrollmentId || null,
-
       // Section A
       preferred_contact_method: validated.basicInfo.preferredContactMethod || null,
       best_contact_time: validated.basicInfo.bestContactTime || null,
@@ -215,22 +212,33 @@ export async function saveEmploymentSupportIntake(params: {
     let intakeId = params.intakeId;
 
     if (intakeId) {
-      // Update existing
+      // Update existing — do NOT overwrite client_id / enrollment link
       const { error } = await supabase
         .from("employment_support_intake")
         .update(row)
         .eq("id", intakeId);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase update error:", error.message, error.details, error.code);
+        return { success: false, error: error.message || "Failed to save intake" };
+      }
     } else {
-      // Insert new
+      // Insert new — include ownership fields
+      const insertRow = {
+        ...row,
+        client_id: params.clientId,
+        program_enrollment_id: params.enrollmentId || null,
+      };
       const { data: inserted, error } = await supabase
         .from("employment_support_intake")
-        .insert(row)
+        .insert(insertRow)
         .select("id")
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase insert error:", error.message, error.details, error.code);
+        return { success: false, error: error.message || "Failed to save intake" };
+      }
       intakeId = inserted.id;
     }
 
@@ -238,18 +246,22 @@ export async function saveEmploymentSupportIntake(params: {
     revalidatePath("/my-portal");
 
     return { success: true, intakeId };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error saving employment support intake:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to save intake",
-    };
+    let message = "Failed to save intake";
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (error && typeof error === "object" && "message" in error) {
+      message = String((error as { message: unknown }).message);
+    }
+    return { success: false, error: message };
   }
 }
 
 /**
  * Fetches the employment support intake for a client.
- * Returns the most recent intake, optionally filtered by enrollment.
+ * Returns the best intake (preferring submitted/reviewed over empty drafts),
+ * optionally filtered by enrollment.
  */
 export async function getEmploymentSupportIntake(
   clientId: string,
@@ -274,13 +286,29 @@ export async function getEmploymentSupportIntake(
       query = query.eq("program_enrollment_id", enrollmentId);
     }
 
-    const { data, error } = await query
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Fetch all intakes for this client so we can pick the best one.
+    // A submitted/reviewed intake should always win over a blank draft,
+    // even if the draft was created more recently.
+    const { data: rows, error } = await query
+      .order("updated_at", { ascending: false });
 
     if (error) throw error;
-    return { success: true, data };
+
+    if (!rows || rows.length === 0) {
+      return { success: true, data: null };
+    }
+
+    // Prefer the intake with the most progress: reviewed > submitted > draft
+    const statusWeight: Record<string, number> = { reviewed: 3, submitted: 2, draft: 1 };
+    const best = [...rows].sort((a, b) => {
+      const wa = statusWeight[a.status] ?? 0;
+      const wb = statusWeight[b.status] ?? 0;
+      if (wa !== wb) return wb - wa;
+      // Same status — most recently updated wins
+      return new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime();
+    })[0];
+
+    return { success: true, data: best };
   } catch (error) {
     console.error("Error fetching employment support intake:", error);
     return {
@@ -425,15 +453,36 @@ export async function createDraftEmploymentSupportIntake(
     const serviceClient = createServiceClient();
 
     // Check if an intake already exists for this enrollment
-    const { data: existing } = await serviceClient
+    const { data: linkedIntake } = await serviceClient
       .from("employment_support_intake")
       .select("id")
       .eq("client_id", clientId)
       .eq("program_enrollment_id", enrollmentId)
       .maybeSingle();
 
-    if (existing) {
-      return { success: true, intakeId: existing.id, alreadyExists: true };
+    if (linkedIntake) {
+      return { success: true, intakeId: linkedIntake.id, alreadyExists: true };
+    }
+
+    // Check for an existing intake that was created without an enrollment link
+    // (e.g. staff started the intake from the client detail page before enrollment).
+    // Adopt it instead of creating a duplicate blank draft that would shadow the real data.
+    const { data: orphanedIntake } = await serviceClient
+      .from("employment_support_intake")
+      .select("id")
+      .eq("client_id", clientId)
+      .is("program_enrollment_id", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (orphanedIntake) {
+      await serviceClient
+        .from("employment_support_intake")
+        .update({ program_enrollment_id: enrollmentId })
+        .eq("id", orphanedIntake.id);
+
+      return { success: true, intakeId: orphanedIntake.id, alreadyExists: true };
     }
 
     const { data, error } = await serviceClient

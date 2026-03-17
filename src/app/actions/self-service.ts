@@ -199,16 +199,32 @@ export async function submitSelfServiceApplication(
             .maybeSingle();
 
           if (!existingIntake) {
-            const { error: intakeError } = await db
+            // Check for an orphaned intake (created before enrollment was linked)
+            const { data: orphanedIntake } = await db
               .from('employment_support_intake')
-              .insert({
-                client_id: clientData.id,
-                program_enrollment_id: enrollmentData.id,
-                status: 'draft',
-              });
+              .select('id')
+              .eq('client_id', clientData.id)
+              .is('program_enrollment_id', null)
+              .limit(1)
+              .maybeSingle();
 
-            if (intakeError) {
-              console.error('Error creating Employment Support draft intake:', intakeError);
+            if (orphanedIntake) {
+              await db
+                .from('employment_support_intake')
+                .update({ program_enrollment_id: enrollmentData.id })
+                .eq('id', orphanedIntake.id);
+            } else {
+              const { error: intakeError } = await db
+                .from('employment_support_intake')
+                .insert({
+                  client_id: clientData.id,
+                  program_enrollment_id: enrollmentData.id,
+                  status: 'draft',
+                });
+
+              if (intakeError) {
+                console.error('Error creating Employment Support draft intake:', intakeError);
+              }
             }
           }
         }
