@@ -58,7 +58,7 @@ export async function submitSelfServiceApplication(
     // Check if email already exists with a restricted role
     const { data: existingProfile } = await db
       .from('profiles')
-      .select('role')
+      .select('id, role')
       .eq('email', formData.email)
       .single();
 
@@ -70,6 +70,34 @@ export async function submitSelfServiceApplication(
         };
       }
       if (existingProfile.role === 'client') {
+        // Before rejecting, link any orphaned admin-created client record
+        // so the client can log in and access their data
+        const { data: unlinkedClient } = await db
+          .from('clients')
+          .select('id')
+          .eq('email', formData.email)
+          .is('portal_user_id', null)
+          .maybeSingle();
+
+        if (unlinkedClient) {
+          // Remove any shell record created by the handle_new_user trigger
+          await db
+            .from('clients')
+            .delete()
+            .eq('portal_user_id', existingProfile.id);
+
+          // Link the admin-created record to the existing auth user
+          await db
+            .from('clients')
+            .update({
+              portal_user_id: existingProfile.id,
+              has_portal_access: true,
+            })
+            .eq('id', unlinkedClient.id);
+
+          console.log('Linked orphaned admin-created client to existing auth user:', unlinkedClient.id);
+        }
+
         return {
           success: false,
           error: "An account with this email already exists. Please log in.",
@@ -122,32 +150,111 @@ export async function submitSelfServiceApplication(
       console.log("Profile upserted successfully. Attempted role: client");
     }
 
-    // Create client record
-    const { data: clientData, error: clientError } = await db
+    // Create or link client record
+    // Check if an admin-created client record already exists for this email
+    const { data: existingClient } = await db
       .from("clients")
-      .insert({
-        portal_user_id: authData.user.id,
-        has_portal_access: true,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        email: formData.email,
-        phone: formData.phone || null,
-        date_of_birth: formData.dateOfBirth || null,
-        street_address: formData.street || null,
-        city: formData.city || null,
-        state: formData.state || null,
-        zip_code: formData.zipCode || null,
-        status: "pending",
-        onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'registered',
-        onboarding_progress: 0,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+      .select("id, portal_user_id")
+      .eq("email", formData.email)
+      .is("portal_user_id", null)
+      .maybeSingle();
 
-    if (clientError) {
-      console.error("Client creation error:", clientError);
-      throw new Error(`Failed to create client record: ${clientError.message}`);
+    let clientData;
+
+    if (existingClient) {
+      // Link the existing admin-created record to this new auth user
+      console.log('Linking admin-created client to new auth user:', existingClient.id);
+      const { data: linkedClient, error: linkError } = await db
+        .from("clients")
+        .update({
+          portal_user_id: authData.user.id,
+          has_portal_access: true,
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          phone: formData.phone || null,
+          date_of_birth: formData.dateOfBirth || null,
+          street_address: formData.street || null,
+          city: formData.city || null,
+          state: formData.state || null,
+          zip_code: formData.zipCode || null,
+          onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'registered',
+          onboarding_progress: 0,
+        })
+        .eq("id", existingClient.id)
+        .select()
+        .single();
+
+      if (linkError) {
+        console.error("Error linking existing client:", linkError);
+        throw new Error(`Failed to link client record: ${linkError.message}`);
+      }
+      clientData = linkedClient;
+    } else {
+      // Check if the handle_new_user trigger already created a record
+      const { data: triggerClient } = await db
+        .from("clients")
+        .select("id")
+        .eq("portal_user_id", authData.user.id)
+        .maybeSingle();
+
+      if (triggerClient) {
+        // Update the trigger-created record with full form data
+        const { data: updatedClient, error: updateError } = await db
+          .from("clients")
+          .update({
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone || null,
+            date_of_birth: formData.dateOfBirth || null,
+            street_address: formData.street || null,
+            city: formData.city || null,
+            state: formData.state || null,
+            zip_code: formData.zipCode || null,
+            has_portal_access: true,
+            status: "pending",
+            onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'registered',
+            onboarding_progress: 0,
+          })
+          .eq("id", triggerClient.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error("Error updating trigger-created client:", updateError);
+          throw new Error(`Failed to update client record: ${updateError.message}`);
+        }
+        clientData = updatedClient;
+      } else {
+        // No existing record — insert new
+        const { data: newClient, error: clientError } = await db
+          .from("clients")
+          .insert({
+            portal_user_id: authData.user.id,
+            has_portal_access: true,
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone || null,
+            date_of_birth: formData.dateOfBirth || null,
+            street_address: formData.street || null,
+            city: formData.city || null,
+            state: formData.state || null,
+            zip_code: formData.zipCode || null,
+            status: "pending",
+            onboarding_status: registrationMode === 'employment-support' ? 'employment_support' : 'registered',
+            onboarding_progress: 0,
+            created_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (clientError) {
+          console.error("Client creation error:", clientError);
+          throw new Error(`Failed to create client record: ${clientError.message}`);
+        }
+        clientData = newClient;
+      }
     }
 
     // Create case_management record with preferred language

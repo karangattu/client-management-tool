@@ -68,7 +68,6 @@ interface ClientInfo {
     first_name: string;
     last_name: string;
     email: string;
-    onboarding_status: string | null;
     signed_engagement_letter_at: string | null;
     date_of_birth: string | null;
     intake_completed_at: string | null;
@@ -262,7 +261,7 @@ export default function MyPortalPage() {
             // Fetch client record
             const { data: clientData, error: clientError } = await supabase
                 .from('clients')
-                .select('id, first_name, last_name, email, onboarding_status, signed_engagement_letter_at, date_of_birth, intake_completed_at')
+                .select('id, first_name, last_name, email, signed_engagement_letter_at, date_of_birth, intake_completed_at')
                 .eq('portal_user_id', user.id)
                 .single();
 
@@ -559,11 +558,11 @@ export default function MyPortalPage() {
     };
 
     const getTaskAction = (task: Task) => {
-        if (task.title.toLowerCase().includes('employment support')) {
-            return { href: '/my-portal/employment-support', label: 'Open Form' };
-        }
         if (task.title.toLowerCase().includes('intake')) {
             return { href: '/client-intake', label: 'Complete Form' };
+        }
+        if (task.title.toLowerCase().includes('employment support')) {
+            return { href: '/my-portal/employment-support', label: 'Open Form' };
         }
         if (task.title.toLowerCase().includes('engagement letter') || task.title.toLowerCase().includes('sign')) {
             return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
@@ -613,20 +612,13 @@ export default function MyPortalPage() {
 
     const urgentTasks = tasks.filter(t => t.priority === 'urgent' || t.priority === 'high');
     const needsEngagementLetter = !client?.signed_engagement_letter_at;
-    const hasEmploymentSupportTask = tasks.some((task) => task.title.toLowerCase().includes('employment support'));
-    const hasFullIntakeTask = tasks.some((task) => {
-        const title = task.title.toLowerCase();
-        return title.includes('intake') && !title.includes('employment support');
-    });
-    const needsIntakeForm = hasFullIntakeTask && !client?.intake_completed_at;
-    const employmentIntakeCompleted = !!employmentIntake && employmentIntake.status !== 'draft';
+    const needsIntakeForm = !client?.intake_completed_at;
 
     // Calculate onboarding progress
     const steps = [
         { label: 'Account Created', completed: true },
         { label: 'Engagement Letter', completed: !needsEngagementLetter },
-        ...(needsIntakeForm || client?.intake_completed_at ? [{ label: 'Intake Form', completed: !needsIntakeForm }] : []),
-        ...(hasEmploymentSupportTask || !!employmentIntake ? [{ label: 'Employment Intake', completed: employmentIntakeCompleted }] : []),
+        { label: 'Intake Form', completed: !needsIntakeForm },
     ];
     const completedSteps = steps.filter(s => s.completed).length;
     const progressPercentage = (completedSteps / steps.length) * 100;
@@ -777,8 +769,7 @@ export default function MyPortalPage() {
                             {urgentTasks.map((task) => {
                                 // Skip duplicates if manually rendered above
                                 if (task.title.toLowerCase().includes('sign engagement') && needsEngagementLetter) return null;
-                                if (task.title.toLowerCase().includes('employment support') && (hasEmploymentSupportTask || !!employmentIntake)) return null;
-                                if (task.title.toLowerCase().includes('intake') && !task.title.toLowerCase().includes('employment support') && needsIntakeForm) return null;
+                                if (task.title.toLowerCase().includes('intake') && needsIntakeForm) return null;
 
                                 const action = getTaskAction(task);
                                 return (

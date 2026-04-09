@@ -1,9 +1,8 @@
 'use client';
 
-import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitSelfServiceApplication } from '@/app/actions/self-service';
 import { type User } from '@supabase/supabase-js';
@@ -57,15 +56,8 @@ interface DraftData {
   lastSaved?: string;
 }
 
-function ClientPortalContent() {
+export default function ClientPortalPage() {
   const { t } = useLanguage();
-  const searchParams = useSearchParams();
-  const registrationMode = searchParams.get('program') === 'employment-support' ? 'employment-support' : 'standard';
-  const isEmploymentSupportRegistration = registrationMode === 'employment-support';
-  const totalSteps = isEmploymentSupportRegistration ? 3 : 4;
-  const agreementStep = isEmploymentSupportRegistration ? 2 : 3;
-  const signatureStep = isEmploymentSupportRegistration ? 3 : 4;
-  const draftKey = isEmploymentSupportRegistration ? `${DRAFT_KEY}-employment-support` : DRAFT_KEY;
   const [currentStep, setCurrentStep] = useState(1);
   const [agreed, setAgreed] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -98,6 +90,7 @@ function ClientPortalContent() {
     preferredLanguage: 'english',
   });
 
+  const totalSteps = 4;
   const progress = (currentStep / totalSteps) * 100;
 
   // Save draft to localStorage (debounced)
@@ -120,12 +113,12 @@ function ClientPortalContent() {
       lastSaved: new Date().toISOString(),
     };
 
-    localStorage.setItem(draftKey, JSON.stringify(draftData));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
     setDraftSaved(true);
 
     // Hide indicator after 2 seconds
     setTimeout(() => setDraftSaved(false), 2000);
-  }, [agreed, currentStep, draftKey, formData]);
+  }, [formData, currentStep, agreed]);
 
   // Debounced save on form changes
   useEffect(() => {
@@ -151,7 +144,7 @@ function ClientPortalContent() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const savedDraft = localStorage.getItem(draftKey);
+    const savedDraft = localStorage.getItem(DRAFT_KEY);
     if (savedDraft) {
       try {
         const draft: DraftData = JSON.parse(savedDraft);
@@ -168,17 +161,13 @@ function ClientPortalContent() {
           zipCode: draft.zipCode || '',
           preferredLanguage: draft.preferredLanguage || 'english',
         }));
-        setCurrentStep(Math.min(draft.currentStep || 1, totalSteps));
+        setCurrentStep(draft.currentStep || 1);
         setAgreed(draft.agreed || false);
       } catch (e) {
         console.error('Error restoring draft:', e);
       }
     }
-  }, [draftKey, totalSteps]);
-
-  useEffect(() => {
-    setCurrentStep((prev) => Math.min(prev, totalSteps));
-  }, [totalSteps]);
+  }, []);
 
   // Initialize canvas
   useEffect(() => {
@@ -312,14 +301,8 @@ function ClientPortalContent() {
           formData.password && formData.password === formData.confirmPassword &&
           formData.password.length >= 6;
       case 2:
-        if (isEmploymentSupportRegistration) {
-          return agreed;
-        }
         return isHomeless || (formData.street && formData.city && formData.state && formData.zipCode);
       case 3:
-        if (isEmploymentSupportRegistration) {
-          return signature !== null;
-        }
         return agreed;
       case 4:
         return signature !== null;
@@ -357,7 +340,6 @@ function ClientPortalContent() {
         preferredLanguage: formData.preferredLanguage,
         signature: signature || undefined,
         pdfData: pdfData,
-        registrationMode,
       });
 
       if (!result.success) {
@@ -366,7 +348,7 @@ function ClientPortalContent() {
 
       // Clear draft on successful submission
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(draftKey);
+        localStorage.removeItem(DRAFT_KEY);
       }
 
       // Sign out locally so the session doesn't linger on a shared computer
@@ -420,18 +402,13 @@ function ClientPortalContent() {
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold mb-2">
-              {isEmploymentSupportRegistration ? 'Employment Support Registration Complete!' : 'Registration Complete!'}
-            </h2>
+            <h2 className="text-2xl font-bold mb-2">Registration Complete!</h2>
             <p className="text-gray-600 mb-4">
-              {isEmploymentSupportRegistration
-                ? 'Please check your email to verify your account. Once verified, you can sign in and start your Employment Support questionnaire right away.'
-                : 'Thank you for registering. Please check your email to verify your account. A case manager will review your information and contact you soon.'}
+              Thank you for registering. Please check your email to verify your account.
+              A case manager will review your information and contact you soon.
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              {isEmploymentSupportRegistration
-                ? 'Your agreement letter has been saved. After login, your next step will be the Employment Support intake, not the full general intake.'
-                : 'After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).'}
+              After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).
             </p>
 
             <div className="flex gap-3 justify-center flex-wrap">
@@ -443,17 +420,16 @@ function ClientPortalContent() {
                 <Button variant="outline">Go to Login</Button>
               </Link>
 
+              {/* Direct link to profile completion - will prompt login if necessary */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link href={isEmploymentSupportRegistration ? '/my-portal/employment-support' : '/profile-completion'}>
-                      <Button>{isEmploymentSupportRegistration ? 'Start Employment Support' : 'Complete Your Profile'}</Button>
+                    <Link href="/profile-completion">
+                      <Button>Complete Your Profile</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {isEmploymentSupportRegistration
-                      ? 'You will be prompted to log in if you are not currently signed in, then taken to the Employment Support questionnaire.'
-                      : 'You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.'}
+                    You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -497,14 +473,8 @@ function ClientPortalContent() {
         </div>
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold">
-            {isEmploymentSupportRegistration ? 'Employment Support Registration' : t('clientPortal.title')}
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {isEmploymentSupportRegistration
-              ? 'Create your account, review the agreement letter, and get started with Employment Support without completing the full general intake first.'
-              : t('clientPortal.description')}
-          </p>
+          <h1 className="text-2xl font-bold">{t('clientPortal.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('clientPortal.description')}</p>
 
           {/* CTA for logged-in, verified clients to complete full profile */}
           {currentUser && isVerified && (
@@ -512,14 +482,12 @@ function ClientPortalContent() {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link href={isEmploymentSupportRegistration ? '/my-portal/employment-support' : '/profile-completion'}>
-                      <Button variant="ghost">{isEmploymentSupportRegistration ? 'Start Employment Support' : 'Complete your full profile'}</Button>
+                    <Link href="/profile-completion">
+                      <Button variant="ghost">Complete your full profile</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {isEmploymentSupportRegistration
-                      ? 'Open the Employment Support questionnaire to share your job goals and support needs.'
-                      : 'Complete the full intake (demographics, household, finances, and health) to finish your profile.'}
+                    Complete the full intake (demographics, household, finances, and health) to finish your profile.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -539,16 +507,14 @@ function ClientPortalContent() {
               Account
             </span>
             <span className={`text-xs ${currentStep >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              {isEmploymentSupportRegistration ? 'Agreement' : 'Address'}
+              Address
             </span>
             <span className={`text-xs ${currentStep >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              {isEmploymentSupportRegistration ? 'Sign' : 'Agreement'}
+              Agreement
             </span>
-            {!isEmploymentSupportRegistration && (
-              <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-                Sign
-              </span>
-            )}
+            <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+              Sign
+            </span>
           </div>
         </div>
 
@@ -566,14 +532,8 @@ function ClientPortalContent() {
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">
-                    {isEmploymentSupportRegistration ? 'Create your account' : t('clientPortal.step1Title')}
-                  </h2>
-                  <p className="text-gray-500 mt-1">
-                    {isEmploymentSupportRegistration
-                      ? 'We only need your basic account details here. You can share additional profile information later if staff need it.'
-                      : t('intake.personalInfo')}
-                  </p>
+                  <h2 className="text-xl font-semibold">{t('clientPortal.step1Title')}</h2>
+                  <p className="text-gray-500 mt-1">{t('intake.personalInfo')}</p>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -651,60 +611,50 @@ function ClientPortalContent() {
                       placeholder="(555) 123-4567"
                     />
                   </div>
-                  {!isEmploymentSupportRegistration && (
-                    <div className="space-y-2">
-                      <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')}</Label>
-                      <Input
-                        id="dateOfBirth"
-                        name="dateOfBirth"
-                        type="date"
-                        value={formData.dateOfBirth}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')}</Label>
+                    <Input
+                      id="dateOfBirth"
+                      name="dateOfBirth"
+                      type="date"
+                      value={formData.dateOfBirth}
+                      onChange={handleInputChange}
+                    />
+                  </div>
                 </div>
 
-                {!isEmploymentSupportRegistration && (
-                  <div className="space-y-2">
-                    <Label>Preferred Language</Label>
-                    <Select
-                      value={formData.preferredLanguage}
-                      onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="english">English</SelectItem>
-                        <SelectItem value="spanish">Spanish</SelectItem>
-                        <SelectItem value="chinese">Chinese</SelectItem>
-                        <SelectItem value="vietnamese">Vietnamese</SelectItem>
-                        <SelectItem value="korean">Korean</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label>Preferred Language</Label>
+                  <Select
+                    value={formData.preferredLanguage}
+                    onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="spanish">Spanish</SelectItem>
+                      <SelectItem value="chinese">Chinese</SelectItem>
+                      <SelectItem value="vietnamese">Vietnamese</SelectItem>
+                      <SelectItem value="korean">Korean</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="bg-blue-50 p-4 rounded-lg flex gap-3">
                   <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-blue-800">
-                    <p className="font-medium">
-                      {isEmploymentSupportRegistration ? 'You are not filling out the full intake here' : 'Your information is secure'}
-                    </p>
-                    <p className="mt-1">
-                      {isEmploymentSupportRegistration
-                        ? 'This registration only creates your account and saves your signed agreement so you can move straight into the Employment Support questionnaire.'
-                        : 'All data is encrypted and stored securely in compliance with privacy regulations.'}
-                    </p>
+                    <p className="font-medium">Your information is secure</p>
+                    <p className="mt-1">All data is encrypted and stored securely in compliance with privacy regulations.</p>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Step 2: Address */}
-            {!isEmploymentSupportRegistration && currentStep === 2 && (
+            {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
                   <h2 className="text-xl font-semibold">{t('clientPortal.step2Title')}</h2>
@@ -809,17 +759,11 @@ function ClientPortalContent() {
             )}
 
             {/* Step 3: Engagement Letter */}
-            {currentStep === agreementStep && (
+            {currentStep === 3 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">
-                    {isEmploymentSupportRegistration ? 'Review the agreement letter' : t('clientPortal.step3Title')}
-                  </h2>
-                  <p className="text-gray-500 mt-1">
-                    {isEmploymentSupportRegistration
-                      ? 'This is the only program agreement we need before your account is ready for Employment Support.'
-                      : t('clientPortal.agreementText')}
-                  </p>
+                  <h2 className="text-xl font-semibold">{t('clientPortal.step3Title')}</h2>
+                  <p className="text-gray-500 mt-1">{t('clientPortal.agreementText')}</p>
                 </div>
 
                 <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto bg-gray-50">
@@ -846,17 +790,11 @@ function ClientPortalContent() {
             )}
 
             {/* Step 4: Digital Signature */}
-            {currentStep === signatureStep && (
+            {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="text-center mb-6">
-                  <h2 className="text-xl font-semibold">
-                    {isEmploymentSupportRegistration ? 'Sign to finish registration' : t('clientPortal.step4Title')}
-                  </h2>
-                  <p className="text-gray-500 mt-1">
-                    {isEmploymentSupportRegistration
-                      ? 'Once you sign, your Employment Support account will be created and your next step will be the program questionnaire.'
-                      : t('clientPortal.signatureLabel')}
-                  </p>
+                  <h2 className="text-xl font-semibold">{t('clientPortal.step4Title')}</h2>
+                  <p className="text-gray-500 mt-1">{t('clientPortal.signatureLabel')}</p>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -997,36 +935,5 @@ function ClientPortalContent() {
         </div>
       </main>
     </div>
-  );
-}
-
-function ClientPortalFallback() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-slate-100 flex items-center justify-center px-4 py-10">
-      <Card className="w-full max-w-2xl border-emerald-100 shadow-lg">
-        <CardHeader className="space-y-3">
-          <div className="h-6 w-40 rounded bg-slate-200 animate-pulse" />
-          <div className="h-4 w-64 rounded bg-slate-100 animate-pulse" />
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <Progress value={25} className="h-2" />
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="h-10 rounded bg-slate-100 animate-pulse" />
-            <div className="h-10 rounded bg-slate-100 animate-pulse" />
-            <div className="h-10 rounded bg-slate-100 animate-pulse md:col-span-2" />
-            <div className="h-10 rounded bg-slate-100 animate-pulse" />
-            <div className="h-10 rounded bg-slate-100 animate-pulse" />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-export default function ClientPortalPage() {
-  return (
-    <Suspense fallback={<ClientPortalFallback />}>
-      <ClientPortalContent />
-    </Suspense>
   );
 }

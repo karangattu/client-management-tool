@@ -296,12 +296,6 @@ function LoginForm() {
                 Register here
               </Link>
             </p>
-            <p className="text-gray-600 mt-2">
-              Looking for Employment Support only?{' '}
-              <Link href="/self-service/employment-support" className="text-blue-600 hover:underline font-medium">
-                Start Employment Support registration
-              </Link>
-            </p>
           </div>
 
           <div className="mt-3 text-center">
