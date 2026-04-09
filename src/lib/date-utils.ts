@@ -1,10 +1,24 @@
-import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
 
 export const PACIFIC_TIMEZONE = 'America/Los_Angeles';
 
+function toDateInput(date: Date | string): Date {
+  return typeof date === 'string' ? new Date(date) : date;
+}
+
+function getPacificDateKey(date: Date | string): string {
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'yyyy-MM-dd');
+}
+
+function getPacificDayDifference(date: Date | string, relativeTo: Date | string = new Date()): number {
+  const pacificDate = new Date(`${getPacificDateKey(date)}T00:00:00Z`);
+  const pacificReference = new Date(`${getPacificDateKey(relativeTo)}T00:00:00Z`);
+  return Math.round((pacificDate.getTime() - pacificReference.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export function toPacificDate(date: Date | string): Date {
-  const dateInput = typeof date === 'string' ? new Date(date) : date;
+  const dateInput = toDateInput(date);
   return toZonedTime(dateInput, PACIFIC_TIMEZONE);
 }
 
@@ -36,7 +50,7 @@ export function getPacificYear(): number {
  * Equivalent to toLocaleDateString() but always in Pacific time
  */
 export function formatPacificLocaleDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  const dateInput = typeof date === 'string' ? new Date(date) : date;
+  const dateInput = toDateInput(date);
   return dateInput.toLocaleDateString('en-US', {
     ...options,
     timeZone: PACIFIC_TIMEZONE,
@@ -48,7 +62,7 @@ export function formatPacificLocaleDate(date: Date | string, options?: Intl.Date
  * Equivalent to toLocaleString() but always in Pacific time
  */
 export function formatPacificLocaleDateTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  const dateInput = typeof date === 'string' ? new Date(date) : date;
+  const dateInput = toDateInput(date);
   return dateInput.toLocaleString('en-US', {
     ...options,
     timeZone: PACIFIC_TIMEZONE,
@@ -60,7 +74,7 @@ export function formatPacificLocaleDateTime(date: Date | string, options?: Intl.
  * Equivalent to toLocaleTimeString() but always in Pacific time
  */
 export function formatPacificLocaleTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  const dateInput = typeof date === 'string' ? new Date(date) : date;
+  const dateInput = toDateInput(date);
   return dateInput.toLocaleTimeString('en-US', {
     ...options,
     timeZone: PACIFIC_TIMEZONE,
@@ -84,7 +98,7 @@ export function getPacificDayInfo(): { weekday: string; month: string; day: stri
  * Format a date like "Tuesday, January 23, 2026" in Pacific timezone
  */
 export function formatPacificFullDate(date?: Date | string): string {
-  const dateInput = date ? (typeof date === 'string' ? new Date(date) : date) : new Date();
+  const dateInput = date ? toDateInput(date) : new Date();
   return formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'EEEE, MMMM d, yyyy');
 }
 
@@ -116,51 +130,42 @@ export function pacificToUTCISO(dateStr: string, timeStr: string = '00:00'): str
 }
 
 export function formatPacificTime(date: Date | string, showSeconds = false): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, showSeconds ? 'h:mm:ss a' : 'h:mm a');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, showSeconds ? 'h:mm:ss a' : 'h:mm a');
 }
 
 export function formatPacificDate(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, 'MMM d, yyyy');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'MMM d, yyyy');
 }
 
 export function formatPacificDateTime(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, 'MMM d, yyyy h:mm a');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'MMM d, yyyy h:mm a');
 }
 
 export function formatPacificDateTimeFull(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, 'MMMM d, yyyy \'at\' h:mm a');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'MMMM d, yyyy \'at\' h:mm a');
 }
 
 export function formatPacificDayOfWeek(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, 'EEEE');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'EEEE');
 }
 
 export function formatPacificDayAndMonth(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
-  return format(pacificDate, 'MMMM d');
+  return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'MMMM d');
 }
 
 export function formatPacificTimeRange(start: Date | string, end: Date | string): string {
-  const startPacific = toPacificDate(start);
-  const endPacific = toPacificDate(end);
-  
-  const startTime = format(startPacific, 'h:mm a');
-  const endTime = format(endPacific, 'h:mm a');
+  const startTime = formatInTimeZone(toDateInput(start), PACIFIC_TIMEZONE, 'h:mm a');
+  const endTime = formatInTimeZone(toDateInput(end), PACIFIC_TIMEZONE, 'h:mm a');
   
   return `${startTime} - ${endTime}`;
 }
 
 export function formatPacificRelative(date: Date | string, addSuffix = true): string {
-  const pacificDate = toPacificDate(date);
+  const dateInput = toDateInput(date);
   
   // For very recent events (within minutes), show "just now"
   const now = new Date();
-  const diffMs = now.getTime() - pacificDate.getTime();
+  const diffMs = now.getTime() - dateInput.getTime();
   const diffMinutes = diffMs / (1000 * 60);
   
   if (diffMinutes < 1) {
@@ -171,66 +176,69 @@ export function formatPacificRelative(date: Date | string, addSuffix = true): st
     return `about ${Math.floor(diffMinutes)} minute${diffMinutes > 1 ? 's' : ''} ago`;
   }
   
-  return formatDistanceToNow(pacificDate, { addSuffix });
+  return formatDistanceToNow(dateInput, { addSuffix });
 }
 
 export function formatPacificFriendly(date: Date | string, showTime = true): string {
-  const pacificDate = toPacificDate(date);
+  const dateInput = toDateInput(date);
+  const dayDifference = getPacificDayDifference(dateInput);
+  const timeLabel = formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'h:mm a');
   
-  if (isToday(pacificDate)) {
+  if (dayDifference === 0) {
     return showTime 
-      ? `Today at ${format(pacificDate, 'h:mm a')}`
+      ? `Today at ${timeLabel}`
       : 'Today';
   }
   
-  if (isTomorrow(pacificDate)) {
+  if (dayDifference === 1) {
     return showTime 
-      ? `Tomorrow at ${format(pacificDate, 'h:mm a')}`
+      ? `Tomorrow at ${timeLabel}`
       : 'Tomorrow';
   }
   
-  if (isYesterday(pacificDate)) {
+  if (dayDifference === -1) {
     return showTime 
-      ? `Yesterday at ${format(pacificDate, 'h:mm a')}`
+      ? `Yesterday at ${timeLabel}`
       : 'Yesterday';
   }
   
   // For dates within the next 7 days, show day of week
-  const now = new Date();
-  const diffDays = Math.abs(Math.floor((pacificDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+  const diffDays = Math.abs(dayDifference);
   
   if (diffDays <= 7) {
     return showTime
-      ? `${format(pacificDate, 'EEEE h:mm a')}`
-      : format(pacificDate, 'EEEE');
+      ? formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'EEEE h:mm a')
+      : formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'EEEE');
   }
   
   // Otherwise show full date
   return showTime
-    ? format(pacificDate, 'MMM d, yyyy h:mm a')
-    : format(pacificDate, 'MMM d, yyyy');
+    ? formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'MMM d, yyyy h:mm a')
+    : formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'MMM d, yyyy');
 }
 
 export function formatPacificDueDate(date: Date | string): string {
-  const pacificDate = toPacificDate(date);
+  const dateInput = toDateInput(date);
   const now = new Date();
-  const isOverdue = pacificDate < now;
+  const isOverdue = dateInput.getTime() < now.getTime();
+  const dayDifference = getPacificDayDifference(dateInput, now);
+  const timeLabel = formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'h:mm a');
   
-  if (isToday(pacificDate) && !isOverdue) {
-    return `Today at ${format(pacificDate, 'h:mm a')}`;
+  if (dayDifference === 0 && !isOverdue) {
+    return `Today at ${timeLabel}`;
   }
   
-  if (isTomorrow(pacificDate) && !isOverdue) {
-    return `Tomorrow at ${format(pacificDate, 'h:mm a')}`;
+  if (dayDifference === 1 && !isOverdue) {
+    return `Tomorrow at ${timeLabel}`;
   }
   
   if (isOverdue) {
-    const daysOverdue = Math.floor((now.getTime() - pacificDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysOverdue = Math.abs(dayDifference);
     if (daysOverdue === 0) {
-      return `Due today (${format(pacificDate, 'h:mm a')})`;
+      return `Due today (${timeLabel})`;
     }
-    return `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue (${format(pacificDate, 'MMM d')})`;
+    return `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue (${formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'MMM d')})`;
   }
   
-  return format(pacificDate, 'MMM d, h:mm a');
+  return formatInTimeZone(dateInput, PACIFIC_TIMEZONE, 'MMM d, h:mm a');
 }
