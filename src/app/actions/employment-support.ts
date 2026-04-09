@@ -13,6 +13,142 @@ interface SaveResult {
   error?: string;
 }
 
+export interface EmploymentSupportQueueItem {
+  enrollmentId: string;
+  enrollmentStatus: string;
+  updatedAt: string | null;
+  client: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    status: string;
+  };
+  intake: {
+    status: string;
+    readinessStatus: string | null;
+    nextFollowupDate: string | null;
+    updatedAt: string | null;
+  } | null;
+  assignedStaff: {
+    firstName: string;
+    lastName: string;
+  } | null;
+}
+
+/**
+ * Fetches the Employment Support staff queue: all clients enrolled in an
+ * Employment Support program, joined with their intake & assigned-staff info.
+ */
+export async function getEmploymentSupportQueue(): Promise<{
+  success: boolean;
+  data?: EmploymentSupportQueueItem[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createClient();
+
+    // Find the Employment Support program id
+    const { data: program, error: programError } = await supabase
+      .from("programs")
+      .select("id")
+      .ilike("name", "Employment Support")
+      .maybeSingle();
+
+    if (programError) throw programError;
+    if (!program) return { success: true, data: [] };
+
+    // Pull enrollments + client + intake
+    const { data: enrollments, error: enrollError } = await supabase
+      .from("program_enrollments")
+      .select(
+        `
+        id,
+        status,
+        updated_at,
+        clients!inner (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          status
+        ),
+        employment_support_intake (
+          status,
+          readiness_status,
+          next_followup_date,
+          updated_at,
+          assigned_staff:profiles!assigned_staff_id (
+            first_name,
+            last_name
+          )
+        )
+      `
+      )
+      .eq("program_id", program.id)
+      .in("status", ["interested", "applying", "enrolled", "completed", "denied", "withdrawn"]);
+
+    if (enrollError) throw enrollError;
+
+    const items: EmploymentSupportQueueItem[] = (enrollments || []).map(
+      (row: Record<string, unknown>) => {
+        const client = row.clients as Record<string, unknown>;
+        const intakes = row.employment_support_intake as
+          | Record<string, unknown>[]
+          | null;
+        const intake = intakes && intakes.length > 0 ? intakes[0] : null;
+        const assignedStaff = intake?.assigned_staff as Record<
+          string,
+          string
+        > | null;
+
+        return {
+          enrollmentId: row.id as string,
+          enrollmentStatus: row.status as string,
+          updatedAt: (row.updated_at as string) || null,
+          client: {
+            id: client.id as string,
+            firstName: (client.first_name as string) || "",
+            lastName: (client.last_name as string) || "",
+            email: (client.email as string) || null,
+            phone: (client.phone as string) || null,
+            status: (client.status as string) || "active",
+          },
+          intake: intake
+            ? {
+                status: (intake.status as string) || "draft",
+                readinessStatus:
+                  (intake.readiness_status as string) || null,
+                nextFollowupDate:
+                  (intake.next_followup_date as string) || null,
+                updatedAt: (intake.updated_at as string) || null,
+              }
+            : null,
+          assignedStaff: assignedStaff
+            ? {
+                firstName: assignedStaff.first_name || "",
+                lastName: assignedStaff.last_name || "",
+              }
+            : null,
+        };
+      }
+    );
+
+    return { success: true, data: items };
+  } catch (error) {
+    console.error("Error fetching employment support queue:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to load employment support queue",
+    };
+  }
+}
+
 /**
  * Saves or updates an Employment Support Intake questionnaire.
  */
