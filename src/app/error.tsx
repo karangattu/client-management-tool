@@ -12,14 +12,33 @@ export default function Error({
     reset: () => void;
 }) {
     useEffect(() => {
-        // Log the error to an error reporting service
         console.error(error);
+
+        // ChunkLoadError means a new deployment invalidated cached chunks.
+        // Reload once so the browser fetches the current assets.
+        if (
+            error.name === 'ChunkLoadError' ||
+            error.message?.includes('Loading chunk') ||
+            error.message?.includes('ChunkLoadError')
+        ) {
+            const key = 'chunk_reload:' + window.location.pathname;
+            if (!sessionStorage.getItem(key)) {
+                sessionStorage.setItem(key, '1');
+                window.location.reload();
+            }
+        }
     }, [error]);
 
     // Determine helpful message based on error
     const getErrorInfo = () => {
         const message = error.message?.toLowerCase() || '';
         
+        if (message.includes('chunk') || message.includes('chunkloaderror')) {
+            return {
+                title: 'App Updated',
+                description: 'A new version was deployed. The page will reload automatically.',
+            };
+        }
         if (message.includes('network') || message.includes('fetch')) {
             return {
                 title: 'Connection Problem',

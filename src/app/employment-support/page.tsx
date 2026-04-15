@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -16,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/lib/auth-context';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
 import {
@@ -23,7 +25,9 @@ import {
   CircleAlert,
   ClipboardList,
   Clock,
+  Download,
   ExternalLink,
+  Loader2,
   Search,
   UserRound,
 } from 'lucide-react';
@@ -31,6 +35,7 @@ import {
   getEmploymentSupportQueue,
   type EmploymentSupportQueueItem,
 } from '@/app/actions/employment-support';
+import { getEmploymentSupportEngagementReport } from '@/app/actions/employment-support-report';
 
 const intakeStatusConfig: Record<string, { label: string; className: string }> = {
   not_started: {
@@ -90,12 +95,74 @@ function getReadinessStatus(item: EmploymentSupportQueueItem) {
 export default function EmploymentSupportQueuePage() {
   const router = useRouter();
   const { user, profile, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [queue, setQueue] = useState<EmploymentSupportQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [intakeFilter, setIntakeFilter] = useState('all');
   const [readinessFilter, setReadinessFilter] = useState('all');
+  const [reportStartDate, setReportStartDate] = useState('');
+  const [reportEndDate, setReportEndDate] = useState('');
+
+  const hasInvalidReportRange =
+    reportStartDate.length > 0 && reportEndDate.length > 0 && reportStartDate > reportEndDate;
+
+  const handleDownloadReport = async () => {
+    if (hasInvalidReportRange) {
+      toast({
+        title: 'Unable to download report',
+        description: 'Start date must be on or before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setDownloadingReport(true);
+
+    try {
+      const result = await getEmploymentSupportEngagementReport({
+        startDate: reportStartDate || undefined,
+        endDate: reportEndDate || undefined,
+      });
+
+      if (!result.success) {
+        toast({
+          title: 'Unable to download report',
+          description: result.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = result.data.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      toast({
+        title: 'Employment report downloaded',
+        description: `Exported ${result.data.rows.length} active Employment Support clients using tagged Employment Support interactions.`,
+      });
+    } catch (downloadError) {
+      toast({
+        title: 'Unable to download report',
+        description:
+          downloadError instanceof Error
+            ? downloadError.message
+            : 'Something went wrong while generating the report.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -210,12 +277,29 @@ export default function EmploymentSupportQueuePage() {
                   and identify follow-up work without digging through the main
                   client list.
                 </p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Report exports include active Employment Support enrollments and
+                  Employment Support-tagged client interactions.
+                </p>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Button asChild variant="outline" className="bg-white/80">
                 <Link href="/clients">Open client directory</Link>
+              </Button>
+              <Button
+                variant="outline"
+                className="bg-white/80"
+                onClick={handleDownloadReport}
+                disabled={downloadingReport || hasInvalidReportRange}
+              >
+                {downloadingReport ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download engagement report
               </Button>
               <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
                 <Link href="/client-intake">Add new client</Link>
@@ -272,7 +356,7 @@ export default function EmploymentSupportQueuePage() {
         </section>
 
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="space-y-4 p-5">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -307,6 +391,63 @@ export default function EmploymentSupportQueuePage() {
                   <SelectItem value="refer_back_later">Refer back later</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="employment-report-start-date"
+                  className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400"
+                >
+                  Report interaction start
+                </Label>
+                <Input
+                  id="employment-report-start-date"
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(event) => setReportStartDate(event.target.value)}
+                  max={reportEndDate || undefined}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="employment-report-end-date"
+                  className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400"
+                >
+                  Report interaction end
+                </Label>
+                <Input
+                  id="employment-report-end-date"
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(event) => setReportEndDate(event.target.value)}
+                  min={reportStartDate || undefined}
+                />
+              </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start text-slate-600 md:justify-center"
+                onClick={() => {
+                  setReportStartDate('');
+                  setReportEndDate('');
+                }}
+                disabled={!reportStartDate && !reportEndDate}
+              >
+                Clear report dates
+              </Button>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <p className="text-slate-500">
+                The date range applies to exported interaction counts only. Leave
+                it blank to include all Employment Support-tagged interactions.
+              </p>
+              {hasInvalidReportRange ? (
+                <p className="text-rose-600">Start date must be on or before end date.</p>
+              ) : null}
             </div>
           </CardContent>
         </Card>
