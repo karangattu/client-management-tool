@@ -6,10 +6,19 @@ import {
   employmentSupportIntakeSchema,
   type EmploymentSupportIntakeForm,
 } from "@/lib/schemas/employment-support";
+import {
+  employmentFollowUpDbRowToFormData,
+  employmentFollowUpSchema,
+  type EmploymentFollowUpForm,
+} from "@/lib/schemas/employment-follow-up";
+
+const STAFF_ROLES = ["admin", "case_manager", "staff", "volunteer"] as const;
+const EMPLOYMENT_FOLLOW_UP_TASK_TITLE = "Complete Employment Follow-Up Intake";
 
 interface SaveResult {
   success: boolean;
   intakeId?: string;
+  followUpId?: string;
   error?: string;
 }
 
@@ -35,6 +44,24 @@ export interface EmploymentSupportQueueItem {
     firstName: string;
     lastName: string;
   } | null;
+}
+
+export interface EmploymentFollowUpItem {
+  id: string;
+  clientId: string;
+  enrollmentId: string | null;
+  status: string;
+  employer: string | null;
+  jobTitle: string | null;
+  requestedAt: string | null;
+  requestedBy: string | null;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  formData: EmploymentFollowUpForm;
+}
+
+function isStaffRole(role?: string | null) {
+  return STAFF_ROLES.includes(role as (typeof STAFF_ROLES)[number]);
 }
 
 /**
@@ -181,9 +208,7 @@ export async function saveEmploymentSupportIntake(params: {
       .eq("id", user.id)
       .single();
 
-    const isStaff =
-      profile?.role &&
-      ["admin", "case_manager", "staff", "volunteer"].includes(profile.role);
+    const isStaff = isStaffRole(profile?.role);
 
     // Build the database row from the validated form data
     const row: Record<string, unknown> = {
@@ -333,6 +358,411 @@ export async function getEmploymentSupportIntake(
       success: false,
       error:
         error instanceof Error ? error.message : "Failed to fetch intake",
+    };
+  }
+}
+
+/**
+ * Saves or updates an Employment Support post-employment follow-up.
+ */
+export async function saveEmploymentFollowUp(params: {
+  data: EmploymentFollowUpForm;
+  clientId: string;
+  enrollmentId?: string;
+  followUpId?: string;
+}): Promise<SaveResult> {
+  try {
+    const validated = employmentFollowUpSchema.parse(params.data);
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: "User not authenticated" };
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    const completedByRole = isStaffRole((profile as { role?: string | null } | null)?.role)
+      ? "staff"
+      : "client";
+    const submittedAt = new Date().toISOString();
+
+    const row = {
+      client_id: params.clientId,
+      program_enrollment_id: params.enrollmentId || null,
+      employer: validated.jobDetails.employer || null,
+      job_title: validated.jobDetails.jobTitle || null,
+      start_date: validated.jobDetails.startDate || null,
+      salary: validated.jobDetails.salary || null,
+      schedule: validated.jobDetails.schedule || null,
+      job_satisfaction: validated.satisfaction.jobSatisfaction || null,
+      supervisor_support: validated.satisfaction.supervisorSupport || null,
+      has_transportation_challenges:
+        validated.challenges.hasTransportationChallenges ?? false,
+      transportation_explanation:
+        validated.challenges.transportationExplanation || null,
+      has_coworker_or_employer_conflicts:
+        validated.challenges.hasCoworkerOrEmployerConflicts ?? false,
+      conflict_explanation: validated.challenges.conflictExplanation || null,
+      has_uncovered_employment_costs:
+        validated.challenges.hasUncoveredEmploymentCosts ?? false,
+      cost_explanation: validated.challenges.costExplanation || null,
+      needed_skills_or_training:
+        validated.challenges.neededSkillsOrTraining || null,
+      can_cover_basic_expenses:
+        validated.financialStability.canCoverBasicExpenses || null,
+      wants_housing_and_self_sufficiency_connection:
+        validated.nextSteps.wantsHousingAndSelfSufficiencyConnection || null,
+      wants_career_advancement_support:
+        validated.nextSteps.wantsCareerAdvancementSupport || null,
+      additional_feedback: validated.feedback.additionalFeedback || null,
+      status: "submitted",
+      ...(params.followUpId ? {} : { requested_at: submittedAt }),
+      submitted_at: submittedAt,
+      submitted_by: user.id,
+      updated_at: submittedAt,
+    };
+
+    let followUpId = params.followUpId;
+
+    if (followUpId) {
+      const { error } = await supabase
+        .from("employment_follow_up_intake")
+        .update(row)
+        .eq("id", followUpId);
+
+      if (error) throw error;
+
+      const { data: followUpTask } = await supabase
+        .from("employment_follow_up_intake")
+        .select("task_id")
+        .eq("id", followUpId)
+        .maybeSingle();
+
+      const taskId = (followUpTask as { task_id?: string | null } | null)?.task_id;
+      if (taskId) {
+        await supabase
+          .from("tasks")
+          .update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            completed_by: user.id,
+            completed_by_role: completedByRole,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", taskId)
+          .in("status", ["pending", "in_progress"]);
+      }
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("employment_follow_up_intake")
+        .insert(row)
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      followUpId = inserted.id;
+    }
+
+    revalidatePath(`/clients/${params.clientId}`);
+    revalidatePath("/employment-support");
+    revalidatePath("/my-portal");
+
+    return { success: true, followUpId };
+  } catch (error) {
+    console.error("Error saving employment follow-up:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to save follow-up",
+    };
+  }
+}
+
+/**
+ * Staff request for a client to complete a follow-up from their portal.
+ */
+export async function requestEmploymentFollowUp(params: {
+  clientId: string;
+  enrollmentId?: string;
+  dueDate?: string;
+}): Promise<SaveResult> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: "User not authenticated" };
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+
+    if (!isStaffRole((profile as { role?: string | null } | null)?.role)) {
+      return {
+        success: false,
+        error: "You do not have permission to request follow-ups",
+      };
+    }
+
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("portal_user_id, has_portal_access, first_name")
+      .eq("id", params.clientId)
+      .single();
+
+    if (clientError) throw clientError;
+
+    const clientRecord = client as {
+      portal_user_id?: string | null;
+      has_portal_access?: boolean | null;
+      first_name?: string | null;
+    } | null;
+
+    if (!clientRecord?.portal_user_id || !clientRecord.has_portal_access) {
+      return {
+        success: false,
+        error: "This client does not have active portal access",
+      };
+    }
+
+    const requestedAt = new Date().toISOString();
+    const { data: inserted, error: followUpError } = await supabase
+      .from("employment_follow_up_intake")
+      .insert({
+        client_id: params.clientId,
+        program_enrollment_id: params.enrollmentId || null,
+        status: "requested",
+        requested_at: requestedAt,
+        requested_by: user.id,
+        updated_at: requestedAt,
+      })
+      .select("id")
+      .single();
+
+    if (followUpError) throw followUpError;
+
+    const followUpId = (inserted as { id: string }).id;
+    const dueDate = params.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: task, error: taskError } = await supabase
+      .from("tasks")
+      .insert({
+        title: EMPLOYMENT_FOLLOW_UP_TASK_TITLE,
+        description: `Please complete your Employment Follow-Up Intake in the portal. Follow-up ID: ${followUpId}`,
+        client_id: params.clientId,
+        assigned_to: clientRecord.portal_user_id,
+        assigned_by: user.id,
+        priority: "high",
+        due_date: dueDate,
+        category: "employment_support",
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (taskError) throw taskError;
+
+    const taskId = (task as { id: string }).id;
+
+    const { error: taskLinkError } = await supabase
+      .from("employment_follow_up_intake")
+      .update({ task_id: taskId, updated_at: new Date().toISOString() })
+      .eq("id", followUpId);
+
+    if (taskLinkError) throw taskLinkError;
+
+    await supabase.from("alerts").insert({
+      user_id: clientRecord.portal_user_id,
+      client_id: params.clientId,
+      task_id: taskId,
+      title: "Employment Follow-Up Requested",
+      message: "Please complete your Employment Follow-Up Intake in the portal.",
+      alert_type: "custom",
+      trigger_at: requestedAt,
+    });
+
+    revalidatePath(`/clients/${params.clientId}`);
+    revalidatePath("/employment-support");
+    revalidatePath("/my-portal");
+
+    return { success: true, followUpId };
+  } catch (error) {
+    console.error("Error requesting employment follow-up:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to request follow-up",
+    };
+  }
+}
+
+export async function cancelEmploymentFollowUp(params: {
+  followUpId: string;
+  clientId: string;
+}): Promise<SaveResult> {
+  try {
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { success: false, error: "User not authenticated" };
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) throw profileError;
+
+    if (!isStaffRole((profile as { role?: string | null } | null)?.role)) {
+      return {
+        success: false,
+        error: "You do not have permission to cancel follow-ups",
+      };
+    }
+
+    const { data: followUp, error: fetchError } = await supabase
+      .from("employment_follow_up_intake")
+      .select("task_id")
+      .eq("id", params.followUpId)
+      .eq("client_id", params.clientId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    const taskId = (followUp as { task_id?: string | null } | null)?.task_id;
+    const cancelledAt = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("employment_follow_up_intake")
+      .update({
+        status: "cancelled",
+        cancelled_at: cancelledAt,
+        cancelled_by: user.id,
+        updated_at: cancelledAt,
+      })
+      .eq("id", params.followUpId)
+      .eq("client_id", params.clientId);
+
+    if (error) throw error;
+
+    if (taskId) {
+      await supabase
+        .from("tasks")
+        .update({
+          status: "cancelled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", taskId)
+        .in("status", ["pending", "in_progress"]);
+    }
+
+    revalidatePath(`/clients/${params.clientId}`);
+    revalidatePath("/employment-support");
+    revalidatePath("/my-portal");
+
+    return { success: true, followUpId: params.followUpId };
+  } catch (error) {
+    console.error("Error cancelling employment follow-up:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to cancel follow-up",
+    };
+  }
+}
+
+/**
+ * Fetches post-employment follow-ups for a client, most recent first.
+ */
+export async function getEmploymentFollowUps(clientId: string): Promise<{
+  success: boolean;
+  data?: EmploymentFollowUpItem[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from("employment_follow_up_intake")
+      .select(
+        `
+        *,
+        requested_by_profile:profiles!requested_by (first_name, last_name),
+        submitted_by_profile:profiles!submitted_by (first_name, last_name)
+      `
+      )
+      .eq("client_id", clientId)
+      .neq("status", "cancelled")
+      .order("requested_at", { ascending: false })
+      .order("submitted_at", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const followUps: EmploymentFollowUpItem[] = (data || []).map(
+      (row: Record<string, unknown>) => {
+        const submittedByProfile = row.submitted_by_profile as {
+          first_name: string;
+          last_name: string;
+        } | null;
+        const requestedByProfile = row.requested_by_profile as {
+          first_name: string;
+          last_name: string;
+        } | null;
+
+        return {
+          id: row.id as string,
+          clientId: row.client_id as string,
+          enrollmentId: (row.program_enrollment_id as string) || null,
+          status: (row.status as string) || "submitted",
+          employer: (row.employer as string) || null,
+          jobTitle: (row.job_title as string) || null,
+          requestedAt: (row.requested_at as string) || null,
+          requestedBy: requestedByProfile
+            ? `${requestedByProfile.first_name} ${requestedByProfile.last_name}`
+            : null,
+          submittedAt: (row.submitted_at as string) || null,
+          submittedBy: submittedByProfile
+            ? `${submittedByProfile.first_name} ${submittedByProfile.last_name}`
+            : null,
+          formData: employmentFollowUpDbRowToFormData(row),
+        };
+      }
+    );
+
+    return { success: true, data: followUps };
+  } catch (error) {
+    console.error("Error fetching employment follow-ups:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch employment follow-ups",
     };
   }
 }

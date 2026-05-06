@@ -39,9 +39,11 @@ import {
   Mail,
   MapPin,
   Calendar,
+  ClipboardList,
   FileText,
   CheckSquare,
   Edit,
+  Loader2,
   Upload,
   Plus,
   Clock,
@@ -55,6 +57,7 @@ import {
   Wifi,
   WifiOff,
   Briefcase,
+  X,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -67,9 +70,17 @@ import { SignEngagementLetterDialog } from '@/components/clients/SignEngagementL
 import { OnboardingProgress, getClientOnboardingSteps } from '@/components/clients/OnboardingProgress';
 import { updateTaskStatus } from '@/app/actions/tasks';
 import { getPrograms, getClientEnrollments, upsertEnrollment, removeEnrollment, updateEnrollmentStatus, getEnrollmentActivity, Enrollment, Program } from '@/app/actions/programs';
-import { getEmploymentSupportIntake } from '@/app/actions/employment-support';
+import {
+  cancelEmploymentFollowUp,
+  getEmploymentFollowUps,
+  getEmploymentSupportIntake,
+  requestEmploymentFollowUp,
+  type EmploymentFollowUpItem,
+} from '@/app/actions/employment-support';
+import { EmploymentFollowUpIntakeForm } from '@/components/forms/EmploymentFollowUpIntakeForm';
 import { EmploymentSupportIntakeForm } from '@/components/forms/EmploymentSupportIntakeForm';
 import { dbRowToFormData, type EmploymentSupportIntakeForm as ESIFormType } from '@/lib/schemas/employment-support';
+import type { EmploymentFollowUpForm } from '@/lib/schemas/employment-follow-up';
 import { useRealtimeTasks, useRealtimeDocuments, type RealtimeTask, type RealtimeDocument } from '@/lib/hooks/use-realtime';
 
 interface ClientDetail {
@@ -300,6 +311,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [volunteers, setVolunteers] = useState<{ id: string; name: string }[]>([]);
   const [employmentIntake, setEmploymentIntake] = useState<{ id: string; data: ESIFormType; status: string; submittedInfo: { by: string; at: string } | null; enrollmentId?: string } | null>(null);
   const [showEmploymentIntakeForm, setShowEmploymentIntakeForm] = useState(false);
+  const [employmentFollowUps, setEmploymentFollowUps] = useState<EmploymentFollowUpItem[]>([]);
+  const [showEmploymentFollowUpForm, setShowEmploymentFollowUpForm] = useState(false);
+  const [editingFollowUp, setEditingFollowUp] = useState<{
+    id: string;
+    data: EmploymentFollowUpForm;
+    enrollmentId?: string;
+  } | null>(null);
+  const [requestingFollowUp, setRequestingFollowUp] = useState(false);
+  const [cancellingFollowUpId, setCancellingFollowUpId] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -324,6 +344,68 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       console.error('Error refreshing employment intake:', err);
     }
   }, [clientId]);  // supabase is stable; getEmploymentSupportIntake is a server action
+
+  const refreshEmploymentFollowUps = useCallback(async () => {
+    try {
+      const result = await getEmploymentFollowUps(clientId);
+      if (result.success) {
+        setEmploymentFollowUps(result.data || []);
+      }
+    } catch (err) {
+      console.error('Error refreshing employment follow-ups:', err);
+    }
+  }, [clientId]);
+
+  const handleRequestEmploymentFollowUp = async () => {
+    setRequestingFollowUp(true);
+    try {
+      const result = await requestEmploymentFollowUp({
+        clientId,
+        enrollmentId: employmentEnrollmentId,
+      });
+
+      if (!result.success) {
+        toast({
+          title: 'Unable to request follow-up',
+          description: result.error || 'Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Follow-up requested',
+        description: 'The client can now complete it from their portal.',
+      });
+      refreshEmploymentFollowUps();
+    } finally {
+      setRequestingFollowUp(false);
+    }
+  };
+
+  const handleCancelEmploymentFollowUp = async (followUpId: string) => {
+    setCancellingFollowUpId(followUpId);
+    try {
+      const result = await cancelEmploymentFollowUp({ followUpId, clientId });
+
+      if (!result.success) {
+        toast({
+          title: 'Unable to cancel follow-up',
+          description: result.error || 'Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Follow-up cancelled',
+        description: 'The client portal task has been cancelled.',
+      });
+      refreshEmploymentFollowUps();
+    } finally {
+      setCancellingFollowUpId(null);
+    }
+  };
 
   // Realtime subscriptions for client-specific data
   const { isSubscribed: isTasksRealtimeConnected } = useRealtimeTasks(
@@ -463,6 +545,15 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           }
         } catch (esiErr) {
           console.error('Error fetching employment support intake:', esiErr);
+        }
+
+        try {
+          const followUpResult = await getEmploymentFollowUps(clientId);
+          if (followUpResult.success) {
+            setEmploymentFollowUps(followUpResult.data || []);
+          }
+        } catch (followUpErr) {
+          console.error('Error fetching employment follow-ups:', followUpErr);
         }
 
         const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string; new_values?: Record<string, unknown> | null; old_values?: Record<string, unknown> | null }> })?.data || [];
@@ -1105,6 +1196,9 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   }
 
   const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+  const employmentEnrollmentId =
+    employmentIntake?.enrollmentId ||
+    enrollments.find((enrollment) => enrollment.programs?.name === 'Employment Support')?.id;
 
   return (
     <TooltipProvider>
@@ -1964,63 +2058,199 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
             {/* Employment Support Tab */}
             <TabsContent value="employment-support" className="mt-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Employment Support Intake</CardTitle>
-                      {employmentIntake && (
-                        <Badge
-                          className="mt-1"
-                          variant={employmentIntake.status === 'submitted' ? 'default' : employmentIntake.status === 'reviewed' ? 'secondary' : 'outline'}
-                        >
-                          {employmentIntake.status.charAt(0).toUpperCase() + employmentIntake.status.slice(1)}
-                        </Badge>
-                      )}
-                    </div>
-                    {!showEmploymentIntakeForm && (
-                      <Button onClick={() => setShowEmploymentIntakeForm(true)}>
-                        {employmentIntake ? (
-                          <><Edit className="h-4 w-4 mr-2" /> Edit Intake</>
-                        ) : (
-                          <><Plus className="h-4 w-4 mr-2" /> Start Intake</>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Employment Support Intake</CardTitle>
+                        {employmentIntake && (
+                          <Badge
+                            className="mt-1"
+                            variant={employmentIntake.status === 'submitted' ? 'default' : employmentIntake.status === 'reviewed' ? 'secondary' : 'outline'}
+                          >
+                            {employmentIntake.status.charAt(0).toUpperCase() + employmentIntake.status.slice(1)}
+                          </Badge>
                         )}
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {showEmploymentIntakeForm ? (
-                    <EmploymentSupportIntakeForm
-                      clientId={clientId}
-                      intakeId={employmentIntake?.id}
-                      enrollmentId={employmentIntake?.enrollmentId}
-                      initialData={employmentIntake?.data}
-                      existingStatus={employmentIntake?.status}
-                      submittedInfo={employmentIntake?.submittedInfo}
-                      onSuccess={() => {
-                        setShowEmploymentIntakeForm(false);
-                        refreshEmploymentIntake();
-                      }}
-                    />
-                  ) : employmentIntake ? (
-                    <div className="space-y-4">
-                      {employmentIntake.submittedInfo && (
-                        <p className="text-sm text-muted-foreground">
-                          Submitted by {employmentIntake.submittedInfo.by} on {employmentIntake.submittedInfo.at}
-                        </p>
+                      </div>
+                      {!showEmploymentIntakeForm && (
+                        <Button onClick={() => setShowEmploymentIntakeForm(true)}>
+                          {employmentIntake ? (
+                            <><Edit className="h-4 w-4 mr-2" /> Edit Intake</>
+                          ) : (
+                            <><Plus className="h-4 w-4 mr-2" /> Start Intake</>
+                          )}
+                        </Button>
                       )}
-                      <p className="text-sm text-muted-foreground">Click &quot;Edit Intake&quot; to view or update the full questionnaire.</p>
                     </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Briefcase className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold">No Employment Support Intake</h3>
-                      <p className="text-gray-500 mt-1">Start the Employment Support intake questionnaire for this client</p>
+                  </CardHeader>
+                  <CardContent>
+                    {showEmploymentIntakeForm ? (
+                      <EmploymentSupportIntakeForm
+                        clientId={clientId}
+                        intakeId={employmentIntake?.id}
+                        enrollmentId={employmentIntake?.enrollmentId}
+                        initialData={employmentIntake?.data}
+                        existingStatus={employmentIntake?.status}
+                        submittedInfo={employmentIntake?.submittedInfo}
+                        onSuccess={() => {
+                          setShowEmploymentIntakeForm(false);
+                          refreshEmploymentIntake();
+                        }}
+                      />
+                    ) : employmentIntake ? (
+                      <div className="space-y-4">
+                        {employmentIntake.submittedInfo && (
+                          <p className="text-sm text-muted-foreground">
+                            Submitted by {employmentIntake.submittedInfo.by} on {employmentIntake.submittedInfo.at}
+                          </p>
+                        )}
+                        <p className="text-sm text-muted-foreground">Click &quot;Edit Intake&quot; to view or update the full questionnaire.</p>
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Briefcase className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold">No Employment Support Intake</h3>
+                        <p className="text-gray-500 mt-1">Start the Employment Support intake questionnaire for this client</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <CardTitle>Employment Follow-Up Intake</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Post-employment retention, barriers, and ongoing support questionnaire.
+                        </p>
+                      </div>
+                      {!showEmploymentFollowUpForm && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={handleRequestEmploymentFollowUp}
+                            disabled={requestingFollowUp}
+                          >
+                            {requestingFollowUp ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <ClipboardList className="h-4 w-4 mr-2" />
+                            )}
+                            Send to Client
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setEditingFollowUp(null);
+                              setShowEmploymentFollowUpForm(true);
+                            }}
+                          >
+                            <Plus className="h-4 w-4 mr-2" /> Staff Fill
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    {showEmploymentFollowUpForm ? (
+                      <EmploymentFollowUpIntakeForm
+                        clientId={clientId}
+                        enrollmentId={editingFollowUp?.enrollmentId || employmentEnrollmentId}
+                        followUpId={editingFollowUp?.id}
+                        initialData={editingFollowUp?.data}
+                        onCancel={() => {
+                          setShowEmploymentFollowUpForm(false);
+                          setEditingFollowUp(null);
+                        }}
+                        onSuccess={() => {
+                          setShowEmploymentFollowUpForm(false);
+                          setEditingFollowUp(null);
+                          refreshEmploymentFollowUps();
+                        }}
+                      />
+                    ) : employmentFollowUps.length > 0 ? (
+                      <div className="space-y-3">
+                        {employmentFollowUps.map((followUp) => (
+                          <div
+                            key={followUp.id}
+                            className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                          >
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">
+                                  {followUp.employer || 'Employer not entered'}
+                                </p>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    followUp.status === 'requested'
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  }
+                                >
+                                  {followUp.status === 'requested' ? 'Pending client' : 'Submitted'}
+                                </Badge>
+                                {followUp.jobTitle && (
+                                  <Badge variant="outline">{followUp.jobTitle}</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {followUp.status === 'requested' && followUp.requestedAt
+                                  ? `Requested ${new Date(followUp.requestedAt).toLocaleDateString()}`
+                                  : followUp.submittedAt
+                                  ? `Submitted ${new Date(followUp.submittedAt).toLocaleDateString()}`
+                                  : 'Submission date unavailable'}
+                                {followUp.status === 'requested' && followUp.requestedBy
+                                  ? ` by ${followUp.requestedBy}`
+                                  : followUp.submittedBy
+                                    ? ` by ${followUp.submittedBy}`
+                                    : ''}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {followUp.status === 'requested' && (
+                                <Button
+                                  variant="outline"
+                                  onClick={() => handleCancelEmploymentFollowUp(followUp.id)}
+                                  disabled={cancellingFollowUpId === followUp.id}
+                                >
+                                  {cancellingFollowUpId === followUp.id ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <X className="h-4 w-4 mr-2" />
+                                  )}
+                                  Cancel Request
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingFollowUp({
+                                    id: followUp.id,
+                                    data: followUp.formData,
+                                    enrollmentId: followUp.enrollmentId || undefined,
+                                  });
+                                  setShowEmploymentFollowUpForm(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                {followUp.status === 'requested' ? 'Fill Now' : 'Edit Follow-Up'}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Briefcase className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold">No Employment Follow-Ups</h3>
+                        <p className="text-gray-500 mt-1">Record a follow-up once this client has started working</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             {/* History Tab */}

@@ -3,15 +3,22 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { pacificToUTCISO } from "@/lib/date-utils";
 import {
+  buildEmploymentFollowUpRows,
   buildEmploymentSupportEngagementRows,
   normalizeClientRecord,
+  toEmploymentFollowUpCsv,
   toEmploymentSupportEngagementCsv,
   type EnrollmentReportQueryRow,
+  type FollowUpReportQueryRow,
   type HistoryQueryRow,
+  type EmploymentFollowUpReportRow,
   type EmploymentSupportEngagementReportRow,
 } from "./employment-support-report-utils";
 
-export type { EmploymentSupportEngagementReportRow } from "./employment-support-report-utils";
+export type {
+  EmploymentFollowUpReportRow,
+  EmploymentSupportEngagementReportRow,
+} from "./employment-support-report-utils";
 
 const EMPLOYMENT_SUPPORT_PROGRAM_NAME = "Employment Support";
 const PACIFIC_TIMEZONE = "America/Los_Angeles";
@@ -44,6 +51,13 @@ export interface EmploymentSupportEngagementReportData {
   fileName: string;
   csv: string;
   rows: EmploymentSupportEngagementReportRow[];
+}
+
+export interface EmploymentFollowUpReportData {
+  generatedAt: string;
+  fileName: string;
+  csv: string;
+  rows: EmploymentFollowUpReportRow[];
 }
 
 function normalizeReportDate(value?: string): string | undefined {
@@ -135,36 +149,66 @@ function createReportPayload(rows: EmploymentSupportEngagementReportRow[]): Empl
   };
 }
 
+function createFollowUpReportPayload(rows: EmploymentFollowUpReportRow[]): EmploymentFollowUpReportData {
+  const generatedAt = new Date().toISOString();
+
+  return {
+    generatedAt,
+    fileName: `employment-follow-up-report-${generatedAt.slice(0, 10)}.csv`,
+    csv: toEmploymentFollowUpCsv(rows),
+    rows,
+  };
+}
+
+async function requireStaffProfile() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      success: false as const,
+      error: "User not authenticated",
+    };
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    throw profileError;
+  }
+
+  if (!STAFF_ROLES.has((profile as ProfileRoleRecord | null)?.role ?? "")) {
+    return {
+      success: false as const,
+      error: "You do not have permission to access this report",
+    };
+  }
+
+  return {
+    success: true as const,
+    user,
+  };
+}
+
 export async function getEmploymentSupportEngagementReport(
   filters?: EmploymentSupportEngagementReportFilters
 ): Promise<
   { success: true; data: EmploymentSupportEngagementReportData } | { success: false; error: string }
 > {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const staffResult = await requireStaffProfile();
 
-    if (authError || !user) {
-      return { success: false, error: "User not authenticated" };
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    if (!STAFF_ROLES.has((profile as ProfileRoleRecord | null)?.role ?? "")) {
+    if (!staffResult.success) {
       return {
         success: false,
-        error: "You do not have permission to access this report",
+        error: staffResult.error,
       };
     }
 
@@ -280,6 +324,93 @@ export async function getEmploymentSupportEngagementReport(
         error instanceof Error
           ? error.message
           : "Failed to build employment support engagement report",
+    };
+  }
+}
+
+export async function getEmploymentFollowUpReport(
+  filters?: EmploymentSupportEngagementReportFilters
+): Promise<
+  { success: true; data: EmploymentFollowUpReportData } | { success: false; error: string }
+> {
+  try {
+    const staffResult = await requireStaffProfile();
+
+    if (!staffResult.success) {
+      return {
+        success: false,
+        error: staffResult.error,
+      };
+    }
+
+    const reportDateRange = normalizeReportDateRange(filters);
+    const serviceClient = createServiceClient();
+
+    let followUpQuery = serviceClient
+      .from("employment_follow_up_intake")
+      .select(
+        `
+        *,
+        clients!inner (
+          id,
+          first_name,
+          last_name,
+          email,
+          phone
+        ),
+        program_enrollment:program_enrollments (
+          id,
+          status,
+          start_date
+        ),
+        requested_by_profile:profiles!requested_by (
+          first_name,
+          last_name
+        ),
+        submitted_by_profile:profiles!submitted_by (
+          first_name,
+          last_name
+        )
+      `
+      )
+      .neq("status", "cancelled");
+
+    if (reportDateRange.startDate) {
+      followUpQuery = followUpQuery.gte(
+        "requested_at",
+        pacificToUTCISO(reportDateRange.startDate, "00:00")
+      );
+    }
+
+    if (reportDateRange.endDate) {
+      followUpQuery = followUpQuery.lt(
+        "requested_at",
+        pacificToUTCISO(addDays(reportDateRange.endDate, 1), "00:00")
+      );
+    }
+
+    const { data, error } = await followUpQuery.order("requested_at", {
+      ascending: false,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = buildEmploymentFollowUpRows((data ?? []) as FollowUpReportQueryRow[]);
+
+    return {
+      success: true,
+      data: createFollowUpReportPayload(rows),
+    };
+  } catch (error) {
+    console.error("Error building employment follow-up report:", error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to generate employment follow-up report",
     };
   }
 }

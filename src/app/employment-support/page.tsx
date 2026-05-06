@@ -35,7 +35,10 @@ import {
   getEmploymentSupportQueue,
   type EmploymentSupportQueueItem,
 } from '@/app/actions/employment-support';
-import { getEmploymentSupportEngagementReport } from '@/app/actions/employment-support-report';
+import {
+  getEmploymentFollowUpReport,
+  getEmploymentSupportEngagementReport,
+} from '@/app/actions/employment-support-report';
 
 const intakeStatusConfig: Record<string, { label: string; className: string }> = {
   not_started: {
@@ -99,6 +102,7 @@ export default function EmploymentSupportQueuePage() {
   const [queue, setQueue] = useState<EmploymentSupportQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingReport, setDownloadingReport] = useState(false);
+  const [downloadingFollowUpReport, setDownloadingFollowUpReport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [intakeFilter, setIntakeFilter] = useState('all');
@@ -161,6 +165,61 @@ export default function EmploymentSupportQueuePage() {
       });
     } finally {
       setDownloadingReport(false);
+    }
+  };
+
+  const handleDownloadFollowUpReport = async () => {
+    if (hasInvalidReportRange) {
+      toast({
+        title: 'Unable to download report',
+        description: 'Start date must be on or before end date.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setDownloadingFollowUpReport(true);
+
+    try {
+      const result = await getEmploymentFollowUpReport({
+        startDate: reportStartDate || undefined,
+        endDate: reportEndDate || undefined,
+      });
+
+      if (!result.success) {
+        toast({
+          title: 'Unable to download follow-up report',
+          description: result.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const blob = new Blob([result.data.csv], { type: 'text/csv;charset=utf-8' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = result.data.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      toast({
+        title: 'Follow-up report downloaded',
+        description: `Exported ${result.data.rows.length} Employment Follow-Up records.`,
+      });
+    } catch (downloadError) {
+      toast({
+        title: 'Unable to download follow-up report',
+        description:
+          downloadError instanceof Error
+            ? downloadError.message
+            : 'Something went wrong while generating the report.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingFollowUpReport(false);
     }
   };
 
@@ -300,6 +359,19 @@ export default function EmploymentSupportQueuePage() {
                   <Download className="mr-2 h-4 w-4" />
                 )}
                 Download engagement report
+              </Button>
+              <Button
+                variant="outline"
+                className="bg-white/80"
+                onClick={handleDownloadFollowUpReport}
+                disabled={downloadingFollowUpReport || hasInvalidReportRange}
+              >
+                {downloadingFollowUpReport ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download follow-up report
               </Button>
               <Button asChild className="bg-emerald-600 hover:bg-emerald-700">
                 <Link href="/client-intake">Add new client</Link>

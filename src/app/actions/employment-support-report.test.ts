@@ -11,11 +11,15 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
+  buildEmploymentFollowUpRows,
   buildEmploymentSupportEngagementRows,
+  toEmploymentFollowUpCsv,
   toEmploymentSupportEngagementCsv,
+  type EmploymentFollowUpReportRow,
   type EmploymentSupportEngagementReportRow,
 } from "@/app/actions/employment-support-report-utils";
 import {
+  getEmploymentFollowUpReport,
   getEmploymentSupportEngagementReport,
 } from "@/app/actions/employment-support-report";
 
@@ -30,6 +34,7 @@ function queryChain(
   chain.gte = vi.fn().mockReturnValue(chain);
   chain.ilike = vi.fn().mockReturnValue(chain);
   chain.lt = vi.fn().mockReturnValue(chain);
+  chain.neq = vi.fn().mockReturnValue(chain);
   chain.order = vi.fn().mockReturnValue(chain);
   chain.maybeSingle = vi.fn().mockResolvedValue(terminalValue);
   chain.single = vi.fn().mockResolvedValue(terminalValue);
@@ -43,6 +48,7 @@ function queryChain(
     gte: ReturnType<typeof vi.fn>;
     ilike: ReturnType<typeof vi.fn>;
     lt: ReturnType<typeof vi.fn>;
+    neq: ReturnType<typeof vi.fn>;
     order: ReturnType<typeof vi.fn>;
     maybeSingle: ReturnType<typeof vi.fn>;
     single: ReturnType<typeof vi.fn>;
@@ -222,6 +228,155 @@ describe("employment-support-report", () => {
     expect(csv.split("\n")[0]).toContain("Client Name");
   });
 
+  it("builds follow-up rows with pending and submitted follow-up details", () => {
+    const rows = buildEmploymentFollowUpRows([
+      {
+        id: "follow-up-1",
+        status: "submitted",
+        submitted_at: "2026-05-05T17:00:00.000Z",
+        requested_at: "2026-05-01T17:00:00.000Z",
+        employer: "Acme",
+        job_title: "Assembler",
+        start_date: "2026-04-15",
+        salary: "$22/hour",
+        schedule: "full_time",
+        job_satisfaction: "somewhat_satisfied",
+        supervisor_support: "yes",
+        has_transportation_challenges: true,
+        transportation_explanation: "Bus route changed",
+        has_coworker_or_employer_conflicts: false,
+        conflict_explanation: null,
+        has_uncovered_employment_costs: true,
+        cost_explanation: "Uniforms",
+        needed_skills_or_training: "Forklift certification",
+        can_cover_basic_expenses: "sometimes",
+        wants_housing_and_self_sufficiency_connection: "yes",
+        wants_career_advancement_support: "not_at_the_moment",
+        additional_feedback: "Prefers evening check-ins",
+        clients: {
+          id: "client-1",
+          first_name: "Ana",
+          last_name: "Lopez",
+          email: "ana@example.com",
+          phone: "555-0001",
+        },
+        program_enrollment: {
+          id: "enrollment-1",
+          status: "enrolled",
+          start_date: "2026-03-01",
+        },
+        requested_by_profile: {
+          first_name: "Jordan",
+          last_name: "Case",
+        },
+        submitted_by_profile: {
+          first_name: "Ana",
+          last_name: "Lopez",
+        },
+      },
+      {
+        id: "follow-up-2",
+        status: "requested",
+        submitted_at: null,
+        requested_at: "2026-05-03T17:00:00.000Z",
+        employer: null,
+        job_title: null,
+        start_date: null,
+        salary: null,
+        schedule: null,
+        job_satisfaction: null,
+        supervisor_support: null,
+        has_transportation_challenges: false,
+        transportation_explanation: null,
+        has_coworker_or_employer_conflicts: false,
+        conflict_explanation: null,
+        has_uncovered_employment_costs: false,
+        cost_explanation: null,
+        needed_skills_or_training: null,
+        can_cover_basic_expenses: null,
+        wants_housing_and_self_sufficiency_connection: null,
+        wants_career_advancement_support: null,
+        additional_feedback: null,
+        clients: {
+          id: "client-2",
+          first_name: "Brian",
+          last_name: "O'Neil",
+          email: null,
+          phone: null,
+        },
+        program_enrollment: null,
+        requested_by_profile: null,
+        submitted_by_profile: null,
+      },
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        followUpId: "follow-up-1",
+        clientName: "Ana Lopez",
+        status: "submitted",
+        employer: "Acme",
+        hasTransportationChallenges: "Yes",
+        hasUncoveredEmploymentCosts: "Yes",
+        requestedBy: "Jordan Case",
+        submittedBy: "Ana Lopez",
+      }),
+      expect.objectContaining({
+        followUpId: "follow-up-2",
+        clientName: "Brian O'Neil",
+        status: "requested",
+        employer: null,
+        hasTransportationChallenges: "No",
+        requestedBy: "",
+        submittedBy: "",
+      }),
+    ]);
+  });
+
+  it("exports follow-up rows as CSV", () => {
+    const csv = toEmploymentFollowUpCsv([
+      {
+        followUpId: "follow-up-9",
+        clientId: "client-9",
+        enrollmentId: "enrollment-9",
+        clientName: "Smith, \"AJ\"",
+        firstName: "Smith, \"AJ\"",
+        lastName: "Taylor",
+        email: "aj@example.com",
+        phone: null,
+        enrollmentStatus: "enrolled",
+        enrollmentStartDate: null,
+        status: "submitted",
+        requestedAt: "2026-05-01T17:00:00.000Z",
+        submittedAt: "2026-05-02T17:00:00.000Z",
+        requestedBy: "Jordan Case",
+        submittedBy: "Smith Taylor",
+        employer: "Acme, Inc.",
+        jobTitle: "Assembler",
+        startDate: "2026-04-15",
+        salary: "$22/hour",
+        schedule: "full_time",
+        jobSatisfaction: "very_satisfied",
+        supervisorSupport: "yes",
+        hasTransportationChallenges: "No",
+        transportationExplanation: null,
+        hasCoworkerOrEmployerConflicts: "No",
+        conflictExplanation: null,
+        hasUncoveredEmploymentCosts: "No",
+        costExplanation: null,
+        neededSkillsOrTraining: null,
+        canCoverBasicExpenses: "yes",
+        wantsHousingAndSelfSufficiencyConnection: "yes",
+        wantsCareerAdvancementSupport: "not_at_the_moment",
+        additionalFeedback: null,
+      } satisfies EmploymentFollowUpReportRow,
+    ]);
+
+    expect(csv).toContain('"Smith, ""AJ"""');
+    expect(csv).toContain('"Acme, Inc."');
+    expect(csv.split("\n")[0]).toContain("Follow-Up ID");
+  });
+
   it("returns a staff-only report payload with employment-tagged interactions inside the selected date range", async () => {
     const profileQuery = queryChain({ data: { role: "case_manager" }, error: null });
     const programQuery = queryChain({
@@ -368,6 +523,92 @@ describe("employment-support-report", () => {
     expect(historyQuery.in).toHaveBeenCalledWith("client_id", ["client-1"]);
     expect(historyQuery.gte).toHaveBeenCalledWith("created_at", "2026-04-01T07:00:00.000Z");
     expect(historyQuery.lt).toHaveBeenCalledWith("created_at", "2026-05-01T07:00:00.000Z");
+  });
+
+  it("returns a staff-only follow-up report payload inside the selected date range", async () => {
+    const profileQuery = queryChain({ data: { role: "case_manager" }, error: null });
+    const followUpQuery = queryChain({
+      data: [
+        {
+          id: "follow-up-1",
+          status: "submitted",
+          requested_at: "2026-05-01T17:00:00.000Z",
+          submitted_at: "2026-05-05T17:00:00.000Z",
+          employer: "Acme",
+          job_title: "Assembler",
+          clients: {
+            id: "client-1",
+            first_name: "Ana",
+            last_name: "Lopez",
+            email: "ana@example.com",
+            phone: "555-0001",
+          },
+          program_enrollment: {
+            id: "enrollment-1",
+            status: "enrolled",
+            start_date: "2026-03-01",
+          },
+          requested_by_profile: {
+            first_name: "Jordan",
+            last_name: "Case",
+          },
+          submitted_by_profile: {
+            first_name: "Ana",
+            last_name: "Lopez",
+          },
+        },
+      ],
+      error: null,
+    });
+
+    createClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: "staff-1" } },
+          error: null,
+        }),
+      },
+      from: vi.fn((table: string) => {
+        if (table === "profiles") {
+          return profileQuery;
+        }
+
+        return queryChain();
+      }),
+    });
+
+    createServiceClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "employment_follow_up_intake") {
+          return followUpQuery;
+        }
+
+        return queryChain();
+      }),
+    });
+
+    const result = await getEmploymentFollowUpReport({
+      startDate: "2026-05-01",
+      endDate: "2026-05-31",
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+
+    expect(result.data.rows).toHaveLength(1);
+    expect(result.data.rows[0]).toMatchObject({
+      clientName: "Ana Lopez",
+      status: "submitted",
+      employer: "Acme",
+      requestedBy: "Jordan Case",
+    });
+    expect(result.data.fileName).toMatch(
+      /^employment-follow-up-report-\d{4}-\d{2}-\d{2}\.csv$/
+    );
+    expect(followUpQuery.gte).toHaveBeenCalledWith("requested_at", "2026-05-01T07:00:00.000Z");
+    expect(followUpQuery.lt).toHaveBeenCalledWith("requested_at", "2026-06-01T07:00:00.000Z");
   });
 
   it("rejects export requests when the start date is after the end date", async () => {

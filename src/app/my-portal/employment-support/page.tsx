@@ -14,8 +14,14 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
+  Repeat,
 } from "lucide-react";
-import { getEmploymentSupportIntake } from "@/app/actions/employment-support";
+import {
+  getEmploymentFollowUps,
+  getEmploymentSupportIntake,
+  type EmploymentFollowUpItem,
+} from "@/app/actions/employment-support";
+import { EmploymentFollowUpIntakeForm } from "@/components/forms/EmploymentFollowUpIntakeForm";
 import { dbRowToFormData } from "@/lib/schemas/employment-support";
 import { EmploymentSupportIntakeForm } from "@/components/forms/EmploymentSupportIntakeForm";
 import type { EmploymentSupportIntakeForm as ESIFormType } from "@/lib/schemas/employment-support";
@@ -37,6 +43,7 @@ export default function EmploymentSupportPage() {
   const [error, setError] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [intakeData, setIntakeData] = useState<IntakeData | null>(null);
+  const [followUps, setFollowUps] = useState<EmploymentFollowUpItem[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -103,6 +110,11 @@ export default function EmploymentSupportPage() {
         // No intake found — client is not enrolled in Employment Support
         setIntakeData(null);
       }
+
+      const followUpResult = await getEmploymentFollowUps(clientData.id);
+      if (followUpResult.success) {
+        setFollowUps(followUpResult.data || []);
+      }
     } catch (err) {
       console.error("Error fetching employment support data:", err);
       setError("An error occurred while loading your data.");
@@ -118,6 +130,14 @@ export default function EmploymentSupportPage() {
   const handleSuccess = () => {
     toast({
       title: "Questionnaire submitted",
+      description: "Your case manager will review your responses.",
+    });
+    fetchData();
+  };
+
+  const handleFollowUpSuccess = () => {
+    toast({
+      title: "Follow-up submitted",
       description: "Your case manager will review your responses.",
     });
     fetchData();
@@ -214,9 +234,10 @@ export default function EmploymentSupportPage() {
         </div>
       </header>
 
-      <main className="container px-4 py-6 max-w-4xl mx-auto">
-        {!intakeData ? (
-          <>
+      <main className="container px-4 py-6 max-w-4xl mx-auto space-y-6">
+        <section>
+          {!intakeData ? (
+            <>
             <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
               <Briefcase className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
               <p className="text-sm text-blue-800">
@@ -227,9 +248,9 @@ export default function EmploymentSupportPage() {
               clientId={clientId}
               onSuccess={handleSuccess}
             />
-          </>
-        ) : (
-          <>
+            </>
+          ) : (
+            <>
             {intakeData.status === "reviewed" && (
               <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
                 <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
@@ -254,7 +275,59 @@ export default function EmploymentSupportPage() {
               submittedInfo={intakeData.submittedInfo}
               onSuccess={handleSuccess}
             />
-          </>
+            </>
+          )}
+        </section>
+
+        {followUps.length > 0 && (
+          <section className="space-y-4">
+            <div className="rounded-lg border bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Repeat className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold">Employment Follow-Up</h2>
+              </div>
+              <p className="mt-1 text-sm text-gray-600">
+                Complete requested follow-ups or update a previous response if anything has changed.
+              </p>
+            </div>
+
+            {followUps.map((followUp) => (
+              <div key={followUp.id} className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 shadow-sm">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={
+                          followUp.status === "requested"
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : "bg-green-50 text-green-700 border-green-200"
+                        }
+                      >
+                        {followUp.status === "requested" ? "Requested" : "Submitted"}
+                      </Badge>
+                      {followUp.employer && (
+                        <span className="font-medium">{followUp.employer}</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {followUp.status === "requested"
+                        ? "Your case manager requested this follow-up."
+                        : "Your submitted response is available below."}
+                    </p>
+                  </div>
+                </div>
+
+                <EmploymentFollowUpIntakeForm
+                  clientId={clientId}
+                  enrollmentId={followUp.enrollmentId || undefined}
+                  followUpId={followUp.id}
+                  initialData={followUp.formData}
+                  onSuccess={handleFollowUpSuccess}
+                />
+              </div>
+            ))}
+          </section>
         )}
       </main>
     </div>

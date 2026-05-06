@@ -52,6 +52,7 @@ import {
     ShieldCheck,
     Wifi,
     WifiOff,
+    Repeat,
 } from 'lucide-react';
 import { uploadClientDocument, ALLOWED_DOCUMENT_TYPES, ALLOWED_IMAGE_TYPES, MAX_FILE_SIZES } from '@/lib/supabase/storage';
 import { SignaturePadDialog, SignatureDisplay } from '@/components/ui/signature-pad';
@@ -104,6 +105,15 @@ interface Document {
     is_verified: boolean;
 }
 
+interface EmploymentFollowUpPortalRow {
+    id: string;
+    status: string;
+    requested_at: string | null;
+    submitted_at: string | null;
+    employer: string | null;
+    job_title: string | null;
+}
+
 const DOCUMENT_TYPES = [
     { value: 'id', label: 'Identification' },
     { value: 'income', label: 'Income Verification' },
@@ -133,6 +143,14 @@ export default function MyPortalPage() {
         status: string;
         updatedAt: string | null;
     } | null>(null);
+    const [employmentFollowUps, setEmploymentFollowUps] = useState<Array<{
+        id: string;
+        status: string;
+        requestedAt: string | null;
+        submittedAt: string | null;
+        employer: string | null;
+        jobTitle: string | null;
+    }>>([]);
 
     // Upload state
     const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -327,6 +345,23 @@ export default function MyPortalPage() {
                     updatedAt: esiData.updated_at,
                 });
             }
+
+            const { data: followUpData } = await supabase
+                .from('employment_follow_up_intake')
+                .select('id, status, requested_at, submitted_at, employer, job_title')
+                .eq('client_id', clientData.id)
+                .neq('status', 'cancelled')
+                .order('requested_at', { ascending: false })
+                .order('created_at', { ascending: false });
+
+            setEmploymentFollowUps(((followUpData || []) as EmploymentFollowUpPortalRow[]).map((followUp) => ({
+                id: followUp.id,
+                status: followUp.status,
+                requestedAt: followUp.requested_at,
+                submittedAt: followUp.submitted_at,
+                employer: followUp.employer,
+                jobTitle: followUp.job_title,
+            })));
         } catch (err) {
             console.error('Error fetching client data:', err);
             setError('An error occurred while loading your information.');
@@ -558,11 +593,14 @@ export default function MyPortalPage() {
     };
 
     const getTaskAction = (task: Task) => {
-        if (task.title.toLowerCase().includes('intake')) {
-            return { href: '/client-intake', label: 'Complete Form' };
+        if (task.title.toLowerCase().includes('employment follow-up')) {
+            return { href: '/my-portal/employment-support', label: 'Open Follow-Up' };
         }
         if (task.title.toLowerCase().includes('employment support')) {
             return { href: '/my-portal/employment-support', label: 'Open Form' };
+        }
+        if (task.title.toLowerCase().includes('intake')) {
+            return { href: '/client-intake', label: 'Complete Form' };
         }
         if (task.title.toLowerCase().includes('engagement letter') || task.title.toLowerCase().includes('sign')) {
             return { onClick: () => setShowEngagementLetter(true), label: 'Sign Now' };
@@ -1027,6 +1065,63 @@ export default function MyPortalPage() {
                         )}
                     </CardContent>
                 </Card>
+
+                {employmentFollowUps.length > 0 && (
+                    <Card className="border-l-4 border-l-blue-500">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Repeat className="h-5 w-5 text-blue-600" />
+                                Employment Follow-Up
+                            </CardTitle>
+                            <CardDescription>
+                                Share how your current job is going and what support you still need.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {employmentFollowUps.slice(0, 3).map((followUp) => (
+                                <div
+                                    key={followUp.id}
+                                    className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                    <div className="space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Badge
+                                                variant="outline"
+                                                className={
+                                                    followUp.status === 'requested'
+                                                        ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                                        : 'bg-green-50 text-green-700 border-green-200'
+                                                }
+                                            >
+                                                {followUp.status === 'requested' ? 'Action needed' : 'Submitted'}
+                                            </Badge>
+                                            {followUp.jobTitle && (
+                                                <span className="text-sm font-medium text-gray-900">{followUp.jobTitle}</span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-gray-600">
+                                            {followUp.status === 'requested' && followUp.requestedAt
+                                                ? `Requested ${formatPacificLocaleDate(followUp.requestedAt)}`
+                                                : followUp.submittedAt
+                                                  ? `Submitted ${formatPacificLocaleDate(followUp.submittedAt)}`
+                                                  : 'Follow-up date unavailable'}
+                                            {followUp.employer ? ` · ${followUp.employer}` : ''}
+                                        </p>
+                                    </div>
+                                    <Link href="/my-portal/employment-support">
+                                        <Button
+                                            size="sm"
+                                            variant={followUp.status === 'requested' ? 'default' : 'outline'}
+                                        >
+                                            {followUp.status === 'requested' ? 'Complete Follow-Up' : 'View / Edit'}
+                                            <ArrowRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </Link>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                )}
             </main>
 
             {/* Upload Dialog */}
