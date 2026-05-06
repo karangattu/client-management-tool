@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { cacheReadOnly } from "@/app/actions/cache";
 import { clientIntakeSchema, ClientIntakeForm } from "@/lib/schemas/validation";
 import { diffAuditValues } from "@/lib/audit-log";
+import { validateClientData } from "@/lib/validation";
 
 
 interface SaveResult {
@@ -425,12 +426,15 @@ export async function createMinimalClient(input: MinimalClientInput): Promise<Sa
     const email = input.email?.trim() || null;
     const phone = input.phone?.trim() || null;
 
-    if (!firstName || !lastName) {
-      return { success: false, error: 'First and last name are required' };
-    }
+    const validation = validateClientData({
+      firstName,
+      lastName,
+      email: email || undefined,
+      phone: phone || undefined,
+    });
 
-    if (!email && !phone) {
-      return { success: false, error: 'Provide either an email address or phone number' };
+    if (!validation.isValid) {
+      return { success: false, error: validation.errors[0] || 'Invalid client details' };
     }
 
     const supabase = await createClient();

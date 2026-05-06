@@ -28,6 +28,7 @@ import { createClient } from '@/lib/supabase/client';
 import { diffAuditValues } from '@/lib/audit-log';
 import { uploadProfilePicture } from '@/lib/supabase/storage';
 import { US_STATES } from '@/lib/constants';
+import { validateClientData } from '@/lib/validation';
 
 interface ClientData {
   first_name: string;
@@ -166,8 +167,30 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!clientData.first_name || !clientData.last_name || !clientData.email || !clientData.phone) {
-      setError('First name, last name, email, and phone are required');
+    const normalizedClientData = {
+      ...clientData,
+      first_name: clientData.first_name.trim(),
+      last_name: clientData.last_name.trim(),
+      preferred_name: clientData.preferred_name.trim(),
+      email: clientData.email.trim(),
+      phone: clientData.phone.trim(),
+      street_address: clientData.street_address.trim(),
+      city: clientData.city.trim(),
+      state: clientData.state.trim(),
+      zip_code: clientData.zip_code.trim(),
+    };
+
+    const validation = validateClientData({
+      firstName: normalizedClientData.first_name,
+      lastName: normalizedClientData.last_name,
+      email: normalizedClientData.email,
+      phone: normalizedClientData.phone,
+      status: normalizedClientData.status,
+      assignedCaseManager: normalizedClientData.assigned_case_manager,
+    });
+
+    if (!validation.isValid) {
+      setError(validation.errors[0] || 'Please review the client details');
       return;
     }
 
@@ -194,20 +217,20 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
       const { error } = await supabase
         .from('clients')
         .update({
-          first_name: clientData.first_name,
-          last_name: clientData.last_name,
-          preferred_name: clientData.preferred_name || null,
-          email: clientData.email,
-          phone: clientData.phone,
-          date_of_birth: clientData.date_of_birth || null,
-          street_address: clientData.street_address || null,
-          city: clientData.city || null,
-          state: clientData.state || null,
-          zip_code: clientData.zip_code || null,
-          status: clientData.status,
+          first_name: normalizedClientData.first_name,
+          last_name: normalizedClientData.last_name,
+          preferred_name: normalizedClientData.preferred_name || null,
+          email: normalizedClientData.email || null,
+          phone: normalizedClientData.phone || null,
+          date_of_birth: normalizedClientData.date_of_birth || null,
+          street_address: normalizedClientData.street_address || null,
+          city: normalizedClientData.city || null,
+          state: normalizedClientData.state || null,
+          zip_code: normalizedClientData.zip_code || null,
+          status: normalizedClientData.status,
           profile_picture_url: profilePictureUrl,
           updated_at: new Date().toISOString(),
-          assigned_case_manager: clientData.assigned_case_manager || null,
+          assigned_case_manager: normalizedClientData.assigned_case_manager || null,
         })
         .eq('id', clientId);
 
@@ -219,8 +242,8 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
           first_name: originalClientData.first_name,
           last_name: originalClientData.last_name,
           preferred_name: originalClientData.preferred_name,
-          email: originalClientData.email,
-          phone: originalClientData.phone,
+          email: originalClientData.email || null,
+          phone: originalClientData.phone || null,
           date_of_birth: originalClientData.date_of_birth,
           street_address: originalClientData.street_address,
           city: originalClientData.city,
@@ -233,18 +256,18 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
         : null;
 
       const nextValues = {
-        first_name: clientData.first_name,
-        last_name: clientData.last_name,
-        preferred_name: clientData.preferred_name,
-        email: clientData.email,
-        phone: clientData.phone,
-        date_of_birth: clientData.date_of_birth,
-        street_address: clientData.street_address,
-        city: clientData.city,
-        state: clientData.state,
-        zip_code: clientData.zip_code,
-        status: clientData.status,
-        assigned_case_manager: clientData.assigned_case_manager || null,
+        first_name: normalizedClientData.first_name,
+        last_name: normalizedClientData.last_name,
+        preferred_name: normalizedClientData.preferred_name || null,
+        email: normalizedClientData.email || null,
+        phone: normalizedClientData.phone || null,
+        date_of_birth: normalizedClientData.date_of_birth,
+        street_address: normalizedClientData.street_address || null,
+        city: normalizedClientData.city || null,
+        state: normalizedClientData.state || null,
+        zip_code: normalizedClientData.zip_code || null,
+        status: normalizedClientData.status,
+        assigned_case_manager: normalizedClientData.assigned_case_manager || null,
         profile_picture_url: profilePictureUrl || null,
       };
 
@@ -266,7 +289,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
 
       setSuccess(true);
       setOriginalClientData({
-        ...clientData,
+        ...normalizedClientData,
         profile_picture_url: profilePictureUrl,
       });
       setTimeout(() => {
@@ -432,7 +455,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Email *</Label>
+                  <Label>Email</Label>
                   <Input
                     type="email"
                     value={clientData.email}
@@ -441,7 +464,7 @@ export default function EditClientPage({ params }: { params: Promise<{ id: strin
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Phone *</Label>
+                  <Label>Phone</Label>
                   <Input
                     type="tel"
                     value={clientData.phone}

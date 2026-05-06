@@ -90,6 +90,22 @@ describe("validation helpers", () => {
     );
   });
 
+  it("allows client data without email and phone when names are present", () => {
+    const result = validateClientData({
+      firstName: "Jamie",
+      lastName: "Rivera",
+      email: "",
+      phone: "",
+      status: "active",
+    });
+
+    expect(result).toEqual({
+      isValid: true,
+      errors: [],
+      warnings: [],
+    });
+  });
+
   it("validates client references and reports errors and warnings", async () => {
     createClient.mockReturnValue(
       createSupabaseMock({

@@ -1,4 +1,5 @@
 const INTERACTION_TYPE_ORDER = ["call", "email", "meeting", "note", "status_change", "other"] as const;
+const EMPLOYMENT_SUPPORT_ASSIGNED_STAFF_LABEL = "Employment Support";
 
 type SupportedInteractionType = (typeof INTERACTION_TYPE_ORDER)[number];
 
@@ -144,7 +145,7 @@ function formatAssignedStaff(staff?: StaffRecord | null): string {
   const lastName = staff?.last_name?.trim() ?? "";
   const fullName = `${firstName} ${lastName}`.trim();
 
-  return fullName || "Unassigned";
+  return fullName || EMPLOYMENT_SUPPORT_ASSIGNED_STAFF_LABEL;
 }
 
 function csvEscape(value: string | number | null | undefined): string {

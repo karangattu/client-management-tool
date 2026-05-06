@@ -176,7 +176,7 @@ describe("employment-support-report", () => {
         updatedAt: "2026-04-12T09:30:00.000Z",
         intakeStatus: "draft",
         readinessStatus: null,
-        assignedStaff: "Unassigned",
+        assignedStaff: "Employment Support",
         totalInteractions: 2,
         callCount: 0,
         emailCount: 0,

@@ -70,6 +70,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
 import { useRealtimeClients, type RealtimeClient } from '@/lib/hooks/use-realtime';
 import { useToast } from '@/components/ui/use-toast';
+import { validateClientData } from '@/lib/validation';
 
 interface Client {
   id: string;
@@ -380,11 +381,30 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
     setQuickAddError(null);
 
     try {
+      const normalizedQuickAddForm = {
+        ...quickAddForm,
+        firstName: quickAddForm.firstName.trim(),
+        lastName: quickAddForm.lastName.trim(),
+        email: quickAddForm.email.trim(),
+        phone: quickAddForm.phone.trim(),
+      };
+
+      const validation = validateClientData({
+        firstName: normalizedQuickAddForm.firstName,
+        lastName: normalizedQuickAddForm.lastName,
+        email: normalizedQuickAddForm.email,
+        phone: normalizedQuickAddForm.phone,
+      });
+
+      if (!validation.isValid) {
+        throw new Error(validation.errors[0] || 'Please review the client details');
+      }
+
       const result = await createMinimalClient({
-        firstName: quickAddForm.firstName,
-        lastName: quickAddForm.lastName,
-        email: quickAddForm.email,
-        phone: quickAddForm.phone,
+        firstName: normalizedQuickAddForm.firstName,
+        lastName: normalizedQuickAddForm.lastName,
+        email: normalizedQuickAddForm.email,
+        phone: normalizedQuickAddForm.phone,
       });
 
       if (!result.success || !result.clientId) {
@@ -901,8 +921,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                   disabled={
                     quickAddLoading ||
                     !quickAddForm.firstName.trim() ||
-                    !quickAddForm.lastName.trim() ||
-                    (!quickAddForm.email.trim() && !quickAddForm.phone.trim())
+                    !quickAddForm.lastName.trim()
                   }
                 >
                   {quickAddLoading ? (
