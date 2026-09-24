@@ -57,6 +57,7 @@ import {
   Wifi,
   WifiOff,
   Briefcase,
+  AlertCircle,
   X,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
@@ -79,7 +80,12 @@ import {
 } from '@/app/actions/employment-support';
 import { EmploymentFollowUpIntakeForm } from '@/components/forms/EmploymentFollowUpIntakeForm';
 import { EmploymentSupportIntakeForm } from '@/components/forms/EmploymentSupportIntakeForm';
-import { dbRowToFormData, type EmploymentSupportIntakeForm as ESIFormType } from '@/lib/schemas/employment-support';
+import {
+  dbRowToFormData,
+  hasEmploymentIntakeProgress,
+  isEmploymentIntakeFilled,
+  type EmploymentSupportIntakeForm as ESIFormType,
+} from '@/lib/schemas/employment-support';
 import type { EmploymentFollowUpForm } from '@/lib/schemas/employment-follow-up';
 import { useRealtimeTasks, useRealtimeDocuments, type RealtimeTask, type RealtimeDocument } from '@/lib/hooks/use-realtime';
 
@@ -320,8 +326,40 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   } | null>(null);
   const [requestingFollowUp, setRequestingFollowUp] = useState(false);
   const [cancellingFollowUpId, setCancellingFollowUpId] = useState<string | null>(null);
+  const [localDraftInfo, setLocalDraftInfo] = useState<{
+    hasDraft: boolean;
+    isFilled: boolean;
+    savedAt?: string;
+  }>({ hasDraft: false, isFilled: false });
 
   const supabase = createClient();
+
+  const checkLocalDraft = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const draftKey = `employment-support-intake-draft-${clientId}`;
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed?.data && hasEmploymentIntakeProgress(parsed.data)) {
+            setLocalDraftInfo({
+              hasDraft: true,
+              isFilled: isEmploymentIntakeFilled(parsed.data),
+              savedAt: parsed.savedAt ? new Date(parsed.savedAt).toLocaleTimeString() : undefined,
+            });
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setLocalDraftInfo({ hasDraft: false, isFilled: false });
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    checkLocalDraft();
+  }, [checkLocalDraft, showEmploymentIntakeForm, employmentIntake]);
 
   // Refresh only the employment support intake (used after form save in the ESI tab)
   const refreshEmploymentIntake = useCallback(async () => {
@@ -2085,6 +2123,32 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                     </div>
                   </CardHeader>
                   <CardContent>
+                    {!showEmploymentIntakeForm && localDraftInfo.hasDraft && employmentIntake?.status !== 'submitted' && employmentIntake?.status !== 'reviewed' && (
+                      <div className="mb-4 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-sm animate-in fade-in">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                          <div>
+                            <h4 className="font-semibold text-sm sm:text-base">
+                              {localDraftInfo.isFilled
+                                ? "Completed Local Draft Found on This Device"
+                                : "Unsubmitted Local Draft Found on This Device"}
+                            </h4>
+                            <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
+                              {localDraftInfo.isFilled
+                                ? "All questionnaire sections are filled locally. Other staff cannot see this intake until you submit it to the system."
+                                : `Locally saved draft detected${localDraftInfo.savedAt ? ` from ${localDraftInfo.savedAt}` : ""}. Other staff cannot see it until submitted.`}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className={localDraftInfo.isFilled ? "bg-emerald-600 hover:bg-emerald-700 text-white font-medium shrink-0" : "bg-amber-600 hover:bg-amber-700 text-white font-medium shrink-0"}
+                          onClick={() => setShowEmploymentIntakeForm(true)}
+                        >
+                          {localDraftInfo.isFilled ? "Review & Submit Draft" : "Continue Local Draft"}
+                        </Button>
+                      </div>
+                    )}
                     {showEmploymentIntakeForm ? (
                       <EmploymentSupportIntakeForm
                         clientId={clientId}
@@ -2096,6 +2160,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                         onSuccess={() => {
                           setShowEmploymentIntakeForm(false);
                           refreshEmploymentIntake();
+                          checkLocalDraft();
                         }}
                       />
                     ) : employmentIntake ? (

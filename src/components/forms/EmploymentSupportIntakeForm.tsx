@@ -23,6 +23,8 @@ import { useAuth } from "@/lib/auth-context";
 import {
   employmentSupportIntakeSchema,
   defaultEmploymentSupportIntake,
+  hasEmploymentIntakeProgress,
+  isEmploymentIntakeFilled,
   type EmploymentSupportIntakeForm as ESIFormType,
 } from "@/lib/schemas/employment-support";
 import { saveEmploymentSupportIntake } from "@/app/actions/employment-support";
@@ -110,29 +112,43 @@ export function EmploymentSupportIntakeForm({
     trigger,
   } = methods;
 
-  // Load draft from localStorage (only for new forms without existing data)
+  // Load draft from localStorage
   useEffect(() => {
-    if (!initialData && typeof window !== "undefined") {
-      const draftKey = `${DRAFT_KEY}-${clientId}`;
-      const savedDraft = localStorage.getItem(draftKey);
-      if (savedDraft) {
-        try {
-          const parsed = JSON.parse(savedDraft);
-          if (!hasSubmittedRef.current) {
+    if (typeof window === "undefined" || existingStatus === "submitted" || existingStatus === "reviewed") {
+      return;
+    }
+    const draftKey = `${DRAFT_KEY}-${clientId}`;
+    const savedDraft = localStorage.getItem(draftKey);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        if (!hasSubmittedRef.current && parsed?.data) {
+          const hasLocalProgress = hasEmploymentIntakeProgress(parsed.data);
+          const hasInitialProgress = hasEmploymentIntakeProgress(initialData);
+
+          if (hasLocalProgress && (!hasInitialProgress || !initialData)) {
             reset(parsed.data);
-            setLastSaved(new Date(parsed.savedAt));
+            if (parsed.savedAt) setLastSaved(new Date(parsed.savedAt));
             setDraftRestored(true);
-            toast({
-              title: "Draft restored",
-              description: "Your previous progress has been restored.",
-            });
+
+            if (isEmploymentIntakeFilled(parsed.data)) {
+              toast({
+                title: "Local draft restored",
+                description: "All sections appear complete. Please submit to make it visible to other staff.",
+              });
+            } else {
+              toast({
+                title: "Draft restored",
+                description: "Your previous progress has been restored from this device.",
+              });
+            }
           }
-        } catch {
-          // Invalid draft, ignore
         }
+      } catch {
+        // Invalid draft, ignore
       }
     }
-  }, [initialData, reset, toast, clientId]);
+  }, [initialData, existingStatus, reset, toast, clientId]);
 
   // Fetch staff/volunteers for Internal Use section
   useEffect(() => {
@@ -164,6 +180,7 @@ export function EmploymentSupportIntakeForm({
 
   // Auto-save draft
   const formData = watch();
+  const isFilled = useMemo(() => isEmploymentIntakeFilled(formData), [formData]);
   const saveDraft = useCallback(() => {
     if (isSubmitting || hasSubmittedRef.current) return;
     if (typeof window !== "undefined" && Object.keys(dirtyFields).length > 0) {
@@ -222,6 +239,39 @@ export function EmploymentSupportIntakeForm({
     }
   };
 
+  const saveDraftToDb = async (options?: { silent?: boolean }) => {
+    if (isSavingDraftToDb || isSubmitting || hasSubmittedRef.current) return;
+    saveDraft();
+    setIsSavingDraftToDb(true);
+    try {
+      const currentValues = methods.getValues();
+      const submitData = isStaff
+        ? currentValues
+        : { ...currentValues, internalUse: defaultEmploymentSupportIntake.internalUse };
+      const result = await saveEmploymentSupportIntake({
+        data: submitData,
+        clientId,
+        enrollmentId,
+        intakeId: currentIntakeIdRef.current,
+        asDraft: true,
+      });
+      if (result.success) {
+        if (result.intakeId) currentIntakeIdRef.current = result.intakeId;
+        if (!options?.silent) {
+          toast({ title: "Draft saved", description: "Your progress has been saved to the system." });
+        }
+      } else if (!options?.silent) {
+        toast({ title: "Could not save draft", description: result.error || "Please try again.", variant: "destructive" });
+      }
+    } catch {
+      if (!options?.silent) {
+        toast({ title: "Could not save draft", description: "Please try again.", variant: "destructive" });
+      }
+    } finally {
+      setIsSavingDraftToDb(false);
+    }
+  };
+
   const handleNext = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -230,6 +280,9 @@ export function EmploymentSupportIntakeForm({
     if (isValid) {
       setCurrentStep(currentStep + 1);
       saveDraft();
+      if (isStaff) {
+        void saveDraftToDb({ silent: true });
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -284,6 +337,7 @@ export function EmploymentSupportIntakeForm({
 
         if (result.success) {
           hasSubmittedRef.current = true;
+          setDraftRestored(false);
           if (typeof window !== "undefined") {
             localStorage.removeItem(`${DRAFT_KEY}-${clientId}`);
           }
@@ -320,35 +374,6 @@ export function EmploymentSupportIntakeForm({
         : "Something went wrong. Please try again.",
       variant: "destructive",
     });
-  };
-
-  const saveDraftToDb = async () => {
-    if (isSavingDraftToDb || isSubmitting || hasSubmittedRef.current) return;
-    saveDraft();
-    setIsSavingDraftToDb(true);
-    try {
-      const formData = methods.getValues();
-      const submitData = isStaff
-        ? formData
-        : { ...formData, internalUse: defaultEmploymentSupportIntake.internalUse };
-      const result = await saveEmploymentSupportIntake({
-        data: submitData,
-        clientId,
-        enrollmentId,
-        intakeId: currentIntakeIdRef.current,
-        asDraft: true,
-      });
-      if (result.success) {
-        if (result.intakeId) currentIntakeIdRef.current = result.intakeId;
-        toast({ title: "Draft saved", description: "Your progress has been saved." });
-      } else {
-        toast({ title: "Could not save draft", description: result.error || "Please try again.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Could not save draft", description: "Please try again.", variant: "destructive" });
-    } finally {
-      setIsSavingDraftToDb(false);
-    }
   };
 
   const hasStepErrors = (stepIndex: number) => {
@@ -391,7 +416,7 @@ export function EmploymentSupportIntakeForm({
                   Last saved: {lastSaved.toLocaleTimeString()}
                 </span>
               )}
-              <Button type="button" variant="outline" size="sm" onClick={saveDraftToDb} disabled={isSavingDraftToDb}>
+              <Button type="button" variant="outline" size="sm" onClick={() => void saveDraftToDb()} disabled={isSavingDraftToDb}>
                 {isSavingDraftToDb ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 <span className="hidden sm:inline">Save Draft</span>
               </Button>
@@ -410,32 +435,81 @@ export function EmploymentSupportIntakeForm({
             </div>
           )}
 
+          {/* Unsubmitted Filled Intake Banner */}
+          {isFilled && existingStatus !== "submitted" && existingStatus !== "reviewed" && (
+            <div className="mb-4 p-4 bg-amber-50 border-2 border-amber-300 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 shadow-sm animate-in fade-in">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-sm sm:text-base">
+                    All Sections Filled — Ready to Submit
+                  </h3>
+                  <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
+                    This intake has been completed on this device. Other staff cannot see these responses until you submit them to the system.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+                  onClick={() => handleSubmit(onSubmit)()}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-1.5" />
+                  )}
+                  Submit to System Now
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Draft Restored Banner */}
-          {draftRestored && lastSaved && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+          {!isFilled && draftRestored && lastSaved && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-blue-800">
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-4 w-4 shrink-0" />
                 <span className="text-sm font-medium">
                   Continuing from draft saved {formatPacificLocaleDate(lastSaved)} at{" "}
-                  {formatPacificLocaleTime(lastSaved)}
+                  {formatPacificLocaleTime(lastSaved)}. (Local to this device only)
                 </span>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
-                onClick={() => {
-                  localStorage.removeItem(`${DRAFT_KEY}-${clientId}`);
-                  reset(defaultEmploymentSupportIntake);
-                  setDraftRestored(false);
-                  setLastSaved(null);
-                  setCurrentStep(0);
-                  toast({ title: "Draft cleared", description: "Starting fresh." });
-                }}
-              >
-                Start Fresh
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => saveDraftToDb()}
+                  disabled={isSavingDraftToDb}
+                >
+                  {isSavingDraftToDb ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3 mr-1" />
+                  )}
+                  Save to System
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                  onClick={() => {
+                    localStorage.removeItem(`${DRAFT_KEY}-${clientId}`);
+                    reset(defaultEmploymentSupportIntake);
+                    setDraftRestored(false);
+                    setLastSaved(null);
+                    setCurrentStep(0);
+                    toast({ title: "Draft cleared", description: "Starting fresh." });
+                  }}
+                >
+                  Start Fresh
+                </Button>
+              </div>
             </div>
           )}
 

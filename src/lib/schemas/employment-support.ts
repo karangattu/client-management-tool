@@ -395,3 +395,104 @@ export function dbRowToFormData(
     },
   };
 }
+
+export function isEmploymentIntakeFilled(
+  data?: Partial<EmploymentSupportIntakeForm> | null
+): boolean {
+  if (!data) return false;
+
+  const hasBasicInfo = !!data.basicInfo?.preferredContactMethod;
+  const hasEducation = !!data.education?.educationLevel;
+  const hasWorkExp =
+    !!data.workExperience?.workExperienceType ||
+    (data.workExperience?.workHistory || []).some(
+      (h) => !!(h.employer?.trim() || h.jobTitle?.trim())
+    );
+  const hasJobPrefs =
+    (data.jobPreferences?.jobInterests || []).length > 0 ||
+    (data.jobPreferences?.employmentTypes || []).length > 0;
+  const hasResume = !!data.resume?.resumeStatus;
+  const hasBarriersOrNeeds =
+    (data.barriers?.supportNeeds || []).length > 0 ||
+    (data.barriers?.barriers || []).length > 0;
+  const hasCommitment =
+    !!data.commitment?.checkinFrequency || !!data.commitment?.commitsToMeetings;
+
+  return (
+    hasBasicInfo &&
+    hasEducation &&
+    hasWorkExp &&
+    hasJobPrefs &&
+    hasResume &&
+    hasBarriersOrNeeds &&
+    hasCommitment
+  );
+}
+
+export function hasEmploymentIntakeProgress(
+  data?: Partial<EmploymentSupportIntakeForm> | null
+): boolean {
+  if (!data) return false;
+
+  if (
+    data.basicInfo?.preferredContactMethod ||
+    data.basicInfo?.bestContactTime ||
+    (data.basicInfo?.availableDocuments || []).length > 0
+  ) {
+    return true;
+  }
+  if (
+    data.education?.educationLevel ||
+    data.education?.fieldOfStudy ||
+    data.education?.certifications
+  ) {
+    return true;
+  }
+  if (
+    data.skills?.technicalSkills ||
+    data.skills?.languageSkills ||
+    data.skills?.otherSkills
+  ) {
+    return true;
+  }
+  if (
+    data.workExperience?.workExperienceType ||
+    (data.workExperience?.workHistory || []).some(
+      (h) => !!(h.employer?.trim() || h.jobTitle?.trim())
+    )
+  ) {
+    return true;
+  }
+  if (
+    (data.jobPreferences?.jobInterests || []).length > 0 ||
+    (data.jobPreferences?.employmentTypes || []).length > 0 ||
+    data.jobPreferences?.workAvailability
+  ) {
+    return true;
+  }
+  if (data.resume?.resumeStatus || data.resume?.hasCoverLetter) {
+    return true;
+  }
+  if (
+    (data.jobSearch?.applicationSources || []).length > 0 ||
+    (data.jobSearch?.recentApplications || []).length > 0
+  ) {
+    return true;
+  }
+  if (
+    (data.barriers?.barriers || []).length > 0 ||
+    (data.barriers?.supportNeeds || []).length > 0
+  ) {
+    return true;
+  }
+  if (
+    data.commitment?.checkinFrequency ||
+    data.commitment?.additionalNotes ||
+    data.commitment?.commitsToMeetings
+  ) {
+    return true;
+  }
+
+  return false;
+}
+

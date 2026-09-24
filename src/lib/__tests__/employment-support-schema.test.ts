@@ -4,6 +4,8 @@ import {
   defaultEmploymentSupportIntake,
   defaultWorkHistoryEntry,
   employmentSupportIntakeSchema,
+  hasEmploymentIntakeProgress,
+  isEmploymentIntakeFilled,
 } from "../schemas/employment-support";
 
 describe("employment-support schema helpers", () => {
@@ -49,4 +51,79 @@ describe("employment-support schema helpers", () => {
     expect(formData.resume.hasCoverLetter).toBe(false);
     expect(formData.internalUse.assignedStaffId).toBe("");
   });
+
+  it("accurately detects when intake has progress or is filled", () => {
+    expect(hasEmploymentIntakeProgress(defaultEmploymentSupportIntake)).toBe(false);
+    expect(isEmploymentIntakeFilled(defaultEmploymentSupportIntake)).toBe(false);
+
+    const partialIntake = {
+      ...defaultEmploymentSupportIntake,
+      basicInfo: {
+        ...defaultEmploymentSupportIntake.basicInfo,
+        preferredContactMethod: "call",
+      },
+    };
+    expect(hasEmploymentIntakeProgress(partialIntake)).toBe(true);
+    expect(isEmploymentIntakeFilled(partialIntake)).toBe(false);
+
+    const filledIntake = {
+      ...defaultEmploymentSupportIntake,
+      basicInfo: {
+        preferredContactMethod: "email",
+        bestContactTime: "morning",
+        availableDocuments: ["government_id"],
+      },
+      education: {
+        educationLevel: "high_school_or_ged",
+        fieldOfStudy: "",
+        certifications: "",
+        wantsGedSupport: false,
+      },
+      skills: {
+        technicalSkills: "Excel",
+        languageSkills: "",
+        otherSkills: "",
+      },
+      workExperience: {
+        workHistory: [{ employer: "ABC Inc", jobTitle: "Clerk", dates: "2022-2024", duties: "Filing" }],
+        workExperienceType: "mostly_customer_facing",
+        hasEmploymentGaps: false,
+      },
+      jobPreferences: {
+        jobInterests: ["customer_service"],
+        jobInterestsOther: "",
+        minimumHourlyPay: 20,
+        employmentTypes: ["full_time"],
+        workAvailability: "immediate",
+        transportationMethods: ["car"],
+      },
+      resume: {
+        resumeStatus: "ready",
+        resumeLastUpdated: "within_6_months",
+        hasCoverLetter: false,
+        coverLetterLastUpdated: "",
+      },
+      jobSearch: {
+        applicationSources: ["indeed"],
+        applicationSourcesOther: "",
+        recentApplications: [],
+        hasInterviewRequests: false,
+        interviewDetails: "",
+      },
+      barriers: {
+        barriers: [],
+        barriersOther: "",
+        supportNeeds: ["resume_help"],
+      },
+      commitment: {
+        commitsToMeetings: true,
+        checkinFrequency: "weekly",
+        additionalNotes: "",
+      },
+    };
+
+    expect(hasEmploymentIntakeProgress(filledIntake)).toBe(true);
+    expect(isEmploymentIntakeFilled(filledIntake)).toBe(true);
+  });
 });
+

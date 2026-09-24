@@ -210,10 +210,32 @@ export async function saveEmploymentSupportIntake(params: {
 
     const isStaff = isStaffRole(profile?.role);
 
-    // Build the database row from the validated form data
+    let programEnrollmentId = params.enrollmentId || null;
+    if (!programEnrollmentId) {
+      const { data: program } = await supabase
+        .from("programs")
+        .select("id")
+        .ilike("name", "Employment Support")
+        .maybeSingle();
+
+      if (program?.id) {
+        const { data: enrollment } = await supabase
+          .from("program_enrollments")
+          .select("id")
+          .eq("client_id", params.clientId)
+          .eq("program_id", program.id)
+          .in("status", ["interested", "applying", "enrolled", "completed"])
+          .maybeSingle();
+
+        if (enrollment?.id) {
+          programEnrollmentId = enrollment.id;
+        }
+      }
+    }
+
     const row: Record<string, unknown> = {
       client_id: params.clientId,
-      program_enrollment_id: params.enrollmentId || null,
+      program_enrollment_id: programEnrollmentId,
 
       // Section A
       preferred_contact_method: validated.basicInfo.preferredContactMethod || null,
@@ -276,7 +298,6 @@ export async function saveEmploymentSupportIntake(params: {
       updated_at: new Date().toISOString(),
     };
 
-    // Only staff can set internal-use fields
     if (isStaff) {
       row.readiness_status = validated.internalUse.readinessStatus || null;
       row.assigned_staff_id = validated.internalUse.assignedStaffId || null;
@@ -286,7 +307,6 @@ export async function saveEmploymentSupportIntake(params: {
     let intakeId = params.intakeId;
 
     if (intakeId) {
-      // Update existing
       const { error } = await supabase
         .from("employment_support_intake")
         .update(row)
@@ -294,7 +314,6 @@ export async function saveEmploymentSupportIntake(params: {
 
       if (error) throw error;
     } else {
-      // Insert new
       const { data: inserted, error } = await supabase
         .from("employment_support_intake")
         .insert(row)
@@ -306,6 +325,7 @@ export async function saveEmploymentSupportIntake(params: {
     }
 
     revalidatePath(`/clients/${params.clientId}`);
+    revalidatePath("/employment-support");
     revalidatePath("/my-portal");
 
     return { success: true, intakeId };
@@ -320,7 +340,7 @@ export async function saveEmploymentSupportIntake(params: {
 
 /**
  * Fetches the employment support intake for a client.
- * Returns the most recent intake, optionally filtered by enrollment.
+ * Prioritizes submitted/reviewed over empty drafts.
  */
 export async function getEmploymentSupportIntake(
   clientId: string,
@@ -345,13 +365,31 @@ export async function getEmploymentSupportIntake(
       query = query.eq("program_enrollment_id", enrollmentId);
     }
 
-    const { data, error } = await query
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data: rows, error } = await query;
 
     if (error) throw error;
-    return { success: true, data };
+    if (!rows || rows.length === 0) {
+      return { success: true, data: null };
+    }
+
+    const statusScore = (status?: string | null) => {
+      switch (status) {
+        case "reviewed": return 3;
+        case "submitted": return 2;
+        case "draft": return 1;
+        default: return 0;
+      }
+    };
+
+    const bestRow = [...rows].sort((a, b) => {
+      const diff = statusScore(b.status as string) - statusScore(a.status as string);
+      if (diff !== 0) return diff;
+      const bTime = new Date((b.updated_at || b.created_at) as string).getTime();
+      const aTime = new Date((a.updated_at || a.created_at) as string).getTime();
+      return bTime - aTime;
+    })[0];
+
+    return { success: true, data: bestRow };
   } catch (error) {
     console.error("Error fetching employment support intake:", error);
     return {
@@ -788,6 +826,24 @@ export async function createDraftEmploymentSupportIntake(
 
     if (existing) {
       return { success: true, intakeId: existing.id, alreadyExists: true };
+    }
+
+    // Check if an unlinked intake exists for this client
+    const { data: orphaned } = await serviceClient
+      .from("employment_support_intake")
+      .select("id")
+      .eq("client_id", clientId)
+      .is("program_enrollment_id", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (orphaned) {
+      await serviceClient
+        .from("employment_support_intake")
+        .update({ program_enrollment_id: enrollmentId })
+        .eq("id", orphaned.id);
+      return { success: true, intakeId: orphaned.id, alreadyExists: true };
     }
 
     const { data, error } = await serviceClient
