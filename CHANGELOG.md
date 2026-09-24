@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.13] - 2026-09-24
+
+### Changed
+
+- Bumped app version for production Vercel deployment with latest Employment Support background sync, status indicators, and auto-enrollment enhancements
+
 ## [1.0.12] - 2026-09-24
 
 ### Added
