@@ -25,6 +25,8 @@ import {
   PenLine,
   ArrowRight,
   ArrowLeft,
+  Eye,
+  EyeOff,
   Info,
   Users,
   Loader2,
@@ -68,7 +70,11 @@ export default function ClientPortalPage() {
   const [success, setSuccess] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const [isHomeless, setIsHomeless] = useState(false);
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -92,6 +98,31 @@ export default function ClientPortalPage() {
 
   const totalSteps = 4;
   const progress = (currentStep / totalSteps) * 100;
+
+  const clearFieldError = (name: string) => {
+    setStepErrors(prev => {
+      if (!(name in prev)) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+    clearFieldError(e.target.name);
+  };
+
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+    clearFieldError(name);
+  };
 
   // Save draft to localStorage (debounced)
   const saveDraft = useCallback(() => {
@@ -161,8 +192,25 @@ export default function ClientPortalPage() {
           zipCode: draft.zipCode || '',
           preferredLanguage: draft.preferredLanguage || 'english',
         }));
-        setCurrentStep(draft.currentStep || 1);
         setAgreed(draft.agreed || false);
+
+        // The signature is never restored (passwords/signature excluded for
+        // security), so a restored step 4 would dead-end. Only restore the
+        // furthest step that can actually be sat on without the signature;
+        // never step up from what the draft supports.
+        let maxStep = 1;
+        const step1Filled = draft.firstName && draft.lastName && draft.email;
+        const step2Filled = draft.street && draft.city && draft.state && draft.zipCode;
+        if (step1Filled && step2Filled) {
+          maxStep = draft.agreed ? 3 : 2;
+        }
+        const clampedStep = Math.min(draft.currentStep || 1, maxStep);
+        setCurrentStep(clampedStep);
+
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ ...draft, currentStep: clampedStep })
+        );
       } catch (e) {
         console.error('Error restoring draft:', e);
       }
@@ -183,6 +231,24 @@ export default function ClientPortalPage() {
         ctx.lineJoin = 'round';
       }
     }
+  }, [signatureOpen]);
+
+  // Modal a11y: Escape to close and initial focus on the cancel button
+  useEffect(() => {
+    if (!signatureOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSignatureOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    cancelRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [signatureOpen]);
 
   // Fetch current user and verification status so we can show CTA and auto-redirect
@@ -278,26 +344,66 @@ export default function ClientPortalPage() {
     const dataUrl = canvas.toDataURL('image/png');
     setSignature(dataUrl);
     setSignatureOpen(false);
+    clearFieldError('signature');
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
+  const validateStep = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    const emailPattern = /\S+@\S+\.\S+/;
 
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    if (currentStep === 1) {
+      if (!formData.firstName.trim()) {
+        errs.firstName = t('clientPortal.errorFirstNameRequired');
+      }
+      if (!formData.lastName.trim()) {
+        errs.lastName = t('clientPortal.errorLastNameRequired');
+      }
+      if (!formData.email.trim()) {
+        errs.email = t('clientPortal.errorEmailRequired');
+      } else if (!emailPattern.test(formData.email.trim())) {
+        errs.email = t('clientPortal.errorEmailInvalid');
+      }
+      if (!formData.password) {
+        errs.password = t('clientPortal.errorPasswordRequired');
+      } else if (formData.password.length < 6) {
+        errs.password = t('clientPortal.errorPasswordShort');
+      }
+      if (!formData.confirmPassword) {
+        errs.confirmPassword = t('clientPortal.errorConfirmPasswordRequired');
+      }
+      if (!formData.dateOfBirth) {
+        errs.dateOfBirth = t('clientPortal.errorDateOfBirth');
+      }
+    } else if (currentStep === 2) {
+      if (!isHomeless) {
+        if (!formData.street.trim()) {
+          errs.street = t('clientPortal.errorStreetRequired');
+        }
+        if (!formData.city.trim()) {
+          errs.city = t('clientPortal.errorCityRequired');
+        }
+        if (!formData.state) {
+          errs.state = t('clientPortal.errorStateRequired');
+        }
+        if (!formData.zipCode.trim()) {
+          errs.zipCode = t('clientPortal.errorZipRequired');
+        }
+      }
+    } else if (currentStep === 3) {
+      if (!agreed) {
+        errs.agreement = t('clientPortal.errorAgreementRequired');
+      }
+    }
+
+    return errs;
   };
 
   const canProceed = () => {
     switch (currentStep) {
       case 1:
         return formData.firstName && formData.lastName && formData.email &&
+          /\S+@\S+\.\S+/.test(formData.email) &&
+          formData.dateOfBirth &&
           formData.password && formData.password === formData.confirmPassword &&
           formData.password.length >= 6;
       case 2:
@@ -308,6 +414,26 @@ export default function ClientPortalPage() {
         return signature !== null;
       default:
         return true;
+    }
+  };
+
+  const handleNext = () => {
+    const errs = validateStep();
+    if (!canProceed() || Object.keys(errs).length > 0) {
+      setStepErrors(errs);
+      return;
+    }
+    setStepErrors({});
+    setCurrentStep(prev => prev + 1);
+  };
+
+  const handleSubmitClick = () => {
+    if (loading) return;
+    if (canProceed()) {
+      setStepErrors({});
+      handleSubmit();
+    } else {
+      setStepErrors({ signature: t('clientPortal.errorSignatureRequired') });
     }
   };
 
@@ -375,6 +501,7 @@ export default function ClientPortalPage() {
     setSignatureOpen(false);
     setIsHomeless(false);
     setError(null);
+    setStepErrors({});
     setFormData({
       firstName: '',
       lastName: '',
@@ -402,22 +529,23 @@ export default function ClientPortalPage() {
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
             </div>
-            <h2 className="text-2xl font-bold mb-2">Registration Complete!</h2>
+            <h2 className="text-2xl font-bold mb-2">{t('clientPortal.successTitle')}</h2>
             <p className="text-gray-600 mb-4">
-              Thank you for registering. Please check your email to verify your account.
-              A case manager will review your information and contact you soon.
+              {t('clientPortal.successText')}
             </p>
             <p className="text-sm text-gray-500 mb-6">
-              After verifying your email, you&apos;ll be able to complete your full profile with additional details (demographics, household, finances, and health).
+              {t('clientPortal.successNote')}
+              <br />
+              {t('clientPortal.successProfileText')}
             </p>
 
             <div className="flex gap-3 justify-center flex-wrap">
               <Button variant="outline" onClick={resetForm}>
-                Register Another Person
+                {t('clientPortal.registerAnother')}
               </Button>
 
               <Link href="/login">
-                <Button variant="outline">Go to Login</Button>
+                <Button variant="outline">{t('clientPortal.goToLogin')}</Button>
               </Link>
 
               {/* Direct link to profile completion - will prompt login if necessary */}
@@ -425,11 +553,11 @@ export default function ClientPortalPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link href="/profile-completion">
-                      <Button>Complete Your Profile</Button>
+                      <Button>{t('clientPortal.completeProfile')}</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    You will be prompted to log in if you are not currently signed in. Finish the full intake to provide detailed information for your case.
+                    {t('clientPortal.completeProfileTooltip')}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -455,7 +583,7 @@ export default function ClientPortalPage() {
             {draftSaved && (
               <div className="flex items-center gap-1 text-sm text-green-600 animate-pulse">
                 <Save className="h-4 w-4" />
-                <span>Draft saved</span>
+                <span>{t('clientPortal.draftSaved')}</span>
               </div>
             )}
             <LanguageSelector />
@@ -483,11 +611,11 @@ export default function ClientPortalPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Link href="/profile-completion">
-                      <Button variant="ghost">Complete your full profile</Button>
+                      <Button variant="ghost">{t('clientPortal.fullProfileCta')}</Button>
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Complete the full intake (demographics, household, finances, and health) to finish your profile.
+                    {t('clientPortal.fullProfileTooltip')}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -498,22 +626,26 @@ export default function ClientPortalPage() {
         {/* Progress */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Step {currentStep} of {totalSteps}</span>
-            <span className="text-sm text-gray-500">{Math.round(progress)}% Complete</span>
+            <span className="text-sm font-medium">
+              {t('clientPortal.stepOf', { current: String(currentStep), total: String(totalSteps) })}
+            </span>
+            <span className="text-sm text-gray-500">
+              {t('clientPortal.percentComplete', { percent: String(Math.round(progress)) })}
+            </span>
           </div>
           <Progress value={progress} className="h-2" />
           <div className="flex justify-between mt-2">
             <span className={`text-xs ${currentStep >= 1 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Account
+              {t('clientPortal.stepAccount')}
             </span>
             <span className={`text-xs ${currentStep >= 2 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Address
+              {t('clientPortal.stepAddress')}
             </span>
             <span className={`text-xs ${currentStep >= 3 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Agreement
+              {t('clientPortal.stepAgreement')}
             </span>
             <span className={`text-xs ${currentStep >= 4 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
-              Sign
+              {t('clientPortal.stepSign')}
             </span>
           </div>
         </div>
@@ -545,7 +677,12 @@ export default function ClientPortalPage() {
                       value={formData.firstName}
                       onChange={handleInputChange}
                       placeholder={t('clients.firstName')}
+                      aria-invalid={!!stepErrors.firstName}
+                      aria-describedby={stepErrors.firstName ? 'firstName-error' : undefined}
                     />
+                    {stepErrors.firstName && (
+                      <p id="firstName-error" className="text-sm text-red-500">{stepErrors.firstName}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName">{t('clients.lastName')} *</Label>
@@ -555,7 +692,12 @@ export default function ClientPortalPage() {
                       value={formData.lastName}
                       onChange={handleInputChange}
                       placeholder={t('clients.lastName')}
+                      aria-invalid={!!stepErrors.lastName}
+                      aria-describedby={stepErrors.lastName ? 'lastName-error' : undefined}
                     />
+                    {stepErrors.lastName && (
+                      <p id="lastName-error" className="text-sm text-red-500">{stepErrors.lastName}</p>
+                    )}
                   </div>
                 </div>
 
@@ -568,35 +710,72 @@ export default function ClientPortalPage() {
                     value={formData.email}
                     onChange={handleInputChange}
                     placeholder="your.email@example.com"
+                    aria-invalid={!!stepErrors.email}
+                    aria-describedby={stepErrors.email ? 'email-error' : undefined}
                   />
+                  {stepErrors.email && (
+                    <p id="email-error" className="text-sm text-red-500">{stepErrors.email}</p>
+                  )}
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="password">{t('auth.password')} *</Label>
-                    <Input
-                      id="password"
-                      name="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Min. 6 characters"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={formData.password}
+                        onChange={handleInputChange}
+                        placeholder={t('clientPortal.min6Characters')}
+                        className="pr-10"
+                        aria-invalid={!!stepErrors.password}
+                        aria-describedby={stepErrors.password ? 'password-error' : undefined}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(prev => !prev)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        aria-label={showPassword ? t('clientPortal.hidePasswordToggle') : t('clientPortal.showPasswordToggle')}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {stepErrors.password && (
+                      <p id="password-error" className="text-sm text-red-500">{stepErrors.password}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">{t('auth.confirmPassword')} *</Label>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      placeholder={t('auth.confirmPassword')}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={formData.confirmPassword}
+                        onChange={handleInputChange}
+                        placeholder={t('auth.confirmPassword')}
+                        className="pr-10"
+                        aria-invalid={!!stepErrors.confirmPassword}
+                        aria-describedby={stepErrors.confirmPassword ? 'confirmPassword-error' : undefined}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(prev => !prev)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        aria-label={showConfirmPassword ? t('clientPortal.hidePasswordToggle') : t('clientPortal.showPasswordToggle')}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {stepErrors.confirmPassword && (
+                      <p id="confirmPassword-error" className="text-sm text-red-500">{stepErrors.confirmPassword}</p>
+                    )}
                   </div>
                 </div>
                 {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                  <p className="text-sm text-red-500">Passwords do not match</p>
+                  <p className="text-sm text-red-500">{t('clientPortal.passwordsDoNotMatch')}</p>
                 )}
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -612,24 +791,32 @@ export default function ClientPortalPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')}</Label>
+                    <Label htmlFor="dateOfBirth">{t('clients.dateOfBirth')} *</Label>
                     <Input
                       id="dateOfBirth"
                       name="dateOfBirth"
                       type="date"
                       value={formData.dateOfBirth}
                       onChange={handleInputChange}
+                      aria-invalid={!!stepErrors.dateOfBirth}
+                      aria-describedby={stepErrors.dateOfBirth ? 'dateOfBirth-error' : undefined}
                     />
+                    {stepErrors.dateOfBirth && (
+                      <p id="dateOfBirth-error" className="text-sm text-red-500">{stepErrors.dateOfBirth}</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Preferred Language</Label>
+                  <Label htmlFor="preferred-language">{t('clientPortal.preferredLanguage')}</Label>
                   <Select
                     value={formData.preferredLanguage}
                     onValueChange={(value) => handleSelectChange('preferredLanguage', value)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger
+                      id="preferred-language"
+                      aria-labelledby="preferred-language"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -646,8 +833,8 @@ export default function ClientPortalPage() {
                 <div className="bg-blue-50 p-4 rounded-lg flex gap-3">
                   <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-blue-800">
-                    <p className="font-medium">Your information is secure</p>
-                    <p className="mt-1">All data is encrypted and stored securely in compliance with privacy regulations.</p>
+                    <p className="font-medium">{t('clientPortal.infoSecureTitle')}</p>
+                    <p className="mt-1">{t('clientPortal.infoSecureText')}</p>
                   </div>
                 </div>
               </div>
@@ -671,13 +858,17 @@ export default function ClientPortalPage() {
                       if (checked) {
                         setFormData(prev => ({ ...prev, street: '', city: '', state: '', zipCode: '' }));
                       }
+                      clearFieldError('street');
+                      clearFieldError('city');
+                      clearFieldError('state');
+                      clearFieldError('zipCode');
                     }}
                     className="border-orange-400 data-[state=checked]:bg-orange-500 data-[state=checked]:border-orange-500"
                   />
                   <div className="flex items-center gap-2">
                     <Home className="h-4 w-4 text-orange-600 flex-shrink-0" />
                     <label htmlFor="isHomeless" className="text-sm font-medium text-orange-800 cursor-pointer leading-snug">
-                      I&apos;m currently experiencing homelessness or don&apos;t have a fixed address
+                      {t('clientPortal.homelessCheckbox')}
                     </label>
                   </div>
                 </div>
@@ -685,16 +876,16 @@ export default function ClientPortalPage() {
                 {isHomeless ? (
                   <div className="space-y-3">
                     <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 text-sm text-orange-800">
-                      No permanent address needed. You can optionally provide a shelter, care-of, or mailing address below.
+                      {t('clientPortal.homelessNote')}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="mailingAddress">Shelter / Mailing Address (optional)</Label>
+                      <Label htmlFor="mailingAddress">{t('clientPortal.mailingAddressLabel')}</Label>
                       <Input
                         id="mailingAddress"
                         name="mailingAddress"
                         value={formData.mailingAddress}
                         onChange={handleInputChange}
-                        placeholder="e.g. City Shelter, 123 Main St"
+                        placeholder={t('clientPortal.mailingAddressPlaceholder')}
                       />
                     </div>
                   </div>
@@ -708,7 +899,12 @@ export default function ClientPortalPage() {
                         value={formData.street}
                         onChange={handleInputChange}
                         placeholder="123 Main Street, Apt 4B"
+                        aria-invalid={!!stepErrors.street}
+                        aria-describedby={stepErrors.street ? 'street-error' : undefined}
                       />
+                      {stepErrors.street && (
+                        <p id="street-error" className="text-sm text-red-500">{stepErrors.street}</p>
+                      )}
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-4">
@@ -720,7 +916,12 @@ export default function ClientPortalPage() {
                           value={formData.city}
                           onChange={handleInputChange}
                           placeholder={t('clients.city')}
+                          aria-invalid={!!stepErrors.city}
+                          aria-describedby={stepErrors.city ? 'city-error' : undefined}
                         />
+                        {stepErrors.city && (
+                          <p id="city-error" className="text-sm text-red-500">{stepErrors.city}</p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="state">{t('clients.state')} *</Label>
@@ -729,7 +930,7 @@ export default function ClientPortalPage() {
                           onValueChange={(value) => handleSelectChange('state', value)}
                         >
                           <SelectTrigger id="state">
-                            <SelectValue placeholder="Select state" />
+                            <SelectValue placeholder={t('clients.state')} />
                           </SelectTrigger>
                           <SelectContent>
                             {US_STATES.map((state) => (
@@ -739,6 +940,9 @@ export default function ClientPortalPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {stepErrors.state && (
+                          <p className="text-sm text-red-500">{stepErrors.state}</p>
+                        )}
                       </div>
                     </div>
 
@@ -751,7 +955,12 @@ export default function ClientPortalPage() {
                         onChange={handleInputChange}
                         placeholder="12345"
                         className="max-w-[200px]"
+                        aria-invalid={!!stepErrors.zipCode}
+                        aria-describedby={stepErrors.zipCode ? 'zipCode-error' : undefined}
                       />
+                      {stepErrors.zipCode && (
+                        <p id="zipCode-error" className="text-sm text-red-500">{stepErrors.zipCode}</p>
+                      )}
                     </div>
                   </>
                 )}
@@ -776,16 +985,24 @@ export default function ClientPortalPage() {
                   <Checkbox
                     id="agree"
                     checked={agreed}
-                    onCheckedChange={(checked) => setAgreed(checked as boolean)}
+                    onCheckedChange={(checked) => {
+                      setAgreed(checked as boolean);
+                      if (checked) {
+                        clearFieldError('agreement');
+                      }
+                    }}
                     className="mt-1"
                   />
                   <label htmlFor="agree" className="text-sm cursor-pointer">
-                    <span className="font-medium">I have read and agree to the terms</span>
+                    <span className="font-medium">{t('clientPortal.agreementAccepted')}</span>
                     <p className="text-gray-500 mt-1">
-                      By checking this box, you acknowledge that you have read, understood, and agree to the engagement letter and consent for services.
+                      {t('clientPortal.agreementAcceptedDesc')}
                     </p>
                   </label>
                 </div>
+                {stepErrors.agreement && (
+                  <p className="text-sm text-red-500">{t('clientPortal.errorAgreementRequired')}</p>
+                )}
               </div>
             )}
 
@@ -799,17 +1016,17 @@ export default function ClientPortalPage() {
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600 mb-4">
-                    Signing as: <span className="font-medium">{formData.firstName} {formData.lastName}</span>
+                    {t('clientPortal.signingAs')} <span className="font-medium">{formData.firstName} {formData.lastName}</span>
                     <br />
-                    Email: <span className="font-medium">{formData.email}</span>
+                    {t('clients.email')}: <span className="font-medium">{formData.email}</span>
                   </p>
                 </div>
 
                 {signature ? (
                   <div className="border rounded-lg p-4">
-                    <p className="text-sm text-gray-500 mb-2">Your Signature:</p>
+                    <p className="text-sm text-gray-500 mb-2">{t('clientPortal.yourSignature')}</p>
                     <div className="bg-white border rounded p-2 flex justify-center">
-                      <Image src={signature} alt="Your signature" width={300} height={96} className="max-h-24 object-contain" />
+                      <Image src={signature} alt={t('clientPortal.yourSignature')} width={300} height={96} className="max-h-24 object-contain" />
                     </div>
                     <Button
                       variant="outline"
@@ -824,36 +1041,50 @@ export default function ClientPortalPage() {
                     </Button>
                   </div>
                 ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-24 border-2 border-dashed"
-                    onClick={() => setSignatureOpen(true)}
-                  >
-                    <div className="flex flex-col items-center">
-                      <PenLine className="h-8 w-8 text-gray-400 mb-2" />
-                      <span>Click to sign</span>
-                    </div>
-                  </Button>
+                  <div>
+                    <Button
+                      variant="outline"
+                      className="w-full h-24 border-2 border-dashed"
+                      onClick={() => setSignatureOpen(true)}
+                    >
+                      <div className="flex flex-col items-center">
+                        <PenLine className="h-8 w-8 text-gray-400 mb-2" />
+                        <span>{t('clientPortal.clickToSign')}</span>
+                      </div>
+                    </Button>
+                    {stepErrors.signature && (
+                      <p className="text-sm text-red-500 mt-2">{stepErrors.signature}</p>
+                    )}
+                  </div>
                 )}
 
                 {signature && (
                   <div className="bg-green-50 p-4 rounded-lg flex gap-3">
                     <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
                     <div className="text-sm text-green-800">
-                      <p className="font-medium">Ready to submit!</p>
-                      <p className="mt-1">Your signature has been captured. Click &quot;Create Account&quot; to complete your registration.</p>
+                      <p className="font-medium">{t('clientPortal.readyToSubmit')}</p>
+                      <p className="mt-1">{t('clientPortal.readyToSubmitDesc')}</p>
                     </div>
                   </div>
                 )}
 
                 {/* Signature Modal */}
                 {signatureOpen && (
-                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-lg">
+                  <div
+                    className="fixed inset-0 flex items-center justify-center z-50 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Signature pad"
+                  >
+                    <div
+                      className="absolute inset-0 bg-black/50"
+                      onClick={() => setSignatureOpen(false)}
+                    />
+                    <Card className="relative w-full max-w-lg">
                       <CardHeader>
-                        <CardTitle>Draw Your Signature</CardTitle>
+                        <CardTitle>{t('clientPortal.modalTitle')}</CardTitle>
                         <CardDescription>
-                          Use your finger or mouse to draw your signature
+                          {t('clientPortal.modalDesc')}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -862,6 +1093,7 @@ export default function ClientPortalPage() {
                             ref={canvasRef}
                             width={400}
                             height={150}
+                            aria-label="Signature"
                             className="w-full touch-none cursor-crosshair bg-white"
                             onMouseDown={startDrawing}
                             onMouseMove={draw}
@@ -874,14 +1106,18 @@ export default function ClientPortalPage() {
                         </div>
                         <div className="flex justify-between">
                           <Button variant="outline" onClick={clearSignature}>
-                            Clear
+                            {t('clientPortal.modalClear')}
                           </Button>
                           <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => setSignatureOpen(false)}>
-                              Cancel
+                            <Button
+                              ref={cancelRef}
+                              variant="outline"
+                              onClick={() => setSignatureOpen(false)}
+                            >
+                              {t('common.cancel')}
                             </Button>
                             <Button onClick={saveSignature}>
-                              Save Signature
+                              {t('clientPortal.saveSignature')}
                             </Button>
                           </div>
                         </div>
@@ -898,7 +1134,10 @@ export default function ClientPortalPage() {
         <div className="flex justify-between mt-6">
           <Button
             variant="outline"
-            onClick={() => setCurrentStep(prev => prev - 1)}
+            onClick={() => {
+              setStepErrors({});
+              setCurrentStep(prev => prev - 1);
+            }}
             disabled={currentStep === 1}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -906,10 +1145,7 @@ export default function ClientPortalPage() {
           </Button>
 
           {currentStep < totalSteps ? (
-            <Button
-              onClick={() => setCurrentStep(prev => prev + 1)}
-              disabled={!canProceed()}
-            >
+            <Button onClick={handleNext}>
               {t('common.next')}
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
@@ -917,7 +1153,7 @@ export default function ClientPortalPage() {
             <Button
               disabled={!canProceed() || loading}
               className="bg-green-600 hover:bg-green-700"
-              onClick={handleSubmit}
+              onClick={handleSubmitClick}
             >
               {loading ? (
                 <>

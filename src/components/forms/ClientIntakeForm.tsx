@@ -67,6 +67,22 @@ const FORM_STEPS = [
 ];
 
 const DRAFT_KEY = "client-intake-draft";
+const DRAFT_SESSION_SCOPE_KEY = "client-intake-draft-session-scope";
+
+// Fallback scope for users without a loaded profile: unique per browser session (tab),
+// so two people sharing one browser never see each other's drafts.
+const getSessionDraftScope = (): string => {
+  if (typeof window === "undefined") return "server";
+  let scope = sessionStorage.getItem(DRAFT_SESSION_SCOPE_KEY);
+  if (!scope) {
+    scope =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(DRAFT_SESSION_SCOPE_KEY, scope);
+  }
+  return scope;
+};
 
 interface ClientIntakeFormProps {
   initialData?: ClientIntakeFormType;
@@ -100,29 +116,56 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
     trigger,
   } = methods;
 
+  // Draft key scoped to the signed-in user; falls back to a browser-session scope
+  const draftKey = profile?.id
+    ? `${DRAFT_KEY}-${profile.id}`
+    : `client-intake-draft-session-${getSessionDraftScope()}`;
+
   // Load draft from localStorage
   useEffect(() => {
-    if (!initialData && typeof window !== "undefined") {
-      const savedDraft = localStorage.getItem(DRAFT_KEY);
-      if (savedDraft) {
-        try {
-          const parsed = JSON.parse(savedDraft);
-          // Only restore if we haven't just submitted
-          if (!hasSubmittedRef.current) {
-            reset(parsed.data);
-            setLastSaved(new Date(parsed.savedAt));
-            setDraftRestored(true);
-            toast({
-              title: "Draft restored",
-              description: "Your previous progress has been restored.",
-            });
-          }
-        } catch {
-          // Invalid draft, ignore
+    if (initialData || typeof window === "undefined") return;
+    const savedDraft = localStorage.getItem(draftKey);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        // Only restore if we haven't just submitted
+        if (!hasSubmittedRef.current) {
+          reset(parsed.data);
+          setLastSaved(new Date(parsed.savedAt));
+          setDraftRestored(true);
+          toast({
+            title: "Draft restored",
+            description: "Your previous progress has been restored.",
+          });
         }
+        return;
+      } catch {
+        // Invalid draft, ignore
       }
     }
-  }, [initialData, reset, toast]);
+    // Legacy migration: an old draft saved under the shared global key cannot be
+    // attributed to a user, so adopt it once into this user's scoped key and
+    // delete the global key so it can never be restored for a different user.
+    const legacyDraft = localStorage.getItem(DRAFT_KEY);
+    if (legacyDraft && profile?.id) {
+      localStorage.removeItem(DRAFT_KEY);
+      try {
+        const parsed = JSON.parse(legacyDraft);
+        if (!hasSubmittedRef.current) {
+          localStorage.setItem(draftKey, legacyDraft);
+          reset(parsed.data);
+          setLastSaved(new Date(parsed.savedAt));
+          setDraftRestored(true);
+          toast({
+            title: "Draft restored",
+            description: "Your previous progress has been restored.",
+          });
+        }
+      } catch {
+        // Invalid draft, ignore
+      }
+    }
+  }, [initialData, reset, toast, profile?.id, draftKey]);
 
   // Fetch case managers
   useEffect(() => {
@@ -159,15 +202,17 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
 
     if (typeof window !== "undefined" && Object.keys(dirtyFields).length > 0) {
       localStorage.setItem(
-        DRAFT_KEY,
+        draftKey,
         JSON.stringify({
           data: formData,
           savedAt: new Date().toISOString(),
         })
       );
+      // Clean up any pre-migration legacy draft under the shared global key
+      localStorage.removeItem(DRAFT_KEY);
       setLastSaved(new Date());
     }
-  }, [formData, dirtyFields, isSubmitting]);
+  }, [formData, dirtyFields, isSubmitting, draftKey]);
 
   useEffect(() => {
     const timer = setInterval(saveDraft, 10000); // Auto-save every 10 seconds
@@ -243,6 +288,12 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
       setCurrentStep(currentStep + 1);
       saveDraft();
       window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      toast({
+        title: "Please complete this step",
+        description: "Fix any errors before proceeding to the next step.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -303,6 +354,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
 
           // Clear draft on successful save
           if (typeof window !== "undefined") {
+            localStorage.removeItem(draftKey);
             localStorage.removeItem(DRAFT_KEY);
           }
           
@@ -457,6 +509,7 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
                 size="sm"
                 className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
                 onClick={() => {
+                  localStorage.removeItem(draftKey);
                   localStorage.removeItem(DRAFT_KEY);
                   reset(defaultClientIntakeForm);
                   setDraftRestored(false);
@@ -481,12 +534,22 @@ export function ClientIntakeForm({ initialData, clientId, showStaffFields: _show
               const isCompleted = index < currentStep;
               const hasError = hasStepErrors(index);
 
+              const chipStatus = hasError
+                ? ", has errors to fix"
+                : isCompleted
+                  ? ", completed"
+                  : isActive
+                    ? ", current step"
+                    : ", not reachable yet";
+
               return (
                 <button
                   key={step.id}
                   type="button"
                   onClick={() => handleStepClick(index)}
                   disabled={index > currentStep + 1}
+                  aria-current={isActive ? "step" : undefined}
+                  aria-label={`Step ${index + 1}: ${step.title}${chipStatus}`}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all min-w-fit whitespace-nowrap",
                     isActive && "bg-primary text-primary-foreground shadow-sm",

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useFormContext, Controller, FieldError } from "react-hook-form";
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +37,7 @@ interface FormFieldProps {
   onChange?: (value: string) => void;
   maxLength?: number;
   min?: number;
-  max?: number;
+  max?: number | string;
 }
 
 export function FormField({
@@ -77,6 +78,8 @@ export function FormField({
 
   const error = getNestedError(name);
 
+  const errorId = useId();
+
   const renderLabel = () => (
     <div className="flex items-center gap-1.5">
       <Label
@@ -90,7 +93,14 @@ export function FormField({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              <button
+                type="button"
+                tabIndex={0}
+                aria-label="More info"
+                className="inline-flex items-center focus:outline-none focus:ring-2 focus:ring-ring rounded-sm"
+              >
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p>{tooltip}</p>
@@ -103,10 +113,17 @@ export function FormField({
 
   const renderError = () =>
     error && (
-      <p className="text-sm text-destructive mt-1">
+      <p
+        id={errorId}
+        role="alert"
+        className="text-sm text-destructive mt-1"
+      >
         {error.message?.toString()}
       </p>
     );
+
+  const describedByProps = error ? { "aria-describedby": errorId } : {};
+  const invalidProps = error ? { "aria-invalid": true as const } : {};
 
   if (type === "textarea") {
     return (
@@ -118,6 +135,8 @@ export function FormField({
           disabled={disabled}
           maxLength={maxLength}
           className={cn(error && "border-destructive", inputClassName)}
+          {...invalidProps}
+          {...describedByProps}
           {...register(name)}
         />
         {renderError()}
@@ -143,6 +162,8 @@ export function FormField({
             >
               <SelectTrigger
                 className={cn(error && "border-destructive", inputClassName)}
+                {...invalidProps}
+                {...describedByProps}
               >
                 <SelectValue placeholder={placeholder || "Select..."} />
               </SelectTrigger>
@@ -183,7 +204,14 @@ export function FormField({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                <button
+                  type="button"
+                  tabIndex={0}
+                  aria-label="More info"
+                  className="inline-flex items-center focus:outline-none focus:ring-2 focus:ring-ring rounded-sm"
+                >
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <p>{tooltip}</p>
@@ -240,24 +268,23 @@ export function FormField({
   // Handler to block non-numeric input for number fields
   const handleNumberKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Allow: backspace, delete, tab, escape, enter
-    if ([8, 46, 9, 27, 13].includes(e.keyCode)) {
+    if (["Backspace", "Delete", "Tab", "Escape", "Enter"].includes(e.key)) {
       return;
     }
     // Allow: Ctrl/Cmd + A, C, V, X
-    if ((e.ctrlKey || e.metaKey) && [65, 67, 86, 88].includes(e.keyCode)) {
+    if ((e.ctrlKey || e.metaKey) && ["a", "c", "v", "x"].includes(e.key.toLowerCase())) {
       return;
     }
     // Allow: home, end, left, right, down, up
-    if (e.keyCode >= 35 && e.keyCode <= 40) {
+    if (["Home", "End", "ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp"].includes(e.key)) {
       return;
     }
     // Allow: decimal point (period and numpad decimal)
-    if (e.keyCode === 190 || e.keyCode === 110) {
+    if (e.key === "." ) {
       return;
     }
-    // Block if not a number (top row 0-9 or numpad 0-9)
-    if ((e.shiftKey || e.keyCode < 48 || e.keyCode > 57) &&
-        (e.keyCode < 96 || e.keyCode > 105)) {
+    // Block if not a number (top row or numpad digits)
+    if (e.shiftKey || !/^\d$/.test(e.key)) {
       e.preventDefault();
     }
   };
@@ -276,6 +303,8 @@ export function FormField({
         max={max}
         onKeyDown={type === "number" ? handleNumberKeyDown : undefined}
         className={cn(error && "border-destructive", inputClassName)}
+        {...invalidProps}
+        {...describedByProps}
         {...register(name, {
           setValueAs: type === "number"
             ? (v: string | number | null | undefined) => {

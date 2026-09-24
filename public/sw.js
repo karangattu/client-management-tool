@@ -3,8 +3,8 @@
  * Provides offline support and background sync capabilities
  */
 
-const STATIC_CACHE = 'clienthub-static-v4';
-const DYNAMIC_CACHE = 'clienthub-dynamic-v4';
+const STATIC_CACHE = 'clienthub-static-v5';
+const DYNAMIC_CACHE = 'clienthub-dynamic-v5';
 
 // Assets to cache on install
 const STATIC_ASSETS = [

@@ -21,6 +21,9 @@ export function ParticipantDetailsSection() {
   const NO_FIXED_ADDRESS_STATUSES = ['homeless', 'shelter', 'couch_surfing'];
   const isHomeless = noFixedAddress === true || NO_FIXED_ADDRESS_STATUSES.includes(housingStatus ?? '');
 
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
   // If housing status changes to a no-fixed-address status, auto-tick the checkbox
   useEffect(() => {
     if (NO_FIXED_ADDRESS_STATUSES.includes(housingStatus ?? '') && !noFixedAddress) {
@@ -108,6 +111,7 @@ export function ParticipantDetailsSection() {
               name="participantDetails.dateOfBirth"
               label="Date of Birth"
               type="date"
+              max={todayStr}
               required
             />
             {age !== null && age >= 0 && (

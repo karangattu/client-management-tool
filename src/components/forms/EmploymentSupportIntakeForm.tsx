@@ -27,7 +27,7 @@ import {
   isEmploymentIntakeFilled,
   type EmploymentSupportIntakeForm as ESIFormType,
 } from "@/lib/schemas/employment-support";
-import { saveEmploymentSupportIntake } from "@/app/actions/employment-support";
+import { saveEmploymentSupportIntake, getEmploymentSupportIntake } from "@/app/actions/employment-support";
 import { getAllUsers } from "@/app/actions/users";
 import {
   ChevronLeft,
@@ -97,6 +97,8 @@ export function EmploymentSupportIntakeForm({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [dbSavedAt, setDbSavedAt] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSource, setDraftSource] = useState<"local" | "server" | null>(null);
+  const [draftSourceTime, setDraftSourceTime] = useState<Date | null>(null);
   const [staffOptions, setStaffOptions] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
@@ -119,38 +121,90 @@ export function EmploymentSupportIntakeForm({
     if (typeof window === "undefined" || existingStatus === "submitted" || existingStatus === "reviewed") {
       return;
     }
-    const draftKey = `${DRAFT_KEY}-${clientId}`;
-    const savedDraft = localStorage.getItem(draftKey);
-    if (savedDraft) {
-      try {
+    let cancelled = false;
+
+    let localParsed: { data: ESIFormType; savedAt?: string } | null = null;
+    try {
+      const savedDraft = localStorage.getItem(`${DRAFT_KEY}-${clientId}`);
+      if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
-        if (!hasSubmittedRef.current && parsed?.data) {
-          const hasLocalProgress = hasEmploymentIntakeProgress(parsed.data);
-          const hasInitialProgress = hasEmploymentIntakeProgress(initialData);
+        if (!hasSubmittedRef.current && parsed?.data) localParsed = parsed;
+      }
+    } catch {
+      localParsed = null;
+    }
 
-          if (hasLocalProgress && (!hasInitialProgress || !initialData)) {
-            reset(parsed.data);
-            if (parsed.savedAt) setLastSaved(new Date(parsed.savedAt));
-            setDraftRestored(true);
+    const applyLocal = (data: ESIFormType, at: Date | null) => {
+      reset(data);
+      if (at) setLastSaved(at);
+      setDraftSource("local");
+      setDraftSourceTime(at);
+      setDraftRestored(true);
 
-            if (isEmploymentIntakeFilled(parsed.data)) {
-              toast({
-                title: "Local draft restored",
-                description: "All sections appear complete. Please submit to make it visible to other staff.",
-              });
-            } else {
-              toast({
-                title: "Draft restored",
-                description: "Your previous progress has been restored from this device.",
-              });
-            }
-          }
+      if (isEmploymentIntakeFilled(data)) {
+        toast({
+          title: "Local draft restored",
+          description: "All sections appear complete. Please submit to make it visible to other staff.",
+        });
+      } else {
+        toast({
+          title: "Draft restored",
+          description: "Your previous progress has been restored from this device.",
+        });
+      }
+    };
+
+    const applyServer = (at: Date | null) => {
+      setDraftSource("server");
+      setDraftSourceTime(at);
+    };
+
+    const restore = async () => {
+      let serverRow: Record<string, unknown> | null = null;
+      try {
+        const result = await getEmploymentSupportIntake(clientId, enrollmentId);
+        const row = result?.data as { status?: string } | null;
+        if (result?.success && row && row.status === "draft") {
+          serverRow = result.data as Record<string, unknown>;
         }
       } catch {
-        // Invalid draft, ignore
+        serverRow = null;
       }
-    }
-  }, [initialData, existingStatus, reset, toast, clientId]);
+      if (cancelled) return;
+
+      const serverUpdatedAtStr = serverRow
+        ? ((serverRow.updated_at as string) || (serverRow.created_at as string) || null)
+        : null;
+
+      if (localParsed && hasEmploymentIntakeProgress(localParsed.data)) {
+        const localAt = localParsed.savedAt ? new Date(localParsed.savedAt) : null;
+        const hasInitialProgress = hasEmploymentIntakeProgress(initialData);
+
+        if (!hasInitialProgress || !initialData) {
+          applyLocal(localParsed.data, localAt);
+          return;
+        }
+
+        const serverAt = serverUpdatedAtStr ? new Date(serverUpdatedAtStr) : null;
+        const localWins = !!localAt && (!serverAt || localAt.getTime() > serverAt.getTime());
+        if (localWins) {
+          applyLocal(localParsed.data, localAt);
+        } else {
+          applyServer(serverAt);
+        }
+        return;
+      }
+
+      if (hasEmploymentIntakeProgress(initialData)) {
+        applyServer(serverUpdatedAtStr ? new Date(serverUpdatedAtStr) : null);
+      }
+    };
+
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData, existingStatus, reset, toast, clientId, enrollmentId]);
 
   // Fetch staff/volunteers for Internal Use section
   useEffect(() => {
@@ -276,14 +330,13 @@ export function EmploymentSupportIntakeForm({
   }, [isSavingDraftToDb, isSubmitting, saveDraft, methods, isStaff, clientId, enrollmentId, toast]);
 
   useEffect(() => {
-    if (!isStaff) return;
     const dbTimer = setInterval(() => {
       if (Object.keys(dirtyFields).length > 0 && !isSubmitting && !hasSubmittedRef.current) {
         void saveDraftToDb({ silent: true });
       }
     }, 30000);
     return () => clearInterval(dbTimer);
-  }, [isStaff, dirtyFields, isSubmitting, saveDraftToDb]);
+  }, [dirtyFields, isSubmitting, saveDraftToDb]);
 
   const handleNext = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -351,6 +404,8 @@ export function EmploymentSupportIntakeForm({
         if (result.success) {
           hasSubmittedRef.current = true;
           setDraftRestored(false);
+          setDraftSource(null);
+          setDraftSourceTime(null);
           if (typeof window !== "undefined") {
             localStorage.removeItem(`${DRAFT_KEY}-${clientId}`);
           }
@@ -389,6 +444,24 @@ export function EmploymentSupportIntakeForm({
     });
   };
 
+  const handleBannerSubmit = async () => {
+    if (isSubmitting || hasSubmittedRef.current) return;
+    for (let i = 0; i < visibleSteps.length; i++) {
+      const fields = getFieldsForStep(i);
+      const ok = await trigger(fields as (keyof ESIFormType)[]);
+      if (!ok) {
+        setCurrentStep(i);
+        toast({
+          title: "Please complete this step",
+          description: "Fix any errors before submitting.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    handleSubmit(onSubmit)();
+  };
+
   const hasStepErrors = (stepIndex: number) => {
     const fields = getFieldsForStep(stepIndex);
     return fields.some((field) => {
@@ -424,6 +497,13 @@ export function EmploymentSupportIntakeForm({
                   {existingStatus.charAt(0).toUpperCase() + existingStatus.slice(1)}
                 </Badge>
               )}
+              {draftSource && draftSourceTime ? (
+                <span className="text-xs text-muted-foreground hidden lg:flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  Loaded draft from {draftSource === "local" ? "this device" : "the system"} (updated{" "}
+                  {formatPacificLocaleDate(draftSourceTime)} at {formatPacificLocaleTime(draftSourceTime)})
+                </span>
+              ) : null}
               {dbSavedAt ? (
                 <span className="text-xs text-emerald-600 font-medium hidden sm:flex items-center gap-1">
                   <Check className="h-3 w-3" /> Synced to system {dbSavedAt.toLocaleTimeString()}
@@ -471,7 +551,7 @@ export function EmploymentSupportIntakeForm({
                   type="button"
                   size="sm"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
-                  onClick={() => handleSubmit(onSubmit)()}
+                  onClick={() => void handleBannerSubmit()}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? (
@@ -519,6 +599,8 @@ export function EmploymentSupportIntakeForm({
                     localStorage.removeItem(`${DRAFT_KEY}-${clientId}`);
                     reset(defaultEmploymentSupportIntake);
                     setDraftRestored(false);
+                    setDraftSource(null);
+                    setDraftSourceTime(null);
                     setLastSaved(null);
                     setCurrentStep(0);
                     toast({ title: "Draft cleared", description: "Starting fresh." });
