@@ -63,6 +63,8 @@ import { TaskTemplateSelector } from '@/components/tasks/TaskTemplateSelector';
 import type { TaskTemplate } from '@/lib/task-templates';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
 import { useRealtimeAllTasks, type RealtimeTask } from '@/lib/hooks/use-realtime';
+import { useLanguage } from '@/lib/language-context';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useToast } from '@/components/ui/use-toast';
 
 interface Task {
@@ -93,6 +95,7 @@ interface Client {
 function TasksContent() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get('filter') || (profile?.role === 'admin' ? 'open' : 'all');
 
@@ -105,6 +108,7 @@ function TasksContent() {
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([]);
 
@@ -182,6 +186,7 @@ function TasksContent() {
 
   const fetchTasks = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const { data, error } = await supabase
         .from('tasks')
@@ -223,6 +228,7 @@ function TasksContent() {
       setTasks(tasks as Task[]);
     } catch (err) {
       console.error('Error fetching tasks:', err);
+      setFetchError(err instanceof Error ? err.message : 'Something went wrong loading tasks');
     } finally {
       setLoading(false);
     }
@@ -359,7 +365,7 @@ function TasksContent() {
       if (result.success) {
         fetchTasks();
       } else {
-        alert(result.error || "Failed to assign task");
+        toast({ title: 'Error', description: result.error || 'Failed to assign task', variant: 'destructive' });
       }
     } catch (err) {
       console.error('Error assigning task:', err);
@@ -563,11 +569,11 @@ function TasksContent() {
       case 'urgent':
         return <Badge className="bg-red-100 text-red-800 hover:bg-red-200 border-red-200">Urgent</Badge>;
       case 'high':
-        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200">High</Badge>;
+        return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-200 border-orange-200">{t('tasks.high')}</Badge>;
       case 'medium':
-        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">Medium</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-amber-200">{t('tasks.medium')}</Badge>;
       case 'low':
-        return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">Low</Badge>;
+        return <Badge className="bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-200">{t('tasks.low')}</Badge>;
       default:
         return <Badge variant="secondary">{priority}</Badge>;
     }
@@ -583,13 +589,13 @@ function TasksContent() {
   return (
     <TooltipProvider>
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Tasks" showBackButton />
+      <AppHeader title={t('tasks.title')} showBackButton />
 
       <main className="container px-4 py-6">
         {/* Header with realtime status */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">Tasks</h1>
+            <h1 className="text-2xl font-bold">{t('tasks.title')}</h1>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
@@ -600,12 +606,12 @@ function TasksContent() {
                   {isRealtimeConnected ? (
                     <>
                       <Wifi className="h-3 w-3" />
-                      <span>Live</span>
+                      <span>Up to date</span>
                     </>
                   ) : (
                     <>
                       <WifiOff className="h-3 w-3" />
-                      <span>Connecting...</span>
+                      <span>Syncing...</span>
                     </>
                   )}
                 </div>
@@ -657,7 +663,7 @@ function TasksContent() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.pending}</p>
-                  <p className="text-sm text-gray-500">Pending</p>
+                  <p className="text-sm text-gray-500">{t('tasks.pending')}</p>
                 </div>
               </div>
             </CardContent>
@@ -671,7 +677,7 @@ function TasksContent() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.inProgress}</p>
-                  <p className="text-sm text-gray-500">In Progress</p>
+                  <p className="text-sm text-gray-500">{t('tasks.inProgress')}</p>
                 </div>
               </div>
             </CardContent>
@@ -685,7 +691,7 @@ function TasksContent() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.completed}</p>
-                  <p className="text-sm text-gray-500">Completed</p>
+                  <p className="text-sm text-gray-500">{t('tasks.completed')}</p>
                 </div>
               </div>
             </CardContent>
@@ -714,9 +720,9 @@ function TasksContent() {
                 <SelectItem value="all">All Tasks</SelectItem>
                 <SelectItem value="open">Open to Claim</SelectItem>
                 <SelectItem value="mine">My Tasks</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="pending">{t('tasks.pending')}</SelectItem>
+                <SelectItem value="in_progress">{t('tasks.inProgress')}</SelectItem>
+                <SelectItem value="completed">{t('tasks.completed')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -727,9 +733,9 @@ function TasksContent() {
               <SelectContent>
                 <SelectItem value="all">All Priority</SelectItem>
                 <SelectItem value="urgent">Urgent</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="high">{t('tasks.high')}</SelectItem>
+                <SelectItem value="medium">{t('tasks.medium')}</SelectItem>
+                <SelectItem value="low">{t('tasks.low')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -752,7 +758,7 @@ function TasksContent() {
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
-                    New Task
+                    {t('tasks.newTask')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
@@ -808,43 +814,19 @@ function TasksContent() {
                               </button>
                             </div>
                           ) : (
-                            // Show search dropdown
-                            <>
-                              <Input
-                                placeholder="Search clients by name..."
-                                value={clientSearchQuery}
-                                onChange={(e) => setClientSearchQuery(e.target.value)}
-                                className="h-9"
-                              />
-                              <div className="border rounded-md max-h-48 overflow-y-auto">
-                                <button
-                                  type="button"
-                                  className="w-full p-2 hover:bg-gray-100 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                  onClick={() => { setNewTask(prev => ({ ...prev, client_id: '' })); setClientSearchQuery(''); }}
-                                >
-                                  <div className="text-sm font-medium">No client</div>
-                                </button>
-                                {filteredClients.length > 0 ? (
-                                  filteredClients.map(client => (
-                                    <button
-                                      type="button"
-                                      key={client.id}
-                                      className="w-full p-2 hover:bg-gray-100 cursor-pointer border-t text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                      onClick={() => {
-                                        setNewTask(prev => ({ ...prev, client_id: client.id }));
-                                        setClientSearchQuery('');
-                                      }}
-                                    >
-                                      <div className="text-sm font-medium">{client.first_name} {client.last_name}</div>
-                                    </button>
-                                  ))
-                                ) : clientSearchQuery.trim() ? (
-                                  <div className="p-2 text-center text-xs text-gray-500 border-t">
-                                    No clients found
-                                  </div>
-                                ) : null}
-                              </div>
-                            </>
+                            <SearchableSelect
+                              options={[
+                                { value: '', label: 'No client' },
+                                ...filteredClients.map(client => ({ value: client.id, label: `${client.first_name} ${client.last_name}` })),
+                              ]}
+                              value={newTask.client_id}
+                              onValueChange={(value) => {
+                                setNewTask(prev => ({ ...prev, client_id: value }));
+                                setClientSearchQuery('');
+                              }}
+                              searchPlaceholder="Search clients by name..."
+                              emptyMessage="No clients found"
+                            />
                           )}
                         </div>
                       </div>
@@ -859,9 +841,9 @@ function TasksContent() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="low">{t('tasks.low')}</SelectItem>
+                            <SelectItem value="medium">{t('tasks.medium')}</SelectItem>
+                            <SelectItem value="high">{t('tasks.high')}</SelectItem>
                             <SelectItem value="urgent">Urgent</SelectItem>
                           </SelectContent>
                         </Select>
@@ -946,11 +928,19 @@ function TasksContent() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {statusFilter === 'open' ? 'Open Tasks (Available to Claim)' : 'Tasks'} ({filteredTasks.length})
+              {statusFilter === 'open' ? 'Open Tasks (Available to Claim)' : t('tasks.title')} ({filteredTasks.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {fetchError ? (
+              <div className="text-center py-12">
+                <AlertCircle className="h-12 w-12 text-red-300 mx-auto mb-4" />
+                <p className="text-gray-600 font-medium">Something went wrong loading tasks</p>
+                <Button variant="outline" className="mt-4" onClick={fetchTasks}>
+                  Try Again
+                </Button>
+              </div>
+            ) : loading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4, 5].map((i) => (
                   <Skeleton key={i} className="h-20" />
@@ -1057,7 +1047,7 @@ function TasksContent() {
 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" aria-label="Task actions" onClick={(e) => e.stopPropagation()}>
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

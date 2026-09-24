@@ -442,11 +442,11 @@ export default function MyPortalPage() {
         const file = e.target.files?.[0];
         if (file) {
             if (!ALLOWED_DOCUMENT_TYPES.includes(file.type) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
-                alert('Invalid file type. Please upload a PDF, Word document, Excel file, or image.');
+                toast({ title: 'Error', description: 'Invalid file type. Please upload a PDF, Word document, Excel file, or image.', variant: 'destructive' });
                 return;
             }
             if (file.size > MAX_FILE_SIZES.DOCUMENT) {
-                alert('File too large. Maximum size is 25MB.');
+                toast({ title: 'Error', description: 'File too large. Maximum size is 25MB.', variant: 'destructive' });
                 return;
             }
             setUploadFile(file);
@@ -466,7 +466,7 @@ export default function MyPortalPage() {
             );
 
             if (uploadError || !documentRecord) {
-                alert(`Upload failed: ${uploadError || 'Unknown error'}`);
+                toast({ title: 'Error', description: `Upload failed: ${uploadError || 'Unknown error'}`, variant: 'destructive' });
                 return;
             }
 
@@ -493,7 +493,7 @@ export default function MyPortalPage() {
             setShowUploadDialog(false);
         } catch (err) {
             console.error('Error uploading document:', err);
-            alert('An error occurred while uploading.');
+            toast({ title: 'Error', description: 'An error occurred while uploading.', variant: 'destructive' });
         } finally {
             setUploading(false);
         }
@@ -517,7 +517,7 @@ export default function MyPortalPage() {
 
             if (error || !docData) {
                 console.error('Error fetching document path:', error);
-                alert('Could not open document.');
+                toast({ title: 'Error', description: 'Could not open document.', variant: 'destructive' });
                 return;
             }
 
@@ -526,14 +526,14 @@ export default function MyPortalPage() {
 
             if (urlError || !signedUrl) {
                 console.error('Error getting signed URL:', urlError);
-                alert('Could not open document.');
+                toast({ title: 'Error', description: 'Could not open document.', variant: 'destructive' });
                 return;
             }
 
             window.open(signedUrl, '_blank');
         } catch (err) {
             console.error('Error opening document:', err);
-            alert('An error occurred while opening the document.');
+            toast({ title: 'Error', description: 'An error occurred while opening the document.', variant: 'destructive' });
         }
     };
 
@@ -577,7 +577,7 @@ export default function MyPortalPage() {
             }
         } catch (err) {
             console.error('Error signing engagement letter:', err);
-            alert('An error occurred. Please try again.');
+            toast({ title: 'Error', description: 'An error occurred. Please try again.', variant: 'destructive' });
         } finally {
             setSigning(false);
         }

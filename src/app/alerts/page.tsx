@@ -581,6 +581,7 @@ export default function AlertsPage() {
                                 className="h-8 w-8"
                                 onClick={() => markAsRead(alert.id)}
                                 title="Mark as read"
+                                aria-label="Mark as read"
                               >
                                 <MailOpen className="h-4 w-4 text-blue-600 hover:text-blue-700" />
                               </Button>
@@ -591,6 +592,7 @@ export default function AlertsPage() {
                               className="h-8 w-8"
                               onClick={() => archiveAlert(alert.id)}
                               title="Archive"
+                              aria-label="Archive alert"
                             >
                               <Archive className="h-4 w-4 text-gray-400 hover:text-orange-500" />
                             </Button>

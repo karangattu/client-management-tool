@@ -70,6 +70,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatPacificLocaleDate } from '@/lib/date-utils';
 import { useRealtimeClients, type RealtimeClient } from '@/lib/hooks/use-realtime';
 import { useToast } from '@/components/ui/use-toast';
+import { useLanguage } from '@/lib/language-context';
 import { validateClientData } from '@/lib/validation';
 
 interface Client {
@@ -102,6 +103,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 export function ClientsList({ initialClients, initialPrograms, initialHasMore, initialCursor }: ClientsListProps) {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [filteredClients, setFilteredClients] = useState<Client[]>(initialClients);
   const [programs] = useState<Program[]>(initialPrograms);
@@ -112,6 +114,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [isPending, startTransition] = useTransition();
   
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -223,9 +226,13 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
         setClients(prev => [...prev, ...result.data]);
         setHasMore(result.hasMore);
         setCursor(result.nextCursor);
+        setLoadError(false);
+      } else {
+        setLoadError(true);
       }
     } catch (err) {
       console.error('Error loading more clients:', err);
+      setLoadError(true);
     } finally {
       setIsLoadingMore(false);
     }
@@ -269,9 +276,13 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
           setFilteredClients(result.data);
           setHasMore(result.hasMore);
           setCursor(result.nextCursor);
+          setLoadError(false);
+        } else {
+          setLoadError(true);
         }
       } catch (err) {
         console.error('Error fetching clients:', err);
+        setLoadError(true);
       }
     });
   }, [programFilter, statusFilter]);
@@ -281,6 +292,15 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
       fetchClientsWithFilter();
     }
   }, [fetchClientsWithFilter, profile]);
+
+  const handleRetryFetch = () => {
+    setLoadError(false);
+    if (filteredClients.length === 0) {
+      fetchClientsWithFilter();
+    } else {
+      loadMore();
+    }
+  };
 
   const handleArchive = async () => {
     if (!clientToArchive) return;
@@ -356,7 +376,14 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
 
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status] || { label: status, color: 'bg-gray-100 text-gray-800' };
-    return <Badge className={config.color}>{config.label}</Badge>;
+    const statusLabelKeys: Record<string, 'clients.active' | 'clients.pending' | 'clients.inactive' | 'clients.archived'> = {
+      active: 'clients.active',
+      pending: 'clients.pending',
+      inactive: 'clients.inactive',
+      archived: 'clients.archived',
+    };
+    const label = statusLabelKeys[status] ? t(statusLabelKeys[status]) : config.label;
+    return <Badge className={config.color}>{label}</Badge>;
   };
 
   const clearFilters = () => {
@@ -453,7 +480,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-gray-50">
-        <AppHeader title="Clients" showBackButton />
+        <AppHeader title={t('clients.title')} showBackButton />
 
         <main className="container px-4 py-6">
           {/* Header Actions */}
@@ -471,12 +498,12 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                       {isRealtimeConnected ? (
                         <>
                           <Wifi className="h-3 w-3" />
-                          <span>Live</span>
+                          <span>Up to date</span>
                         </>
                       ) : (
                         <>
                           <WifiOff className="h-3 w-3" />
-                          <span>Connecting...</span>
+                          <span>Syncing...</span>
                         </>
                       )}
                     </div>
@@ -572,9 +599,10 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="active">{t('clients.active')}</SelectItem>
+                      <SelectItem value="pending">{t('clients.pending')}</SelectItem>
+                      <SelectItem value="inactive">{t('clients.inactive')}</SelectItem>
+                      <SelectItem value="archived">{t('clients.archived')}</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select value={programFilter} onValueChange={setProgramFilter}>
@@ -606,7 +634,21 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
               </Button>
             )}
           </div>
-          {filteredClients.length === 0 && !isPending ? (
+          {filteredClients.length === 0 && !isPending && loadError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertCircle className="h-12 w-12 text-red-300 mb-4" />
+                <h3 className="text-lg font-medium mb-2">Something went wrong loading clients</h3>
+                <p className="text-sm text-gray-500 mb-6 text-center">
+                  We couldn&apos;t load the client list. Please try again.
+                </p>
+                <Button variant="outline" onClick={handleRetryFetch}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              </CardContent>
+            </Card>
+          ) : filteredClients.length === 0 && !isPending ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Users className="h-12 w-12 text-gray-300 mb-4" />
@@ -758,7 +800,7 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                             </Link>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" aria-label="Client actions">
                                   <MoreVertical className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
@@ -807,7 +849,23 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
               </div>
 
               {/* Infinite Scroll Trigger */}
-              {hasMore && (
+              {loadError && (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-8">
+                    <AlertCircle className="h-8 w-8 text-red-400 mb-3" />
+                    <p className="font-medium mb-1">Something went wrong loading clients</p>
+                    <p className="text-sm text-gray-500 mb-4 text-center">
+                      We couldn&apos;t load more clients. Please try again.
+                    </p>
+                    <Button variant="outline" onClick={handleRetryFetch}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Try Again
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {hasMore && !loadError && (
                 <div ref={observerTarget} className="flex justify-center py-8">
                   {isLoadingMore ? (
                     <div className="flex items-center gap-2 text-gray-500">
@@ -944,7 +1002,8 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                 <DialogTitle>Archive Client</DialogTitle>
                 <DialogDescription>
                   Are you sure you want to archive {clientToArchive?.first_name} {clientToArchive?.last_name}?
-                  Archived clients can be restored later by an administrator.
+                  Archiving hides the client from the default view without deleting any data.
+                  You can find archived clients any time in this same list by switching the status filter to Archived.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

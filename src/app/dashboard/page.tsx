@@ -1382,6 +1382,9 @@ export default function DashboardPage() {
                   <CheckSquare className="h-5 w-5 text-orange-500" />
                   {t('dashboard.myTasks')}
                 </CardTitle>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => router.push('/tasks')}>
+                  View all
+                </Button>
               </CardHeader>
               <CardContent>
                 {focusLoading ? (
@@ -1560,6 +1563,9 @@ export default function DashboardPage() {
                   <Clock className="h-5 w-5 text-red-500" />
                   {t('dashboard.upcomingDeadlines')}
                 </CardTitle>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => router.push('/tasks')}>
+                  View all
+                </Button>
               </CardHeader>
               <CardContent>
                 {listsLoading ? (
@@ -1599,6 +1605,9 @@ export default function DashboardPage() {
                   <Hand className="h-5 w-5 text-blue-500" />
                   Open Tasks to Claim
                 </CardTitle>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => router.push('/tasks?filter=open')}>
+                  View all
+                </Button>
               </CardHeader>
               <CardContent>
                 {listsLoading ? (

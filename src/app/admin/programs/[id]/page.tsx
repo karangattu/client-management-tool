@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import Link from 'next/link';
 import { getPrograms, getProgramTasks, addProgramTask, updateProgramTask, deleteProgramTask, Program, ProgramTask } from '@/app/actions/programs';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function ProgramDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -35,6 +36,7 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
     const [createOpen, setCreateOpen] = useState(false);
     const [saving, setSaving] = useState(false);
     const [editingTask, setEditingTask] = useState<ProgramTask | null>(null);
+    const { toast } = useToast();
 
     const [newTask, setNewTask] = useState({
         title: '',
@@ -118,7 +120,7 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
             handleDialogChange(false);
             handleReload();
         } else {
-            alert(editingTask ? "Failed to update task" : "Failed to add task");
+            toast({ title: 'Error', description: editingTask ? 'Failed to update task' : 'Failed to add task', variant: 'destructive' });
         }
         setSaving(false);
     };

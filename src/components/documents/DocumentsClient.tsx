@@ -248,7 +248,7 @@ export default function DocumentsClient() {
       ));
     } catch (err) {
       console.error('Error verifying document:', err);
-      alert('Failed to verify document');
+      toast({ title: 'Error', description: 'Failed to verify document', variant: 'destructive' });
     } finally {
       setProcessingId(null);
     }
@@ -263,7 +263,7 @@ export default function DocumentsClient() {
   const handleConfirmReject = async () => {
     if (!selectedDoc) return;
     if (!rejectionReason.trim()) {
-      alert('Please provide a reason for rejection');
+      toast({ title: 'Error', description: 'Please provide a reason for rejection', variant: 'destructive' });
       return;
     }
 
@@ -293,7 +293,7 @@ export default function DocumentsClient() {
       setSelectedDoc(null);
     } catch (err) {
       console.error('Error rejecting document:', err);
-      alert('Failed to reject document');
+      toast({ title: 'Error', description: 'Failed to reject document', variant: 'destructive' });
     } finally {
       setProcessingId(null);
     }
@@ -301,7 +301,7 @@ export default function DocumentsClient() {
 
   const handleView = async (doc: Document) => {
     if (!doc.file_path) {
-      alert('File path is missing');
+      toast({ title: 'Error', description: 'File path is missing', variant: 'destructive' });
       return;
     }
 
@@ -320,24 +320,24 @@ export default function DocumentsClient() {
       if (error) {
         console.error('Storage error:', error);
         if (error.includes('Object not found') || error.includes('not found')) {
-          alert('Document file not found in storage. The file may have been moved or deleted.');
+          toast({ title: 'Error', description: 'Document file not found in storage. The file may have been moved or deleted.', variant: 'destructive' });
         } else if (error.includes('Access denied')) {
-          alert('You don\'t have permission to view this document.');
+          toast({ title: 'Error', description: 'You don\'t have permission to view this document.', variant: 'destructive' });
         } else {
-          alert(`Failed to access document: ${error}`);
+          toast({ title: 'Error', description: `Failed to access document: ${error}`, variant: 'destructive' });
         }
         return;
       }
       
       if (!url) {
-        alert('Failed to generate document URL');
+        toast({ title: 'Error', description: 'Failed to generate document URL', variant: 'destructive' });
         return;
       }
 
       window.open(url, '_blank');
     } catch (err) {
       console.error('Error viewing document:', err);
-      alert('Failed to open document. Please try again.');
+      toast({ title: 'Error', description: 'Failed to open document. Please try again.', variant: 'destructive' });
     }
   };
 
@@ -357,7 +357,7 @@ export default function DocumentsClient() {
       setDocuments(prev => prev.filter(d => d.id !== doc.id));
     } catch (err) {
       console.error('Error deleting document:', err);
-      alert('Failed to delete document');
+      toast({ title: 'Error', description: 'Failed to delete document', variant: 'destructive' });
     } finally {
       setProcessingId(null);
     }

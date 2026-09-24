@@ -115,6 +115,18 @@ interface ClientDetail {
   profile_completed_at?: string | null;
 }
 
+function getIntakeProgress(client: ClientDetail | null): [number, number] {
+  if (!client) return [0, 5];
+  const checks = [
+    Boolean(client.email),
+    Boolean(client.phone),
+    Boolean(client.date_of_birth),
+    Boolean(client.street_address && client.city && client.state && client.zip_code),
+    Boolean(client.signed_engagement_letter_at),
+  ];
+  return [checks.filter(Boolean).length, checks.length];
+}
+
 /**
  * Task interface representing a client task.
  * 
@@ -1590,7 +1602,24 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="intake">Intake</TabsTrigger>
+              <TabsTrigger value="intake" className="flex items-center gap-1.5">
+                Intake
+                {client ? (() => {
+                  const [done, total] = getIntakeProgress(client);
+                  if (done < total) {
+                    return (
+                      <span className="text-[10px] px-1.5 py-0 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                        {done}/{total}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="text-[10px] px-1.5 py-0 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Done
+                    </span>
+                  );
+                })() : null}
+              </TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="programs">Programs</TabsTrigger>

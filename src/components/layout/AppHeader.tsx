@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronLeft, Menu, X, Bell, User, LogOut } from 'lucide-react';
+import { ChevronLeft, Menu, X, Bell, User, LogOut, LayoutDashboard, Users, Calendar, CheckSquare, Home } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { createClient } from '@/lib/supabase/client';
 import { useState, useEffect } from 'react';
@@ -89,6 +89,8 @@ export function AppHeader({
     await signOut();
     router.push('/login');
   };
+
+  const isNavActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-white/80 backdrop-blur-md shadow-sm transition-all supports-[backdrop-filter]:bg-white/60">
@@ -258,60 +260,65 @@ export function AppHeader({
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/dashboard') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/dashboard');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <LayoutDashboard className="mr-2 h-4 w-4" />
                     Dashboard
                   </Button>
                 </li>
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/clients') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/clients');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <Users className="mr-2 h-4 w-4" />
                     Clients
                   </Button>
                 </li>
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/calendar') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/calendar');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <Calendar className="mr-2 h-4 w-4" />
                     Calendar
                   </Button>
                 </li>
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/tasks') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/tasks');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <CheckSquare className="mr-2 h-4 w-4" />
                     Tasks
                   </Button>
                 </li>
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/housing') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/housing');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <Home className="mr-2 h-4 w-4" />
                     Housing
                   </Button>
                 </li>
@@ -321,24 +328,26 @@ export function AppHeader({
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/my-portal') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/my-portal');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <Home className="mr-2 h-4 w-4" />
                     My Portal
                   </Button>
                 </li>
                 <li>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${isNavActive('/profile') && !isNavActive('/my-portal') ? 'bg-gray-100 font-semibold' : ''}`}
                     onClick={() => {
                       router.push('/profile');
                       setMobileMenuOpen(false);
                     }}
                   >
+                    <User className="mr-2 h-4 w-4" />
                     Profile
                   </Button>
                 </li>
