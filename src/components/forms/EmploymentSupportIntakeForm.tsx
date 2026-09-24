@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Save,
   Check,
+  Clock,
   AlertCircle,
   Loader2,
   Sparkles,
@@ -94,6 +95,7 @@ export function EmploymentSupportIntakeForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraftToDb, setIsSavingDraftToDb] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [dbSavedAt, setDbSavedAt] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
   const [staffOptions, setStaffOptions] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
@@ -239,7 +241,7 @@ export function EmploymentSupportIntakeForm({
     }
   };
 
-  const saveDraftToDb = async (options?: { silent?: boolean }) => {
+  const saveDraftToDb = useCallback(async (options?: { silent?: boolean }) => {
     if (isSavingDraftToDb || isSubmitting || hasSubmittedRef.current) return;
     saveDraft();
     setIsSavingDraftToDb(true);
@@ -257,6 +259,7 @@ export function EmploymentSupportIntakeForm({
       });
       if (result.success) {
         if (result.intakeId) currentIntakeIdRef.current = result.intakeId;
+        setDbSavedAt(new Date());
         if (!options?.silent) {
           toast({ title: "Draft saved", description: "Your progress has been saved to the system." });
         }
@@ -270,7 +273,17 @@ export function EmploymentSupportIntakeForm({
     } finally {
       setIsSavingDraftToDb(false);
     }
-  };
+  }, [isSavingDraftToDb, isSubmitting, saveDraft, methods, isStaff, clientId, enrollmentId, toast]);
+
+  useEffect(() => {
+    if (!isStaff) return;
+    const dbTimer = setInterval(() => {
+      if (Object.keys(dirtyFields).length > 0 && !isSubmitting && !hasSubmittedRef.current) {
+        void saveDraftToDb({ silent: true });
+      }
+    }, 30000);
+    return () => clearInterval(dbTimer);
+  }, [isStaff, dirtyFields, isSubmitting, saveDraftToDb]);
 
   const handleNext = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -411,11 +424,15 @@ export function EmploymentSupportIntakeForm({
                   {existingStatus.charAt(0).toUpperCase() + existingStatus.slice(1)}
                 </Badge>
               )}
-              {lastSaved && (
-                <span className="text-xs text-muted-foreground hidden sm:block">
-                  Last saved: {lastSaved.toLocaleTimeString()}
+              {dbSavedAt ? (
+                <span className="text-xs text-emerald-600 font-medium hidden sm:flex items-center gap-1">
+                  <Check className="h-3 w-3" /> Synced to system {dbSavedAt.toLocaleTimeString()}
                 </span>
-              )}
+              ) : lastSaved ? (
+                <span className="text-xs text-amber-600 font-medium hidden sm:flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Saved locally {lastSaved.toLocaleTimeString()}
+                </span>
+              ) : null}
               <Button type="button" variant="outline" size="sm" onClick={() => void saveDraftToDb()} disabled={isSavingDraftToDb}>
                 {isSavingDraftToDb ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 <span className="hidden sm:inline">Save Draft</span>

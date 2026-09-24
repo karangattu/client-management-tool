@@ -1510,7 +1510,27 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="programs">Programs</TabsTrigger>
-              <TabsTrigger value="employment-support">Employment Support</TabsTrigger>
+              <TabsTrigger value="employment-support" className="flex items-center gap-1.5">
+                Employment Support
+                {employmentIntake ? (
+                  <Badge
+                    variant="outline"
+                    className={
+                      employmentIntake.status === 'submitted'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-1.5 py-0'
+                        : employmentIntake.status === 'reviewed'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0'
+                        : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0'
+                    }
+                  >
+                    {employmentIntake.status.charAt(0).toUpperCase() + employmentIntake.status.slice(1)}
+                  </Badge>
+                ) : localDraftInfo.hasDraft ? (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] px-1.5 py-0">
+                    Local Draft
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
               <TabsTrigger value="history">History</TabsTrigger>
             </TabsList>
 
@@ -1633,7 +1653,19 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>Intake Information</CardTitle>
+                    <div>
+                      <CardTitle>General Intake Information</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        General demographic and contact details. For employment questionnaire and job readiness, view the{' '}
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('employment-support')}
+                          className="text-blue-600 underline font-medium hover:text-blue-800"
+                        >
+                          Employment Support tab
+                        </button>.
+                      </p>
+                    </div>
                     {canEdit && (
                       <div className="flex gap-2">
                         <Button variant="outline" onClick={() => router.push(`/clients/${client.id}/edit`)}>

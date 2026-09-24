@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.12] - 2026-09-24
+
+### Added
+
+- Periodic 30-second background draft synchronization to database for staff so teammates see progress without waiting for full submission
+- Visual sync indicator in Employment Support form header distinguishing "Synced to system" (cloud) from "Saved locally"
+- Employment Support status badge directly on the client detail tab trigger for instant visibility of intake state
+- Cross-tab banner on the General Intake tab directing users to Employment Support questionnaire
+- Auto-enrollment into Employment Support program when staff saves/submits an intake without prior enrollment
+
+### Changed
+
+- Renamed client list status badges to "General Intake Complete" and "General Intake In Progress" to prevent confusion with Employment Support intake
+
 ## [1.0.11] - 2026-09-24
 
 ### Added

@@ -229,6 +229,24 @@ export async function saveEmploymentSupportIntake(params: {
 
         if (enrollment?.id) {
           programEnrollmentId = enrollment.id;
+        } else {
+          const serviceClient = createServiceClient();
+          const { data: newEnrollment } = await serviceClient
+            .from("program_enrollments")
+            .insert({
+              client_id: params.clientId,
+              program_id: program.id,
+              status: "enrolled",
+              enrolled_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+
+          if (newEnrollment?.id) {
+            programEnrollmentId = newEnrollment.id;
+          }
         }
       }
     }

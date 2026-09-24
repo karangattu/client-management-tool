@@ -664,11 +664,11 @@ export function ClientsList({ initialClients, initialPrograms, initialHasMore, i
                                 {client.intake_completed_at ? (
                                   <Badge className="bg-blue-50 text-blue-700 border-blue-200">
                                     <Check className="h-3 w-3 mr-1" />
-                                    Intake Complete
+                                    General Intake Complete
                                   </Badge>
                                 ) : (
                                   <Badge variant="outline" className="text-gray-500">
-                                    Intake In Progress
+                                    General Intake In Progress
                                   </Badge>
                                 )}
                               </div>
