@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.14] - 2026-09-24
+
+### Added
+
+- Displayed application version in authenticated UI:
+  - Inside the user profile dropdown menu in the top navigation header
+  - Inside the mobile navigation menu
+  - Inside the Profile Settings page under permissions
+
 ## [1.0.13] - 2026-09-24
 
 ### Changed

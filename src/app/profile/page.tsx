@@ -603,6 +603,12 @@ export default function ProfilePage() {
                 )}
               </ul>
             </div>
+            {process.env.NEXT_PUBLIC_APP_VERSION && (
+              <div className="mt-4 pt-4 border-t flex justify-between items-center text-xs text-muted-foreground">
+                <span>Application Version</span>
+                <span className="font-mono font-medium text-foreground">v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>

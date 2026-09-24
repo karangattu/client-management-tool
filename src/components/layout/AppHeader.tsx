@@ -236,6 +236,14 @@ export function AppHeader({
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign Out
               </DropdownMenuItem>
+              {process.env.NEXT_PUBLIC_APP_VERSION && (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1 text-[11px] text-gray-400 text-center select-none font-mono">
+                    v{process.env.NEXT_PUBLIC_APP_VERSION}
+                  </div>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -335,6 +343,11 @@ export function AppHeader({
                   </Button>
                 </li>
               </>
+            )}
+            {process.env.NEXT_PUBLIC_APP_VERSION && (
+              <li className="pt-2 border-t text-center text-xs text-gray-400 font-mono select-none">
+                v{process.env.NEXT_PUBLIC_APP_VERSION}
+              </li>
             )}
           </ul>
         </nav>
