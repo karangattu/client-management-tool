@@ -59,6 +59,7 @@ import {
   Briefcase,
   AlertCircle,
   X,
+  Eye,
 } from 'lucide-react';
 import { useAuth, canAccessFeature } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
@@ -160,6 +161,8 @@ interface Activity {
   new_values?: Record<string, unknown> | null;
   old_values?: Record<string, unknown> | null;
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Interaction {
   id: string;
@@ -286,6 +289,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
   const [tasks, setTasks] = useState<Task[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [auditIdToName, setAuditIdToName] = useState<Record<string, string>>({});
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -530,7 +534,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           supabase.from('tasks').select('id, title, due_date, status, priority, program_id, programs(id, name, category)').eq('client_id', clientId).order('due_date', { ascending: true }),
           supabase.from('documents').select('id, file_name, file_path, document_type, created_at, is_verified').eq('client_id', clientId).order('created_at', { ascending: false }).limit(10),
           profile?.role === 'admin'
-            ? supabase.from('audit_log').select('id, action, created_at, new_values, old_values').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
+            ? supabase.from('audit_log').select('id, action, created_at, user_id, new_values, old_values, profiles(first_name, last_name)').eq('table_name', 'clients').eq('record_id', clientId).order('created_at', { ascending: false }).limit(10)
             : Promise.resolve({ data: [] }),
           getClientHistory(clientId),
           getClientEnrollments(clientId),
@@ -594,15 +598,65 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           console.error('Error fetching employment follow-ups:', followUpErr);
         }
 
-        const activityData = (activityDataResult as { data?: Array<{ id: string; action: string; created_at: string; new_values?: Record<string, unknown> | null; old_values?: Record<string, unknown> | null }> })?.data || [];
-        setActivities(activityData.map((a) => ({
-          id: a.id,
-          action: formatAuditAction(a.action),
-          created_at: a.created_at,
-          user_name: 'System',
-          new_values: a.new_values || null,
-          old_values: a.old_values || null,
-        })) || []);
+        const activityRaw = (activityDataResult as {
+          data?: Array<{
+            id: string;
+            action: string;
+            created_at: string;
+            user_id?: string | null;
+            new_values?: Record<string, unknown> | null;
+            old_values?: Record<string, unknown> | null;
+            profiles?: { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
+          }>
+        })?.data || [];
+
+        const profileToName = (row?: { first_name?: string | null; last_name?: string | null } | null) => {
+          const name = row ? [row.first_name, row.last_name].filter(Boolean).join(' ') : '';
+          return name || '';
+        };
+
+        // Resolve every UUID referenced by these entries (the actor plus any ID
+        // stored in old/new values) to a readable name so the audit trail can
+        // be read without looking up database identifiers.
+        const uuidPattern = UUID_PATTERN;
+        const idSet = new Set<string>();
+        const collectIds = (values?: Record<string, unknown> | null) => {
+          if (values) {
+            Object.values(values).forEach((value) => {
+              if (typeof value === 'string' && uuidPattern.test(value))idSet.add(value);
+            });
+          }
+        };
+        activityRaw.forEach((a) => {
+          if (typeof a.user_id === 'string') idSet.add(a.user_id);
+          collectIds(a.new_values);
+          collectIds(a.old_values);
+        });
+
+        const idToName: Record<string, string> = {};
+        if (idSet.size > 0) {
+          const { data: profileRows } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name')
+            .in('id', Array.from(idSet));
+          profileRows?.forEach((p: { id: string; first_name?: string | null; last_name?: string | null }) => {
+            idToName[p.id] = profileToName(p);
+          });
+        }
+        setAuditIdToName(idToName);
+
+        setActivities(activityRaw.map((a) => {
+          const actorName = profileToName(Array.isArray(a.profiles) ? a.profiles[0] : a.profiles);
+          const fallbackName = (typeof a.user_id === 'string' && idToName[a.user_id]) || 'Unknown user';
+          return {
+            id: a.id,
+            action: a.action,
+            created_at: a.created_at,
+            user_name: actorName || fallbackName,
+            new_values: a.new_values || null,
+            old_values: a.old_values || null,
+          };
+        }));
 
         // Fetch case manager name if assigned
         if (clientData?.assigned_case_manager) {
@@ -1061,6 +1115,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       client_archived: 'Archived client',
       client_deleted: 'Deleted client',
       client_self_registration: 'Client self-registration',
+      client_minimal_created: 'Created client record',
       case_manager_assigned: 'Assigned case manager',
       client_intake_updated: 'Updated intake profile',
       case_management_updated: 'Updated case management',
@@ -1068,18 +1123,27 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       demographics_updated: 'Updated demographics',
       demographics_created: 'Created demographics',
       emergency_contacts_updated: 'Updated emergency contacts',
+      emergency_contacts_created: 'Created emergency contacts',
       household_members_updated: 'Updated household members',
+      household_members_created: 'Created household members',
+      VIEW_CLIENT_PROFILE: 'Viewed client details',
     };
-    return actionMap[action] || action.replace(/_/g, ' ');
+    return (
+      actionMap[action] ||
+      action
+        .replace(/_/g, ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    );
   };
 
   const labelForAuditKey = (key: string) => {
     const labels: Record<string, string> = {
       status: 'Status',
-      assigned_case_manager: 'Assigned CM',
-      case_manager: 'Assigned CM',
-      manager_name: 'Assigned CM',
-      manager_id: 'Assigned CM ID',
+      assigned_case_manager: 'Case manager',
+      case_manager: 'Case manager',
+      manager_name: 'Case manager',
+      manager_id: 'Case manager ID',
       first_name: 'First name',
       last_name: 'Last name',
       email: 'Email',
@@ -1099,10 +1163,13 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     timeStyle: 'short',
   });
 
-  const formatAuditValue = (value: unknown) => {
-    if (value === null || value === undefined || value === '') return '—';
+  const formatAuditValue = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return 'Not set';
 
     if (typeof value === 'string') {
+      if (UUID_PATTERN.test(value)) {
+        return auditIdToName[value] || 'a person or record';
+      }
       const parsed = Date.parse(value);
       if (!Number.isNaN(parsed)) {
         return formatPacificDateTime(value);
@@ -1115,17 +1182,26 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     }
 
     if (Array.isArray(value)) {
-      return value.length > 0 ? value.join(', ') : '—';
+      return value.length > 0 ? value.map((item) => formatAuditValue(item)).join(', ') : 'Not set';
     }
 
-    return JSON.stringify(value);
+    if (typeof value === 'object') {
+      const parts = Object.entries(value as Record<string, unknown>)
+        .map(([key, entryValue]) => `${labelForAuditKey(key)}: ${formatAuditValue(entryValue)}`);
+      return parts.length > 0 ? parts.join(' · ') : 'Not set';
+    }
+
+    return String(value);
   };
 
   const formatAuditDetails = (activity: Activity): string[] => {
+    // View/access entries only record a timestamp — nothing meaningful to show.
+    if (activity.action.toLowerCase().includes('view')) return [];
+
     const details: string[] = [];
     const newValues = activity.new_values || undefined;
     const oldValues = activity.old_values || undefined;
-    const excludedKeys = new Set(['id', 'client_id', 'created_at', 'updated_at']);
+    const excludedKeys = new Set(['id', 'client_id', 'created_at', 'updated_at', 'viewed_at']);
 
     if (oldValues && newValues) {
       Object.keys({ ...oldValues, ...newValues })
@@ -1138,27 +1214,31 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
           if (oldValue === newValue) return;
           if (oldValue === undefined && newValue === undefined) return;
 
-          details.push(`${labelForAuditKey(key)}: ${formatAuditValue(oldValue)} → ${formatAuditValue(newValue)}`);
+          details.push(`${labelForAuditKey(key)} changed from ${formatAuditValue(oldValue)} to ${formatAuditValue(newValue)}`);
         });
     }
 
     if (newValues?.client_name && typeof newValues.client_name === 'string') {
-      details.push(`Client: ${newValues.client_name}`);
+      details.unshift(`Client: ${newValues.client_name}`);
     }
 
     if (newValues?.updated_by && typeof newValues.updated_by === 'string') {
-      details.push(`Updated by: ${newValues.updated_by}`);
+      const byName = UUID_PATTERN.test(newValues.updated_by)
+        ? (auditIdToName[newValues.updated_by] || newValues.updated_by)
+        : newValues.updated_by;
+      details.push(`Updated by: ${byName}`);
     }
 
-    if (newValues?.assigned_case_manager && !details.some((detail) => detail.startsWith('Assigned CM:'))) {
-      const manager = typeof newValues.assigned_case_manager === 'string'
-        ? newValues.assigned_case_manager
-        : JSON.stringify(newValues.assigned_case_manager);
-      details.push(`Assigned CM: ${manager}`);
+    if (newValues?.assigned_case_manager && !details.some((detail) => detail.startsWith('Assigned case manager:'))) {
+      const managerId = newValues.assigned_case_manager;
+      const manager = UUID_PATTERN.test(String(managerId)) && typeof managerId === 'string'
+        ? (auditIdToName[managerId] || managerId)
+        : formatAuditValue(managerId);
+      details.push(`Assigned case manager: ${manager}`);
     }
 
-    if (newValues?.manager_name && !details.some((detail) => detail.startsWith('Assigned CM:'))) {
-      details.push(`Assigned CM: ${newValues.manager_name}`);
+    if (newValues?.manager_name && !details.some((detail) => detail.startsWith('Assigned case manager:'))) {
+      details.push(`Assigned case manager: ${newValues.manager_name}`);
     }
 
     if (newValues?.status && typeof newValues.status === 'string' && !details.some((detail) => detail.startsWith('Status:'))) {
@@ -1169,7 +1249,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       details.push(newValues.notes);
     }
 
-    if (details.length === 0 && activity.action) {
+    if (details.length === 0) {
       details.push('No additional details recorded');
     }
 
@@ -1178,6 +1258,10 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
   const getActivityMeta = (action: string) => {
     const normalized = action.toLowerCase();
+
+    if (normalized.includes('view') || normalized.includes('access')) {
+      return { label: 'Accessed', classes: 'bg-gray-100 text-gray-700', icon: Eye };
+    }
 
     if (normalized.includes('delete')) {
       return { label: 'Deleted', classes: 'bg-red-100 text-red-700', icon: Trash2 };
@@ -1615,19 +1699,21 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                   <div className="flex-1 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Badge className={`border-0 ${meta.classes}`}>{meta.label}</Badge>
-                                      <p className="text-sm font-semibold text-gray-900">{item.action}</p>
+                                      <p className="text-sm font-semibold text-gray-900">
+                                        {item.user_name || 'Unknown user'} — {formatAuditAction(item.action)}
+                                      </p>
                                     </div>
-                                    <div className="grid gap-1 text-xs text-gray-600">
-                                      {details.map((detail, index) => (
-                                        <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
-                                          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-                                          <span>{detail}</span>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    {details.length > 0 && (
+                                      <div className="grid gap-1 text-xs text-gray-600">
+                                        {details.map((detail, index) => (
+                                          <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                                            <span>{detail}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                      <span>{item.user_name}</span>
-                                      <span>•</span>
                                       <span>{formatPacificDateTime(item.created_at)} PT</span>
                                     </div>
                                   </div>
@@ -2391,19 +2477,21 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                                   <div className="flex-1 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Badge className={`border-0 ${meta.classes}`}>{meta.label}</Badge>
-                                      <p className="text-sm font-semibold text-gray-900">{item.action}</p>
+                                      <p className="text-sm font-semibold text-gray-900">
+                                        {item.user_name || 'Unknown user'} — {formatAuditAction(item.action)}
+                                      </p>
                                     </div>
-                                    <div className="grid gap-1 text-xs text-gray-600">
-                                      {details.map((detail, index) => (
-                                        <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
-                                          <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
-                                          <span>{detail}</span>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    {details.length > 0 && (
+                                      <div className="grid gap-1 text-xs text-gray-600">
+                                        {details.map((detail, index) => (
+                                          <div key={`${item.id}-detail-${index}`} className="flex items-center gap-2">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+                                            <span>{detail}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                      <span>{item.user_name}</span>
-                                      <span>•</span>
                                       <span>{formatPacificDateTime(item.created_at)} PT</span>
                                     </div>
                                   </div>
