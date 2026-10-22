@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { cacheReadOnly } from "@/app/actions/cache";
 import { createDraftEmploymentSupportIntake } from "@/app/actions/employment-support";
+import { getPacificDateKey } from "@/lib/date-utils";
 
 export interface Program {
     id: string;
@@ -142,13 +143,25 @@ export async function upsertEnrollment(params: {
             };
         }
 
+        const { data: existingEnrollment, error: enrollmentError } = await supabase
+            .from('program_enrollments')
+            .select('start_date')
+            .eq('client_id', params.clientId)
+            .eq('program_id', params.programId)
+            .maybeSingle();
+
+        if (enrollmentError) throw enrollmentError;
+
+        const startDate = params.startDate || existingEnrollment?.start_date ||
+            (params.status === 'enrolled' ? getPacificDateKey(new Date()) : null);
+
         const { data, error } = await supabase
             .from('program_enrollments')
             .upsert({
                 client_id: params.clientId,
                 program_id: params.programId,
                 status: params.status,
-                start_date: params.startDate || null,
+                start_date: startDate,
                 end_date: params.endDate || null,
                 assigned_volunteer_id: params.volunteerId || null,
                 notes: params.notes || null,
@@ -259,11 +272,25 @@ export async function updateEnrollmentStatus(params: {
     try {
         const supabase = await createClient();
 
+        let startDate: string | undefined;
+        if (params.newStatus === 'enrolled') {
+            const { data: enrollment, error: enrollmentError } = await supabase
+                .from('program_enrollments')
+                .select('start_date')
+                .eq('id', params.enrollmentId)
+                .maybeSingle();
+
+            if (enrollmentError) throw enrollmentError;
+            if (!enrollment) throw new Error('Enrollment not found');
+            if (!enrollment.start_date) startDate = getPacificDateKey(new Date());
+        }
+
         // Update the enrollment status
         const { error: updateError } = await supabase
             .from('program_enrollments')
             .update({
                 status: params.newStatus,
+                ...(startDate ? { start_date: startDate } : {}),
                 updated_at: new Date().toISOString()
             })
             .eq('id', params.enrollmentId);

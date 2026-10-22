@@ -46,6 +46,8 @@ function queryChain(terminalValue: { data: unknown; error: unknown } = { data: n
 
 describe("saveEmploymentSupportIntake", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T01:30:00.000Z"));
     vi.restoreAllMocks();
     createClient.mockReset();
     createServiceClient.mockReset();
@@ -54,6 +56,7 @@ describe("saveEmploymentSupportIntake", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -162,8 +165,10 @@ describe("saveEmploymentSupportIntake", () => {
         client_id: clientId,
         program_id: programId,
         status: "enrolled",
+        start_date: "2026-10-22",
       })
     );
+    expect(serviceEnrollmentInsertQuery.insert.mock.calls[0][0]).not.toHaveProperty("enrolled_at");
     expect(intakeInsertQuery.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         client_id: clientId,

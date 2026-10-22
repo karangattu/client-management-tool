@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { parseISO } from 'date-fns';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -2150,7 +2151,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
                             <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                               <div>
                                 <span className="text-gray-400">Start Date:</span>
-                                <span className="ml-2">{enrollment.start_date ? new Date(enrollment.start_date).toLocaleDateString() : 'Not set'}</span>
+                                <span className="ml-2">{enrollment.start_date ? parseISO(enrollment.start_date).toLocaleDateString() : 'Not set'}</span>
                               </div>
                               <div>
                                 <span className="text-gray-400">Staff:</span>

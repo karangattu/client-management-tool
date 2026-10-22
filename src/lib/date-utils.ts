@@ -7,7 +7,7 @@ function toDateInput(date: Date | string): Date {
   return typeof date === 'string' ? new Date(date) : date;
 }
 
-function getPacificDateKey(date: Date | string): string {
+export function getPacificDateKey(date: Date | string): string {
   return formatInTimeZone(toDateInput(date), PACIFIC_TIMEZONE, 'yyyy-MM-dd');
 }
 

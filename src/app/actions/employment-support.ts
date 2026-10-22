@@ -2,6 +2,7 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getPacificDateKey } from "@/lib/date-utils";
 import {
   employmentSupportIntakeSchema,
   type EmploymentSupportIntakeForm,
@@ -237,7 +238,7 @@ export async function saveEmploymentSupportIntake(params: {
               client_id: params.clientId,
               program_id: program.id,
               status: "enrolled",
-              enrolled_at: new Date().toISOString(),
+              start_date: getPacificDateKey(new Date()),
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })

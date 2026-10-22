@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.18] - 2026-10-22
+
+### Fixed
+
+- Record the Pacific start date when a client becomes Enrolled, preserving existing dates and staff-entered dates.
+- Store Employment Support intake auto-enrollment dates in `start_date`.
+- Display enrollment start dates without shifting them to the previous day.
+- Add a migration to recover missing start dates from recorded enrollment status transitions.
+- Rotate service worker caches so clients receive the updated application.
+
 ## [1.0.14] - 2026-09-24
 
 ### Added
